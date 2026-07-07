@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMAS - Enterprise Control Center</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Project Management & Architecture Suite (PMAS) - Dynamic cross-departmental control room and analytics shell.">
+  <meta name="author" content="Enterprise Dev Team">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="flex h-screen overflow-hidden bg-surface-container text-on-surface">
+
+  <!-- Core App Layout Grid -->
+  <div class="app-container" id="pmas-shell">
+    
+    <!-- Left Sidebar Navigation Panel -->
+    <aside class="sidebar" aria-label="Sidebar Navigation">
+      <!-- Product Brand Header -->
+      <div class="brand-container">
+        <!-- Shield Icon Logo -->
+        <svg class="brand-logo-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span>PMAS Control</span>
+      </div>
+
+      <!-- Active User Profile Container -->
+      <div class="user-profile" id="user-profile-section">
+        <div class="user-avatar" id="profile-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="profile-name">Loading...</span>
+          <span class="user-role" id="profile-role">User Session</span>
+        </div>
+      </div>
+
+      <!-- Departmental Workspace Links -->
+      <nav class="flex-1" aria-label="Main Navigation Menu">
+        <ul class="nav-links" id="sidebar-nav-menu">
+          <li class="nav-item active" data-view="executive">
+            <a href="#/executive">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              <span>Executive Control</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="uiux">
+            <a href="#/uiux">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"></path><path d="M12 18C15.3137 18 18 15.3137 18 12C18 8.68629 15.3137 6 12 6C8.68629 6 6 8.68629 6 12C6 15.3137 8.68629 18 12 18Z"></path><circle cx="12" cy="12" r="2"></circle></svg>
+              <span>UI/UX Design</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="engineering">
+            <a href="#/engineering">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="14" y1="4" x2="10" y2="20"></line></svg>
+              <span>Engineering</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="infrastructure">
+            <a href="#/infrastructure">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+              <span>Infrastructure</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="marketing">
+            <a href="#/marketing">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12h14"></path><circle cx="12" cy="12" r="10"></circle></svg>
+              <span>Marketing</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="graph-view">
+            <a href="#/graph-view">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"></polygon><line x1="12" y1="22" x2="12" y2="15.5"></line><polyline points="22 8.5 12 15.5 2 8.5"></polyline></svg>
+              <span>Graph Network</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="finance">
+            <a href="#/finance">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              <span>Finance Ledger</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="legalhr">
+            <a href="#/legalhr">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span>Legal & HR Check</span>
+            </a>
+          </li>
+          <li class="nav-item" data-view="settings">
+            <a href="#/settings">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              <span>System Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- Collapsible Sidebar Footer Toggle -->
+      <div class="sidebar-footer">
+        <button id="sidebar-toggle-btn" class="sidebar-toggle-footer" aria-label="Toggle Sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="11 17 6 12 11 7"></polyline>
+            <polyline points="18 17 13 12 18 7"></polyline>
+          </svg>
+          <span>Collapse Sidebar</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Viewport Interface -->
+    <div class="main-viewport">
+      <!-- Universal Control Header -->
+      <header class="top-bar">
+        <div class="flex-col">
+          <h1 id="view-title" class="text-on-surface" style="font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em;">Executive Control</h1>
+          <p id="view-subtitle" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.125rem;">Global Project Portfolio Telemetry</p>
+        </div>
+        
+        <!-- Header Actions Widget -->
+        <div class="flex" style="align-items: center; gap: 1rem;">
+          <!-- Active compliance telemetry indicator -->
+          <div class="flex" style="align-items: center; gap: 0.5rem; background: var(--bg-surface-elevated); padding: 0.375rem 0.75rem; border-radius: 9999px; border: 1px solid var(--border-outline-variant-60);">
+            <div class="pulse-indicator pulse-active" id="header-pulse"></div>
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Compliance: </span>
+            <span class="font-mono text-success" id="header-compliance-score" style="font-size: 0.75rem; font-weight: 700;">85%</span>
+          </div>
+
+          <!-- Active Blockers Alert -->
+          <div class="flex" id="header-blockers-alert" style="align-items: center; gap: 0.5rem; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); padding: 0.375rem 0.75rem; border-radius: 9999px; cursor: pointer;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span style="font-size: 0.75rem; font-weight: 700; color: var(--color-danger);" class="font-mono" id="header-blockers-count">7 Blockers</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Mount point for specific workspace views -->
+      <main id="app-viewport" class="content-area">
+        <!-- Conditionally injected via js/app.js -->
+        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+          <div style="text-align: center; color: var(--text-muted);">
+            <p>Bootstrapping PMAS Control Suite...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Boot Scripts -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
