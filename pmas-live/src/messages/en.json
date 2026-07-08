@@ -1,0 +1,67 @@
+{
+  "title": "PMAS Live — Production Control Center",
+  "description": "Real business flow for PMAS with authentication and live data.",
+  "navLabels": {
+    "product-manager": "Product Manager",
+    "profile": "Profile",
+    "executive": "Executive Control",
+    "uiux": "UI/UX Design",
+    "engineering": "Engineering",
+    "infrastructure": "Infrastructure",
+    "marketing": "Marketing",
+    "graph-view": "Graph Network",
+    "finance": "Finance Ledger",
+    "legalhr": "Legal & HR",
+    "settings": "System Settings",
+    "admin-users": "User Management",
+    "platform-tenants": "Companies"
+  },
+  "routeTitles": {
+    "executive": "Executive Control Room",
+    "uiux": "UI/UX Workspace",
+    "engineering": "Engineering Core Platform",
+    "infrastructure": "Infrastructure Gateway",
+    "marketing": "Marketing Workspace",
+    "graph-view": "Network Topology",
+    "finance": "Finance Telemetry",
+    "legalhr": "Legal & HR Compliance",
+    "settings": "System Settings",
+    "admin-users": "User Management",
+    "platform-tenants": "Company Provisioning",
+    "product-manager": "Product Manager",
+    "profile": "Profile"
+  },
+  "routeSubtitles": {
+    "executive": "Global Project Portfolio Telemetry",
+    "uiux": "Design tokens and asset management",
+    "engineering": "Subsystems and CI/CD pipeline",
+    "infrastructure": "Cluster and deployment telemetry",
+    "marketing": "Campaign metrics and funnel telemetry",
+    "graph-view": "Cross-functional dependency graph",
+    "finance": "Burn rate and expenditure tracking",
+    "legalhr": "Compliance controls and workforce",
+    "settings": "Integration credentials vault",
+    "admin-users": "Create employees and assign workspace permissions",
+    "platform-tenants": "Create isolated company workspaces for customers",
+    "product-manager": "Playbooks and capability map filtered by your access",
+    "profile": "Your identity, contact details, and account security"
+  },
+  "login": {
+    "title": "PMAS Live",
+    "subtitle": "Sign in to your company workspace",
+    "companyLogin": "Company login",
+    "platformAdmin": "Platform admin",
+    "companyId": "Company ID",
+    "email": "Email",
+    "password": "Password"
+  },
+  "sidebar": {
+    "expand": "Expand Sidebar",
+    "collapse": "Collapse Sidebar",
+    "signOut": "Sign out"
+  },
+  "auth": {
+    "loading": "Loading PMAS Live…",
+    "error": "Cannot reach API server. Start the backend on port 8080."
+  }
+}

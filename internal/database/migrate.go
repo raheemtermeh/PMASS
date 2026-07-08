@@ -179,6 +179,15 @@ func EnsureSchema(db *sql.DB) error {
 	upgrades := []string{
 		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`,
 		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS first_name VARCHAR(120)`,
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_name VARCHAR(120)`,
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS job_title VARCHAR(255)`,
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)`,
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS bio TEXT`,
+		`UPDATE app_users
+		 SET first_name = COALESCE(NULLIF(first_name, ''), split_part(full_name, ' ', 1)),
+		     last_name = COALESCE(NULLIF(last_name, ''), NULLIF(trim(substr(full_name, length(split_part(full_name, ' ', 1)) + 1)), ''), full_name)
+		 WHERE (first_name IS NULL OR first_name = '') AND full_name IS NOT NULL AND full_name <> ''`,
 		`ALTER TABLE subsystems ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`,
 		`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`,
 		`ALTER TABLE operational_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`,

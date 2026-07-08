@@ -13,10 +13,17 @@ export interface AuthUser {
   tenant_id: number | null;
   email: string;
   full_name: string;
+  first_name?: string;
+  last_name?: string;
+  job_title?: string | null;
+  phone?: string | null;
+  bio?: string | null;
   role: string;
   is_active: boolean;
   permissions: string[];
   tenant?: TenantInfo | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface AuthState {
@@ -41,7 +48,6 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "pmas-live-auth",
-      // sessionStorage reduces persistence window vs localStorage (still XSS-stealable while tab open).
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({ token: state.token, user: state.user }),
     },

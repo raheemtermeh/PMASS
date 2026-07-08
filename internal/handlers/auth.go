@@ -217,10 +217,6 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	if !h.setupResponse(w, r) {
 		return
 	}
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -232,6 +228,120 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !user.IsActive {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Session revoked or expired"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(user)
+	case http.MethodPut, http.MethodPatch:
+		h.UpdateProfile(w, r, claims.UserID)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID int) {
+	var req models.UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request payload"})
+		return
+	}
+
+	req.FirstName = strings.TrimSpace(req.FirstName)
+	req.LastName = strings.TrimSpace(req.LastName)
+	if req.FirstName == "" || req.LastName == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "first_name and last_name are required"})
+		return
+	}
+	if len(req.FirstName) > 120 || len(req.LastName) > 120 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Name fields are too long"})
+		return
+	}
+
+	fullName := strings.TrimSpace(req.FirstName + " " + req.LastName)
+	var jobTitle, phone, bio *string
+	if req.JobTitle != nil {
+		v := strings.TrimSpace(*req.JobTitle)
+		if v != "" {
+			jobTitle = &v
+		}
+	}
+	if req.Phone != nil {
+		v := strings.TrimSpace(*req.Phone)
+		if v != "" {
+			phone = &v
+		}
+	}
+	if req.Bio != nil {
+		v := strings.TrimSpace(*req.Bio)
+		if len(v) > 1000 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Bio must be at most 1000 characters"})
+			return
+		}
+		if v != "" {
+			bio = &v
+		}
+	}
+
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(r.Context(), `
+		UPDATE app_users
+		SET first_name = $1,
+		    last_name = $2,
+		    full_name = $3,
+		    job_title = $4,
+		    phone = $5,
+		    bio = $6,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $7
+	`, req.FirstName, req.LastName, fullName, jobTitle, phone, bio, userID)
+	if err != nil {
+		log.Printf("Error updating profile: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to update profile"})
+		return
+	}
+
+	if req.Password != nil && strings.TrimSpace(*req.Password) != "" {
+		if err := auth.ValidatePasswordStrength(*req.Password); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		hash, err := auth.HashPassword(*req.Password)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE app_users
+			SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`, hash, userID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.loadUserWithPermissions(r, userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	json.NewEncoder(w).Encode(user)
@@ -622,16 +732,49 @@ func (h *Handler) issueSession(user *models.AppUserWithPermissions) (string, err
 func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.AppUserWithPermissions, error) {
 	var u models.AppUser
 	var tid sql.NullInt64
+	var firstName, lastName sql.NullString
+	var jobTitle, phone, bio sql.NullString
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT id, tenant_id, email, full_name, role, is_active, COALESCE(session_version, 1), created_at, updated_at
+		SELECT id, tenant_id, email, full_name,
+		       COALESCE(first_name, ''), COALESCE(last_name, ''),
+		       job_title, phone, bio,
+		       role, is_active, COALESCE(session_version, 1), created_at, updated_at
 		FROM app_users WHERE id = $1
-	`, userID).Scan(&u.ID, &tid, &u.Email, &u.FullName, &u.Role, &u.IsActive, &u.SessionVersion, &u.CreatedAt, &u.UpdatedAt)
+	`, userID).Scan(
+		&u.ID, &tid, &u.Email, &u.FullName,
+		&firstName, &lastName,
+		&jobTitle, &phone, &bio,
+		&u.Role, &u.IsActive, &u.SessionVersion, &u.CreatedAt, &u.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 	if tid.Valid {
 		id := int(tid.Int64)
 		u.TenantID = &id
+	}
+	u.FirstName = strings.TrimSpace(firstName.String)
+	u.LastName = strings.TrimSpace(lastName.String)
+	if u.FirstName == "" && u.FullName != "" {
+		parts := strings.Fields(u.FullName)
+		if len(parts) > 0 {
+			u.FirstName = parts[0]
+		}
+		if len(parts) > 1 {
+			u.LastName = strings.Join(parts[1:], " ")
+		}
+	}
+	if jobTitle.Valid {
+		v := jobTitle.String
+		u.JobTitle = &v
+	}
+	if phone.Valid {
+		v := phone.String
+		u.Phone = &v
+	}
+	if bio.Valid {
+		v := bio.String
+		u.Bio = &v
 	}
 
 	perms, err := h.loadPermissions(r, userID)

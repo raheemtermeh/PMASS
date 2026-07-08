@@ -29,6 +29,7 @@ export function Sidebar() {
 
   const visibleNav = navItems.filter((id) => {
     const route = routes[id];
+    if (route.id === "product-manager" || route.id === "profile") return true;
     if (route.platformOnly) return platform;
     if (route.tenantOnly && !hasTenant) return false;
     if (!route.permission) return false;
@@ -50,7 +51,7 @@ export function Sidebar() {
         <span>PMAS Live</span>
       </div>
 
-      <div className="user-profile">
+      <Link href="/profile" className="user-profile user-profile-link">
         <div className="user-avatar">{initials}</div>
         <div className="user-info">
           <span className="user-name">{user.full_name}</span>
@@ -58,7 +59,7 @@ export function Sidebar() {
             {user.tenant?.name ? `${user.tenant.name} · ${roleLabel}` : roleLabel}
           </span>
         </div>
-      </div>
+      </Link>
 
       <nav className="flex-1">
         <ul className="nav-links">

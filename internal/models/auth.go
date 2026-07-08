@@ -16,6 +16,11 @@ type AppUser struct {
 	TenantID       *int      `json:"tenant_id"`
 	Email          string    `json:"email"`
 	FullName       string    `json:"full_name"`
+	FirstName      string    `json:"first_name"`
+	LastName       string    `json:"last_name"`
+	JobTitle       *string   `json:"job_title"`
+	Phone          *string   `json:"phone"`
+	Bio            *string   `json:"bio"`
 	Role           string    `json:"role"`
 	IsActive       bool      `json:"is_active"`
 	SessionVersion int       `json:"session_version"`
@@ -64,6 +69,15 @@ type UpdateUserRequest struct {
 	Role        *string  `json:"role,omitempty"`
 	IsActive    *bool    `json:"is_active,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
+}
+
+type UpdateProfileRequest struct {
+	FirstName string  `json:"first_name"`
+	LastName  string  `json:"last_name"`
+	JobTitle  *string `json:"job_title"`
+	Phone     *string `json:"phone"`
+	Bio       *string `json:"bio"`
+	Password  *string `json:"password,omitempty"`
 }
 
 type ProvisionTenantRequest struct {

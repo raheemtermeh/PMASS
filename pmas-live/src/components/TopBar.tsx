@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { useOnboardingStore } from "@/features/guidance/guidance-store";
 import { getRouteByPath } from "@/shared/routes";
 
 interface OperationalItem {
@@ -15,6 +16,7 @@ export function TopBar() {
   const pathname = usePathname();
   const route = getRouteByPath(pathname);
   const user = useAuthStore((s) => s.user);
+  const resetTour = useOnboardingStore((s) => s.resetForUser);
   const hasTenant = Boolean(user?.tenant_id);
   const canFetchOps =
     hasTenant &&
@@ -54,6 +56,14 @@ export function TopBar() {
             </span>
           </div>
         )}
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => user && resetTour(String(user.id))}
+          title="Replay first-run setup wizard"
+        >
+          Help tour
+        </button>
         <div className="top-bar-badge">
           <div className="pulse-indicator pulse-active" />
           <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>

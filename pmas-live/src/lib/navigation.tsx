@@ -73,11 +73,25 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
         <path d="M9 21v-6h6v6" />
       </svg>
     ),
+    "product-manager": (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M9 11l3 3L22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+    profile: (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    ),
   };
   return icons[viewId];
 }
 
 export const navLabels: Record<ViewId, string> = {
+  "product-manager": "Product Manager",
+  profile: "Profile",
   executive: "Executive Control",
   uiux: "UI/UX Design",
   engineering: "Engineering",

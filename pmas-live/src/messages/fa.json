@@ -1,0 +1,67 @@
+{
+  "title": "PMAS Live — مرکز کنترل تولید",
+  "description": "فلو کسب و کار واقعی برای PMAS با احراز هویت و داده‌های زنده.",
+  "navLabels": {
+    "product-manager": "مدیر محصول",
+    "profile": "پروفایل",
+    "executive": "کنترل اجرایی",
+    "uiux": "طراحی UI/UX",
+    "engineering": "مهندسی",
+    "infrastructure": "زیرساخت",
+    "marketing": "بازاریابی",
+    "graph-view": "شبکه گراف",
+    "finance": "دارایی مالی",
+    "legalhr": "حقوق و کارکنان",
+    "settings": "تنظیمات سیستم",
+    "admin-users": "مدیریت کاربر",
+    "platform-tenants": "شرکت‌ها"
+  },
+  "routeTitles": {
+    "executive": "اتاق کنترل اجرایی",
+    "uiux": "فضای کار UI/UX",
+    "engineering": "پلتفرم هسته مهندسی",
+    "infrastructure": "دروازه زیرساخت",
+    "marketing": "فضای کار بازاریابی",
+    "graph-view": "توپولوژی شبکه",
+    "finance": "تل Telemetry مالی",
+    "legalhr": "رعایت قوانین حقوقی و نیروی کار",
+    "settings": "تنظیمات سیستم",
+    "admin-users": "مدیریت کاربر",
+    "platform-tenants": "تأمین شرکت‌ها",
+    "product-manager": "مدیر محصول",
+    "profile": "پروفایل کاربر"
+  },
+  "routeSubtitles": {
+    "executive": "تل Telemetry پروژه‌های جهانی",
+    "uiux": "مدیریت توکن‌های طراحی و دارایی‌ها",
+    "engineering": "زیرسیستم‌ها و خطوط CI/CD",
+    "infrastructure": "تل Telemetry خوشه‌ها و استقرار",
+    "marketing": "تل Telemetry کمپین‌ها و قیف",
+    "graph-view": "گراف وابستگی‌های بین وظیفه‌ای",
+    "finance": "تل Telemetry هزینه‌ها و هزینه‌های جاری",
+    "legalhr": "کنترل‌های رعایت قوانین نیروی کار",
+    "settings": "Vault اعتبارنامه‌های یکپارچه‌سازی",
+    "admin-users": "ایجاد کارمندان و اختصاص دسترسی‌های فضای کاری",
+    "platform-tenants": "ایجاد فضاهای کاری معزول‌شده برای شرکت‌های مشتری",
+    "product-manager": "پلی‌بوک‌ها و نقشه توانایی‌ها فقط بر اساس دسترسی شما",
+    "profile": "هویّت، اطلاعات تماس و امنیت حساب کاربری شما"
+  },
+  "login": {
+    "title": "PMAS Live",
+    "subtitle": "به فضای کاری شرکت خود وارد شوید.",
+    "companyLogin": "ورود شرکت",
+    "platformAdmin": "مدیر ارشد پلتفرم",
+    "companyId": "شناسه شرکت",
+    "email": "آدرس ایمیل",
+    "password": "کلمه‌ی عبور"
+  },
+  "sidebar": {
+    "expand": "گسترش sidebar",
+    "collapse": "بستن sidebar",
+    "signOut": "خروج از حساب"
+  },
+  "auth": {
+    "loading": "PMAS Live در حال بارگذاری",
+    "error": "عدم دسترسی به API سرور. لطفا سرور را بر روی پورت 8080 اجرا کنید."
+  }
+}

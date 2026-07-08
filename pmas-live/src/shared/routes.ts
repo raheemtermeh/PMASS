@@ -11,7 +11,9 @@ export type ViewId =
   | "legalhr"
   | "settings"
   | "admin-users"
-  | "platform-tenants";
+  | "platform-tenants"
+  | "product-manager"
+  | "profile";
 
 export interface RouteConfig {
   id: ViewId;
@@ -112,9 +114,25 @@ export const routes: Record<ViewId, RouteConfig> = {
     permission: null,
     platformOnly: true,
   },
+  "product-manager": {
+    id: "product-manager",
+    path: "/product-manager",
+    title: "Product Manager",
+    subtitle: "Playbooks and capability map filtered by your access",
+    permission: null,
+  },
+  profile: {
+    id: "profile",
+    path: "/profile",
+    title: "Profile",
+    subtitle: "Your identity, contact details, and account security",
+    permission: null,
+  },
 };
 
 export const navItems: ViewId[] = [
+  "product-manager",
+  "profile",
   "executive",
   "uiux",
   "engineering",
@@ -138,11 +156,16 @@ export function firstAllowedPath(
   hasTenant: boolean,
 ): string {
   if (role === "platform_admin" || role === "super_admin") {
-    return routes["platform-tenants"].path;
+    return routes["product-manager"].path;
+  }
+  // Always land on Product Manager when the user has any tenant workspace access.
+  if (hasTenant || role === "tenant_admin") {
+    return routes["product-manager"].path;
   }
   for (const id of navItems) {
     const route = routes[id];
     if (route.platformOnly) continue;
+    if (route.id === "product-manager") continue;
     if (route.tenantOnly && !hasTenant) continue;
     if (!route.permission) continue;
     if (
@@ -152,5 +175,5 @@ export function firstAllowedPath(
       return route.path;
     }
   }
-  return "/login";
+  return routes["product-manager"].path;
 }
