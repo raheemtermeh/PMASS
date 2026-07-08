@@ -5,3 +5,4 @@ pmas-api.exe
 *.exe
 api-err.log
 api-out.log
+node_modules
