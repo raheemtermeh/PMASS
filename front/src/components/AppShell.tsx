@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
-import { store } from "@/legacy/state";
-import { usePmasStore } from "@/hooks/usePmasStore";
+import { useEffect } from "react";
+import type { ReactNode } from "react";
+import { useAppStore } from "@/features/shell/store/app-store";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
@@ -11,18 +11,18 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const state = usePmasStore();
-  const sidebarCollapsed = state.settings?.sidebarCollapsed ?? false;
+  const sidebarCollapsed = useAppStore(
+    (state) => state.settings.sidebarCollapsed,
+  );
+  const compactMode = useAppStore((state) => state.settings.compactMode);
+  const updateSettings = useAppStore((state) => state.updateSettings);
 
   useEffect(() => {
-    document.documentElement.classList.toggle(
-      "compact-mode",
-      Boolean(state.settings?.compactMode),
-    );
-  }, [state.settings?.compactMode]);
+    document.documentElement.classList.toggle("compact-mode", Boolean(compactMode));
+  }, [compactMode]);
 
   const handleToggleCollapse = () => {
-    store.updateSettings({ sidebarCollapsed: !sidebarCollapsed });
+    updateSettings({ sidebarCollapsed: !sidebarCollapsed });
   };
 
   return (

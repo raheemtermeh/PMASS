@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { usePmasStore } from "@/hooks/usePmasStore";
+import { useAppStore } from "@/features/shell/store/app-store";
 import { NavIcon, navLabels } from "@/lib/navigation";
 import { navItems, routes } from "@/lib/routes";
 
@@ -14,9 +14,8 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const state = usePmasStore();
+  const user = useAppStore((state) => state.user);
   const isProfileActive = pathname === routes.profile.path;
-  const { user } = state;
 
   return (
     <aside

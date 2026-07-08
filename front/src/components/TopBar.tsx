@@ -1,22 +1,28 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { store } from "@/legacy/state";
-import { usePmasStore } from "@/hooks/usePmasStore";
+import { useAppStore } from "@/features/shell/store/app-store";
 import { getRouteByPath, routes } from "@/lib/routes";
 
 export function TopBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const state = usePmasStore();
+  const complianceChecklist = useAppStore((state) => state.complianceChecklist);
+  const threshold = useAppStore((state) => state.settings.complianceThreshold);
+  const blockers = useAppStore((state) => state.blockers);
+  const alertsEnabled = useAppStore(
+    (state) => state.settings.notificationAlerts,
+  );
   const route = getRouteByPath(pathname);
 
-  const complianceScore = store.getCompliancePercent();
-  const threshold = state.settings?.complianceThreshold || 75;
-  const activeBlockersCount = state.blockers.filter(
+  const complianceScore = Math.round(
+    (complianceChecklist.filter((item) => item.checked).length /
+      complianceChecklist.length) *
+      100,
+  );
+  const activeBlockersCount = blockers.filter(
     (blocker) => blocker.status === "Blocked",
   ).length;
-  const alertsEnabled = state.settings?.notificationAlerts !== false;
 
   let complianceClass = "font-mono text-success";
   if (complianceScore < 50) {

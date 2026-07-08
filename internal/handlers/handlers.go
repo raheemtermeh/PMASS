@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"PMAS/internal/auth"
 	"PMAS/internal/models"
 )
 
@@ -21,15 +22,13 @@ func NewHandler(db *sql.DB) *Handler {
 	return &Handler{db: db}
 }
 
-// setupResponse configures CORS options and content header structures.
+// setupResponse sets JSON content type. CORS/security headers are applied by middleware.
 // Returns false if the request was a preflight OPTIONS check.
 func (h *Handler) setupResponse(w http.ResponseWriter, r *http.Request) bool {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
 		return false
 	}
 	return true
@@ -73,8 +72,17 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Retrieve Subsystems
-	subRows, err := h.db.QueryContext(r.Context(), "SELECT id, name, slug, status, load_percentage FROM subsystems")
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	nodes := make([]models.TopologyNode, 0)
+	edges := make([]models.APIGraphEdge, 0)
+
+	subRows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, slug, status, load_percentage FROM subsystems WHERE tenant_id = $1
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying subsystems: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -83,7 +91,6 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 	defer subRows.Close()
 
-	var nodes []models.TopologyNode
 	for subRows.Next() {
 		var sub models.Subsystem
 		if err := subRows.Scan(&sub.ID, &sub.Name, &sub.Slug, &sub.Status, &sub.LoadPercentage); err != nil {
@@ -99,8 +106,10 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 2. Retrieve Team Members
-	memberRows, err := h.db.QueryContext(r.Context(), "SELECT id, name, avatar_url, role, subsystem_id, capacity_weight FROM team_members")
+	memberRows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, avatar_url, role, subsystem_id, capacity_weight
+		FROM team_members WHERE tenant_id = $1
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying team members: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -125,13 +134,13 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 3. Retrieve Graph Edges resolved to slugs
 	edgeRows, err := h.db.QueryContext(r.Context(), `
-		SELECT e.id, e.edge_type, e.weight, s.slug, t.slug 
+		SELECT e.id, e.edge_type, e.weight, s.slug, t.slug
 		FROM graph_edges e
 		JOIN subsystems s ON e.source_id = s.id
 		JOIN subsystems t ON e.target_id = t.id
-	`)
+		WHERE e.tenant_id = $1
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying graph edges: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -140,7 +149,6 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 	defer edgeRows.Close()
 
-	var edges []models.APIGraphEdge
 	for edgeRows.Next() {
 		var id int
 		var edgeType, sourceSlug, targetSlug string
@@ -159,12 +167,7 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response := models.TopologyResponse{
-		Nodes: nodes,
-		Edges: edges,
-	}
-
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(models.TopologyResponse{Nodes: nodes, Edges: edges})
 }
 
 // GetTokens implements GET /api/v1/uiux/tokens
@@ -178,7 +181,14 @@ func (h *Handler) GetTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.db.QueryContext(r.Context(), "SELECT category, token_data FROM design_tokens")
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT category, token_data FROM design_tokens WHERE tenant_id = $1
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying design tokens: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -225,7 +235,14 @@ func (h *Handler) PushAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.ExecContext(r.Context(), "UPDATE ui_assets SET cdn_status = 'Live' WHERE name = $1", req.AssetName)
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := h.db.ExecContext(r.Context(), `
+		UPDATE ui_assets SET cdn_status = 'Live' WHERE name = $1 AND tenant_id = $2
+	`, req.AssetName, tenantID)
 	if err != nil {
 		log.Printf("Error updating asset CDN status: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -256,7 +273,15 @@ func (h *Handler) GetSubsystems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.db.QueryContext(r.Context(), "SELECT id, name, slug, status, load_percentage FROM subsystems ORDER BY id")
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, slug, status, load_percentage
+		FROM subsystems WHERE tenant_id = $1 ORDER BY id
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying subsystems: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -264,7 +289,7 @@ func (h *Handler) GetSubsystems(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var subsystems []models.Subsystem
+	subsystems := make([]models.Subsystem, 0)
 	for rows.Next() {
 		var sub models.Subsystem
 		if err := rows.Scan(&sub.ID, &sub.Name, &sub.Slug, &sub.Status, &sub.LoadPercentage); err != nil {
@@ -312,16 +337,30 @@ func (h *Handler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if active blocker exists for this subsystem
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	var owned int
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM subsystems WHERE id = $1 AND tenant_id = $2
+	`, req.SubsystemID, tenantID).Scan(&owned); err != nil || owned == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Subsystem not found"})
+		return
+	}
+
 	var ticketCode, title, description, severity string
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT ticket_code, title, description, severity 
 		FROM operational_items 
 		WHERE origin_subsystem_id = $1 
+		  AND tenant_id = $2
 		  AND type = 'blocker' 
 		  AND status NOT IN ('Resolved', 'Completed') 
 		LIMIT 1
-	`, req.SubsystemID).Scan(&ticketCode, &title, &description, &severity)
+	`, req.SubsystemID, tenantID).Scan(&ticketCode, &title, &description, &severity)
 
 	if err == nil {
 		// Blocker exists: compile halts, return 400 with AI Root Cause Analysis (RCA) log payload
@@ -372,12 +411,18 @@ func (h *Handler) GetMarketingCampaigns(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT c.id, c.name, c.leads, c.conversion, c.spend, c.status, c.dependent_subsystem_id, COALESCE(s.status, 'healthy')
 		FROM marketing_campaigns c
-		LEFT JOIN subsystems s ON c.dependent_subsystem_id = s.id
+		LEFT JOIN subsystems s ON c.dependent_subsystem_id = s.id AND s.tenant_id = c.tenant_id
+		WHERE c.tenant_id = $1
 		ORDER BY c.id
-	`)
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying campaigns: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -385,7 +430,7 @@ func (h *Handler) GetMarketingCampaigns(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	var campaigns []models.MarketingCampaign
+	campaigns := make([]models.MarketingCampaign, 0)
 	for rows.Next() {
 		var c models.MarketingCampaign
 		if err := rows.Scan(&c.ID, &c.Name, &c.Leads, &c.Conversion, &c.Spend, &c.Status, &c.DependentSubsystemID, &c.DependentSubsysStatus); err != nil {
@@ -423,7 +468,11 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Begin ACID transaction
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
 	tx, err := h.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -432,13 +481,12 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	// 1. Fetch blocker details before update to find origin subsystem
 	var originSubsystemID int
 	err = tx.QueryRowContext(r.Context(), `
 		SELECT origin_subsystem_id 
 		FROM operational_items 
-		WHERE ticket_code = $1 AND type = 'blocker' AND status NOT IN ('Resolved', 'Completed')
-	`, req.TicketCode).Scan(&originSubsystemID)
+		WHERE ticket_code = $1 AND tenant_id = $2 AND type = 'blocker' AND status NOT IN ('Resolved', 'Completed')
+	`, req.TicketCode, tenantID).Scan(&originSubsystemID)
 
 	if err == sql.ErrNoRows {
 		w.WriteHeader(http.StatusNotFound)
@@ -450,27 +498,26 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Update the blocker's status to 'Resolved'
 	_, err = tx.ExecContext(r.Context(), `
 		UPDATE operational_items 
 		SET status = 'Resolved', completed_at = CURRENT_TIMESTAMP 
-		WHERE ticket_code = $1 AND type = 'blocker'
-	`, req.TicketCode)
+		WHERE ticket_code = $1 AND tenant_id = $2 AND type = 'blocker'
+	`, req.TicketCode, tenantID)
 	if err != nil {
 		log.Printf("Error resolving blocker: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Recalculate load and status for the origin subsystem
 	var remainingBlockers int
 	err = tx.QueryRowContext(r.Context(), `
 		SELECT COUNT(*) 
 		FROM operational_items 
 		WHERE origin_subsystem_id = $1 
+		  AND tenant_id = $2
 		  AND type = 'blocker' 
 		  AND status NOT IN ('Resolved', 'Completed')
-	`, originSubsystemID).Scan(&remainingBlockers)
+	`, originSubsystemID, tenantID).Scan(&remainingBlockers)
 	if err != nil {
 		log.Printf("Error checking remaining blockers: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -487,20 +534,19 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 	_, err = tx.ExecContext(r.Context(), `
 		UPDATE subsystems 
 		SET status = $1, load_percentage = GREATEST(0, load_percentage - $2) 
-		WHERE id = $3
-	`, newStatus, loadDecrement, originSubsystemID)
+		WHERE id = $3 AND tenant_id = $4
+	`, newStatus, loadDecrement, originSubsystemID, tenantID)
 	if err != nil {
 		log.Printf("Error updating origin subsystem: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// 4. Query connected graph edges to find downstream affected subsystems
 	rows, err := tx.QueryContext(r.Context(), `
 		SELECT target_id 
 		FROM graph_edges 
-		WHERE source_id = $1 AND edge_type = 'subsystem_dependency'
-	`, originSubsystemID)
+		WHERE source_id = $1 AND tenant_id = $2 AND edge_type = 'subsystem_dependency'
+	`, originSubsystemID, tenantID)
 	if err != nil {
 		log.Printf("Error querying downstream subsystems: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -519,17 +565,16 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 		downstreamIDs = append(downstreamIDs, tid)
 	}
 
-	// 5. Automatically recalculate and lower load_percentage and set status = 'healthy' for downstream
 	for _, targetID := range downstreamIDs {
-		// Only set to healthy if target has no blockers of its own
 		var targetBlockers int
 		err = tx.QueryRowContext(r.Context(), `
 			SELECT COUNT(*) 
 			FROM operational_items 
 			WHERE origin_subsystem_id = $1 
+			  AND tenant_id = $2
 			  AND type = 'blocker' 
 			  AND status NOT IN ('Resolved', 'Completed')
-		`, targetID).Scan(&targetBlockers)
+		`, targetID, tenantID).Scan(&targetBlockers)
 		if err != nil {
 			log.Printf("Error checking target blockers: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -546,8 +591,8 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.ExecContext(r.Context(), `
 			UPDATE subsystems 
 			SET status = $1, load_percentage = GREATEST(0, load_percentage - $2) 
-			WHERE id = $3
-		`, targetStatus, targetDecrement, targetID)
+			WHERE id = $3 AND tenant_id = $4
+		`, targetStatus, targetDecrement, targetID, tenantID)
 		if err != nil {
 			log.Printf("Error updating downstream subsystem: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -555,16 +600,20 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Commit ACID transaction
 	if err := tx.Commit(); err != nil {
 		log.Printf("Error committing transaction: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Query updated states to return to client (optimistic telemetry refresh)
-	subsystems := []models.Subsystem{}
-	updatedRows, err := h.db.QueryContext(r.Context(), "SELECT id, name, slug, status, load_percentage FROM subsystems WHERE id = $1 OR id IN (SELECT target_id FROM graph_edges WHERE source_id = $1)", originSubsystemID)
+	subsystems := make([]models.Subsystem, 0)
+	updatedRows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, slug, status, load_percentage
+		FROM subsystems
+		WHERE tenant_id = $1 AND (
+			id = $2 OR id IN (SELECT target_id FROM graph_edges WHERE source_id = $2 AND tenant_id = $1)
+		)
+	`, tenantID, originSubsystemID)
 	if err == nil {
 		defer updatedRows.Close()
 		for updatedRows.Next() {
@@ -576,8 +625,8 @@ func (h *Handler) ResolveOperation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":             "success",
-		"message":            "Blocker " + req.TicketCode + " resolved. Recalculated topology load levels cascading safely.",
+		"status":              "success",
+		"message":             "Blocker " + req.TicketCode + " resolved. Recalculated topology load levels cascading safely.",
 		"affected_subsystems": subsystems,
 	})
 }
@@ -593,11 +642,17 @@ func (h *Handler) GetOperationsItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, ticket_code, title, description, type, severity, status, origin_subsystem_id, assigned_to, linked_pr, created_at, completed_at 
 		FROM operational_items 
+		WHERE tenant_id = $1
 		ORDER BY id
-	`)
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying operational items: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -605,7 +660,7 @@ func (h *Handler) GetOperationsItems(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var items []models.OperationalItem
+	items := make([]models.OperationalItem, 0)
 	for rows.Next() {
 		var item models.OperationalItem
 		if err := rows.Scan(
@@ -643,7 +698,15 @@ func (h *Handler) HandleCredentials(w http.ResponseWriter, r *http.Request) {
 
 // GetCredentials retrieves all credentials with masked secret values.
 func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.QueryContext(r.Context(), "SELECT id, name, value, description, updated_at FROM credentials ORDER BY name")
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, value, description, updated_at
+		FROM credentials WHERE tenant_id = $1 ORDER BY name
+	`, tenantID)
 	if err != nil {
 		log.Printf("Error querying credentials: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -652,7 +715,7 @@ func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var credentials []models.Credential
+	credentials := make([]models.Credential, 0)
 	for rows.Next() {
 		var cred models.Credential
 		if err := rows.Scan(&cred.ID, &cred.Name, &cred.Value, &cred.Description, &cred.UpdatedAt); err != nil {
@@ -660,7 +723,6 @@ func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		// Mask value for safety
 		cred.Value = "••••••••"
 		credentials = append(credentials, cred)
 	}
@@ -670,6 +732,11 @@ func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
 
 // SaveCredential creates or updates a credential.
 func (h *Handler) SaveCredential(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
 	var req models.CredentialSaveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -684,23 +751,31 @@ func (h *Handler) SaveCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the credential already exists
 	var id int
 	var existingValue string
-	err := h.db.QueryRowContext(r.Context(), "SELECT id, value FROM credentials WHERE name = $1", req.Name).Scan(&id, &existingValue)
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT id, value FROM credentials WHERE name = $1 AND tenant_id = $2
+	`, req.Name, tenantID).Scan(&id, &existingValue)
 
 	if err == sql.ErrNoRows {
-		// Insert new credential
 		if req.Value == "" || req.Value == "••••••••" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Credential value is required for new credentials"})
 			return
 		}
 
+		encrypted, encErr := auth.EncryptSecret(req.Value)
+		if encErr != nil {
+			log.Printf("Error encrypting credential: %v", encErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to protect credential"})
+			return
+		}
+
 		_, err = h.db.ExecContext(r.Context(), `
-			INSERT INTO credentials (name, value, description, updated_at) 
-			VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-		`, req.Name, req.Value, req.Description)
+			INSERT INTO credentials (tenant_id, name, value, description, updated_at) 
+			VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		`, tenantID, req.Name, encrypted, req.Description)
 		if err != nil {
 			log.Printf("Error inserting credential: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -716,20 +791,25 @@ func (h *Handler) SaveCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update existing credential
 	if req.Value == "" || req.Value == "••••••••" {
-		// Do not modify the existing secret value
 		_, err = h.db.ExecContext(r.Context(), `
 			UPDATE credentials 
 			SET description = $1, updated_at = CURRENT_TIMESTAMP 
-			WHERE id = $2
-		`, req.Description, id)
+			WHERE id = $2 AND tenant_id = $3
+		`, req.Description, id, tenantID)
 	} else {
+		encrypted, encErr := auth.EncryptSecret(req.Value)
+		if encErr != nil {
+			log.Printf("Error encrypting credential: %v", encErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to protect credential"})
+			return
+		}
 		_, err = h.db.ExecContext(r.Context(), `
 			UPDATE credentials 
 			SET value = $1, description = $2, updated_at = CURRENT_TIMESTAMP 
-			WHERE id = $3
-		`, req.Value, req.Description, id)
+			WHERE id = $3 AND tenant_id = $4
+		`, encrypted, req.Description, id, tenantID)
 	}
 
 	if err != nil {
@@ -744,6 +824,11 @@ func (h *Handler) SaveCredential(w http.ResponseWriter, r *http.Request) {
 
 // DeleteCredential removes a credential.
 func (h *Handler) DeleteCredential(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := h.requireTenantID(w, r)
+	if !ok {
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -758,7 +843,9 @@ func (h *Handler) DeleteCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.ExecContext(r.Context(), "DELETE FROM credentials WHERE id = $1", id)
+	result, err := h.db.ExecContext(r.Context(), `
+		DELETE FROM credentials WHERE id = $1 AND tenant_id = $2
+	`, id, tenantID)
 	if err != nil {
 		log.Printf("Error deleting credential: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)

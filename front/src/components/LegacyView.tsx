@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePmasStore } from "@/hooks/usePmasStore";
+import { store } from "@/features/shell/store/state-facade";
 
 type LegacyViewModule = {
   render: (container: HTMLElement) => void;
@@ -13,7 +13,6 @@ type LegacyViewProps = {
 
 export function LegacyView({ loadView }: LegacyViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const state = usePmasStore();
   const loadViewRef = useRef(loadView);
 
   loadViewRef.current = loadView;
@@ -38,14 +37,19 @@ export function LegacyView({ loadView }: LegacyViewProps) {
 
     void renderView();
 
+    const unsubscribe = store.subscribe(() => {
+      void renderView();
+    });
+
     return () => {
       cancelled = true;
-      if (containerRef.current?._cleanupEvents) {
-        containerRef.current._cleanupEvents();
-        containerRef.current._cleanupEvents = null;
+      unsubscribe();
+      if (container._cleanupEvents) {
+        container._cleanupEvents();
+        container._cleanupEvents = null;
       }
     };
-  }, [state]);
+  }, [loadView]);
 
   return (
     <div

@@ -9,71 +9,121 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"PMAS/internal/auth"
 	"PMAS/internal/config"
+	"PMAS/internal/database"
 	"PMAS/internal/handlers"
+	"PMAS/internal/middleware"
 )
 
 func main() {
 	log.Println("[Bootstrap] Starting PMAS API backend service...")
+	config.LoadDotEnv(".env")
 
-	// 1. Load configuration
 	cfg := config.Load()
-	log.Printf("[Bootstrap] Configuration loaded. Binding to port: %s\n", cfg.ServerPort)
+	auth.ConfigureJWTSecret(cfg.JWTSecret)
+	if err := auth.InitEncryption(cfg.EncryptionKey); err != nil {
+		log.Fatalf("[Bootstrap] Encryption init failed: %v\n", err)
+	}
+	log.Printf("[Bootstrap] Configuration loaded (env=%s). Binding to port: %s\n", cfg.AppEnv, cfg.ServerPort)
 
-	// 2. Establish connection to Supabase PostgreSQL database
 	db, err := sql.Open("postgres", cfg.SupabaseDBURL)
 	if err != nil {
 		log.Fatalf("[Bootstrap] Fatal error: failed to initialize SQL driver: %v\n", err)
 	}
 
-	// 3. Configure robust connection pool parameters
-	db.SetMaxOpenConns(25)
+	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	// Test connection ping before proceeding
-	log.Println("[Bootstrap] Connecting to database cluster...")
-	err = db.Ping()
-	if err != nil {
-		log.Printf("[Bootstrap] WARNING: Database ping failed. DB URL may need substitution: %v\n", err)
-	} else {
-		log.Println("[Bootstrap] Database connection established successfully.")
+	log.Println("[Bootstrap] Connecting to database...")
+	if err := db.Ping(); err != nil {
+		log.Fatalf("[Bootstrap] Database unreachable: %v\nSet SUPABASE_DB_URL to your Supabase pooler session string (port 5432).\n", err)
+	}
+	log.Println("[Bootstrap] Database connection established.")
+
+	if err := database.EnsureSchema(db); err != nil {
+		log.Fatalf("[Bootstrap] Schema migration failed: %v\n", err)
 	}
 	defer db.Close()
 
-	// 4. Initialize handler dependencies
 	h := handlers.NewHandler(db)
-
-	// 5. Register REST routes
+	authz := middleware.NewAuthenticator(db)
 	mux := http.NewServeMux()
 
-	// API base paths
-	mux.HandleFunc("/api/v1/graph/topology", h.GetTopology)
-	mux.HandleFunc("/api/v1/uiux/tokens", h.GetTokens)
-	mux.HandleFunc("/api/v1/uiux/assets/push", h.PushAsset)
-	mux.HandleFunc("/api/v1/engineering/subsystems", h.GetSubsystems)
-	mux.HandleFunc("/api/v1/engineering/pipeline/trigger", h.TriggerPipeline)
-	mux.HandleFunc("/api/v1/marketing/campaigns", h.GetMarketingCampaigns)
-	mux.HandleFunc("/api/v1/operations/resolve", h.ResolveOperation)
-	mux.HandleFunc("/api/v1/operations/items", h.GetOperationsItems)
-	mux.HandleFunc("/api/v1/credentials", h.HandleCredentials)
+	mux.HandleFunc("/api/v1/auth/status", h.GetAuthStatus)
+	mux.HandleFunc("/api/v1/auth/bootstrap", h.Bootstrap)
+	mux.HandleFunc("/api/v1/auth/login", h.Login)
+	mux.HandleFunc("/api/v1/auth/me", authz.RequireAuth(h.GetMe))
+	mux.HandleFunc("/api/v1/auth/permissions", authz.RequireAuth(h.GetPermissionsCatalog))
 
-	// Health telemetry path
+	mux.HandleFunc("/api/v1/tenants", authz.RequireAuth(h.HandleTenants))
+	mux.HandleFunc("/api/v1/tenants/", authz.RequireAuth(h.HandleTenants))
+
+	mux.HandleFunc("/api/v1/users", authz.RequirePermission(auth.PermUsers, h.HandleUsers))
+	mux.HandleFunc("/api/v1/users/", authz.RequirePermission(auth.PermUsers, h.HandleUsers))
+
+	mux.HandleFunc("/api/v1/graph/topology", authz.RequirePermission(auth.PermGraphView, h.GetTopology))
+	mux.HandleFunc("/api/v1/graph/members", authz.RequirePermission(auth.PermGraphView, h.HandleTeamMembers))
+	mux.HandleFunc("/api/v1/graph/members/", authz.RequirePermission(auth.PermGraphView, h.HandleTeamMembers))
+	mux.HandleFunc("/api/v1/graph/edges", authz.RequirePermission(auth.PermGraphView, h.HandleGraphEdges))
+	mux.HandleFunc("/api/v1/graph/edges/", authz.RequirePermission(auth.PermGraphView, h.HandleGraphEdges))
+
+	mux.HandleFunc("/api/v1/uiux/tokens", authz.RequirePermission(auth.PermUIUX, h.HandleUIUXTokens))
+	mux.HandleFunc("/api/v1/uiux/tokens/", authz.RequirePermission(auth.PermUIUX, h.HandleUIUXTokens))
+	mux.HandleFunc("/api/v1/uiux/assets", authz.RequirePermission(auth.PermUIUX, h.HandleUIAssets))
+	mux.HandleFunc("/api/v1/uiux/assets/", authz.RequirePermission(auth.PermUIUX, h.HandleUIAssets))
+	mux.HandleFunc("/api/v1/uiux/assets/push", authz.RequirePermission(auth.PermUIUX, h.PushAsset))
+
+	mux.HandleFunc("/api/v1/engineering/subsystems", authz.RequirePermission(auth.PermEngineering, h.HandleEngineeringSubsystems))
+	mux.HandleFunc("/api/v1/engineering/subsystems/", authz.RequirePermission(auth.PermEngineering, h.HandleEngineeringSubsystems))
+	mux.HandleFunc("/api/v1/engineering/pipeline/trigger", authz.RequirePermission(auth.PermEngineering, h.TriggerPipeline))
+
+	mux.HandleFunc("/api/v1/marketing/campaigns", authz.RequirePermission(auth.PermMarketing, h.HandleMarketingCampaigns))
+	mux.HandleFunc("/api/v1/marketing/campaigns/", authz.RequirePermission(auth.PermMarketing, h.HandleMarketingCampaigns))
+
+	mux.HandleFunc("/api/v1/operations/resolve", authz.RequirePermission(auth.PermExecutive, h.ResolveOperation))
+	mux.HandleFunc("/api/v1/operations/items", authz.RequirePermission(auth.PermExecutive, h.HandleOperationsItems))
+	mux.HandleFunc("/api/v1/operations/items/", authz.RequirePermission(auth.PermExecutive, h.HandleOperationsItems))
+
+	mux.HandleFunc("/api/v1/finance/entries", authz.RequirePermission(auth.PermFinance, h.HandleFinanceEntries))
+	mux.HandleFunc("/api/v1/finance/entries/", authz.RequirePermission(auth.PermFinance, h.HandleFinanceEntries))
+
+	mux.HandleFunc("/api/v1/legalhr/controls", authz.RequirePermission(auth.PermLegalHR, h.HandleComplianceControls))
+	mux.HandleFunc("/api/v1/legalhr/controls/", authz.RequirePermission(auth.PermLegalHR, h.HandleComplianceControls))
+
+	mux.HandleFunc("/api/v1/infrastructure/nodes", authz.RequirePermission(auth.PermInfrastructure, h.HandleInfraNodes))
+	mux.HandleFunc("/api/v1/infrastructure/nodes/", authz.RequirePermission(auth.PermInfrastructure, h.HandleInfraNodes))
+
+	mux.HandleFunc("/api/v1/credentials", authz.RequirePermission(auth.PermSettings, h.HandleCredentials))
+
+	mux.HandleFunc("/api/v1/work-items", authz.RequireAuth(h.HandleSectionWorkItems))
+	mux.HandleFunc("/api/v1/work-items/", authz.RequireAuth(h.HandleSectionWorkItems))
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"UP","timestamp":"%s"}\n`, time.Now().Format(time.RFC3339))
+		w.Header().Set("Cache-Control", "no-store")
+		if err := db.Ping(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, `{"status":"DOWN"}`)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"UP"}`)
 	})
 
-	// Serve static frontend assets (HTML, CSS, JS) from workspace
-	mux.Handle("/", http.FileServer(http.Dir("/Users/me_t/Desktop/code/PMAS")))
+	handler := middleware.WithSecurity(middleware.SecurityOptions{
+		AllowedOrigins: cfg.CORSOrigins,
+	}, mux)
 
 	serverAddr := ":" + cfg.ServerPort
 	server := &http.Server{
-		Addr:         serverAddr,
-		Handler:      mux,
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
+		Addr:              serverAddr,
+		Handler:           handler,
+		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	log.Printf("[Bootstrap] Service online. Listening on http://localhost%s\n", serverAddr)
