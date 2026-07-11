@@ -127,15 +127,13 @@ func (f *Feature) Archive() {
 
 type Task struct {
 	shared.BaseModel
-	CompanyID     uuid.UUID   `json:"company_id"`
-	FeatureID     uuid.UUID   `json:"feature_id"`
-	AssigneeID    *uuid.UUID  `json:"assignee_id,omitempty"`
-	Title         string      `json:"title"`
-	Status        string      `json:"status"`
-	Priority      string      `json:"priority"`
-	DueDate       *time.Time  `json:"due_date,omitempty"`
-	DependsOnIDs  []uuid.UUID `json:"depends_on_ids,omitempty"`
-	ProgressPct   int         `json:"progress_pct,omitempty"` // for feature/project summaries
+	CompanyID  uuid.UUID  `json:"company_id"`
+	FeatureID  uuid.UUID  `json:"feature_id"`
+	AssigneeID *uuid.UUID `json:"assignee_id,omitempty"` // employee; nullable per PDF
+	Title      string     `json:"title"`
+	Status     string     `json:"status"`
+	Priority   string     `json:"priority"`
+	DueDate    *time.Time `json:"due_date,omitempty"`
 }
 
 func NewTask(companyID, featureID uuid.UUID, title, priority string, assigneeID *uuid.UUID, dueDate *time.Time) (*Task, error) {
@@ -188,14 +186,4 @@ func (t *Task) ChangeStatus(status string) error {
 	t.Status = status
 	t.UpdatedAt = time.Now().UTC()
 	return nil
-}
-
-func (t *Task) Archive() {
-	t.Status = StatusArchived
-	t.UpdatedAt = time.Now().UTC()
-}
-
-func (t *Task) SetDueDate(due *time.Time) {
-	t.DueDate = due
-	t.UpdatedAt = time.Now().UTC()
 }

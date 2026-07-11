@@ -2,7 +2,6 @@ package planningapp
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -224,62 +223,5 @@ func (s *Service) RejectTask(ctx context.Context, companyID, taskID uuid.UUID) (
 	if err := s.tasks.Update(ctx, t); err != nil {
 		return nil, err
 	}
-	return t, nil
-}
-
-func (s *Service) ArchiveTask(ctx context.Context, companyID, taskID uuid.UUID) (*planning.Task, error) {
-	t, err := s.tasks.FindByID(ctx, companyID, taskID)
-	if err != nil {
-		return nil, err
-	}
-	t.Archive()
-	if err := s.tasks.Update(ctx, t); err != nil {
-		return nil, err
-	}
-	return t, nil
-}
-
-func (s *Service) UpdateTask(ctx context.Context, companyID, taskID uuid.UUID, title, priority, status string, dueDate *time.Time) (*planning.Task, error) {
-	t, err := s.tasks.FindByID(ctx, companyID, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if title = strings.TrimSpace(title); title != "" {
-		t.Title = title
-	}
-	if priority = strings.TrimSpace(strings.ToUpper(priority)); priority != "" {
-		t.Priority = priority
-	}
-	if status != "" {
-		if err := t.ChangeStatus(status); err != nil {
-			return nil, err
-		}
-	}
-	if dueDate != nil {
-		t.SetDueDate(dueDate)
-	}
-	if err := s.tasks.Update(ctx, t); err != nil {
-		return nil, err
-	}
-	return t, nil
-}
-
-func (s *Service) SetTaskDependencies(ctx context.Context, companyID, taskID uuid.UUID, dependsOn []uuid.UUID) (*planning.Task, error) {
-	t, err := s.tasks.FindByID(ctx, companyID, taskID)
-	if err != nil {
-		return nil, err
-	}
-	repo, ok := s.tasks.(interface {
-		SetDependencies(ctx context.Context, companyID, taskID uuid.UUID, dependsOn []uuid.UUID) error
-		ListDependencies(ctx context.Context, companyID, taskID uuid.UUID) ([]uuid.UUID, error)
-	})
-	if !ok {
-		return nil, shared.New("DEPENDENCY_UNSUPPORTED", "Task dependencies unavailable", 500)
-	}
-	if err := repo.SetDependencies(ctx, companyID, taskID, dependsOn); err != nil {
-		return nil, err
-	}
-	deps, _ := repo.ListDependencies(ctx, companyID, taskID)
-	t.DependsOnIDs = deps
 	return t, nil
 }

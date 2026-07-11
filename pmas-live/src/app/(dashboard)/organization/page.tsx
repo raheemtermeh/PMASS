@@ -65,14 +65,14 @@ export default function OrganizationPage() {
   });
 
   const empOptions = employees.map((e) => ({
-    value: e.id,
+    value: String(e.id),
     label: employeeLabel(e),
   }));
-  const deptOptions = departments.map((d) => ({ value: d.id, label: d.name }));
-  const empName = (id?: string | null) =>
-    employees.find((e) => e.id === id)?.first_name
-      ? employeeLabel(employees.find((e) => e.id === id)!)
-      : "—";
+  const deptOptions = departments.map((d) => ({ value: String(d.id), label: d.name }));
+  const empName = (id?: string | null) => {
+    const e = employees.find((x) => x.id === id);
+    return e ? employeeLabel(e) : "—";
+  };
 
   return (
     <div className="page-stack">

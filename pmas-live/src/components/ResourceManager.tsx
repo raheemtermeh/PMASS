@@ -16,7 +16,9 @@ export interface FieldDef {
   step?: string;
 }
 
-interface ResourceManagerProps<T extends { id: string | number }> {
+type RowId = string | number;
+
+interface ResourceManagerProps<T extends { id: RowId }> {
   title: string;
   description?: string;
   columns: { key: string; label: string; render?: (row: T) => ReactNode }[];
@@ -29,8 +31,8 @@ interface ResourceManagerProps<T extends { id: string | number }> {
   hideEdit?: boolean;
   hideDelete?: boolean;
   onCreate: (values: Record<string, string>) => Promise<void> | void;
-  onUpdate?: (id: string | number, values: Record<string, string>) => Promise<void> | void;
-  onDelete?: (id: string | number) => Promise<void> | void;
+  onUpdate?: (id: RowId, values: Record<string, string>) => Promise<void> | void;
+  onDelete?: (id: RowId) => Promise<void> | void;
   toFormValues?: (row: T) => Record<string, string>;
   extraActions?: (row: T) => ReactNode;
 }
@@ -39,7 +41,7 @@ function blankValues(fields: FieldDef[]): Record<string, string> {
   return Object.fromEntries(fields.map((f) => [f.name, ""]));
 }
 
-export function ResourceManager<T extends { id: string | number }>({
+export function ResourceManager<T extends { id: RowId }>({
   title,
   description,
   columns,
@@ -49,8 +51,8 @@ export function ResourceManager<T extends { id: string | number }>({
   emptyTitle,
   emptyDescription,
   createLabel = "Add",
-  hideEdit,
-  hideDelete,
+  hideEdit = false,
+  hideDelete = false,
   onCreate,
   onUpdate,
   onDelete,
@@ -65,6 +67,8 @@ export function ResourceManager<T extends { id: string | number }>({
   const [deleteError, setDeleteError] = useState("");
 
   const safeItems = Array.isArray(items) ? items : [];
+  const canEdit = !hideEdit && typeof onUpdate === "function";
+  const canDelete = !hideDelete && typeof onDelete === "function";
 
   function openCreate() {
     setEditing(null);
@@ -86,9 +90,11 @@ export function ResourceManager<T extends { id: string | number }>({
     setError("");
     try {
       if (editing) {
-        if (!onUpdate) throw new Error("Update not supported");
+        if (!onUpdate) throw new Error("Update is not supported");
         await onUpdate(editing.id, values);
-      } else await onCreate(values);
+      } else {
+        await onCreate(values);
+      }
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -99,7 +105,11 @@ export function ResourceManager<T extends { id: string | number }>({
 
   async function handleDelete(row: T) {
     if (!onDelete) return;
-    if (!window.confirm(`Delete “${String((row as { title?: string; name?: string }).title ?? (row as { name?: string }).name ?? `#${row.id}`)}”?`)) {
+    if (
+      !window.confirm(
+        `Delete “${String((row as { title?: string; name?: string }).title ?? (row as { name?: string }).name ?? `#${row.id}`)}”?`,
+      )
+    ) {
       return;
     }
     setDeleteError("");
@@ -118,14 +128,22 @@ export function ResourceManager<T extends { id: string | number }>({
             <h2 className="panel-title" style={{ marginBottom: description ? "0.35rem" : 0 }}>
               {title}
             </h2>
-            {description ? <p className="text-dim" style={{ fontSize: "0.875rem" }}>{description}</p> : null}
+            {description ? (
+              <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+                {description}
+              </p>
+            ) : null}
           </div>
           <button type="button" className="btn btn-primary" onClick={openCreate}>
             {createLabel}
           </button>
         </div>
 
-        {deleteError ? <p className="auth-error" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+        {deleteError ? (
+          <p className="auth-error" style={{ marginBottom: "0.75rem" }}>
+            {deleteError}
+          </p>
+        ) : null}
 
         {isLoading ? (
           <p className="text-dim">Loading…</p>
@@ -144,33 +162,32 @@ export function ResourceManager<T extends { id: string | number }>({
               </thead>
               <tbody>
                 {safeItems.map((row) => (
-                  <tr key={row.id}>
+                  <tr key={String(row.id)}>
                     {columns.map((c) => (
                       <td key={c.key}>
                         {c.render
                           ? c.render(row)
                           : sanitizeDisplayText(
                               String(
-                                (row as unknown as Record<string, unknown>)[c.key] ??
-                                  "—",
+                                (row as unknown as Record<string, unknown>)[c.key] ?? "—",
                               ),
                             )}
                       </td>
                     ))}
                     <td className="actions-cell">
                       {extraActions?.(row)}
-                      {!hideEdit && onUpdate ? (
+                      {canEdit ? (
                         <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
                           Edit
                         </button>
                       ) : null}
-                      {!hideDelete && onDelete ? (
+                      {canDelete ? (
                         <button
                           type="button"
                           className="btn btn-sm btn-danger"
                           onClick={() => void handleDelete(row)}
                         >
-                          Delete
+                          Archive
                         </button>
                       ) : null}
                     </td>

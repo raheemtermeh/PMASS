@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -283,16 +282,13 @@ func (h *OrgHandler) HandleCompany(w http.ResponseWriter, r *http.Request) {
 		WriteOK(w, http.StatusOK, c, nil)
 	case http.MethodPut, http.MethodPatch:
 		var body struct {
-			Name     string `json:"name"`
-			LogoURL  string `json:"logo_url"`
-			Language string `json:"language"`
-			Timezone string `json:"timezone"`
+			Name string `json:"name"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		c, err := h.Svc.UpdateCompany(r.Context(), companyID, body.Name, body.LogoURL, body.Language, body.Timezone)
+		c, err := h.Svc.UpdateCompany(r.Context(), companyID, body.Name)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -845,59 +841,6 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		t, err := h.Svc.RejectTask(r.Context(), companyID, id)
-		if err != nil {
-			WriteErr(w, err)
-			return
-		}
-		WriteOK(w, http.StatusOK, t, nil)
-	case len(parts) == 1 && r.Method == http.MethodDelete:
-		id, err := ParseUUIDParam(parts[0])
-		if err != nil {
-			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
-			return
-		}
-		t, err := h.Svc.ArchiveTask(r.Context(), companyID, id)
-		if err != nil {
-			WriteErr(w, err)
-			return
-		}
-		WriteOK(w, http.StatusOK, t, nil)
-	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
-		id, err := ParseUUIDParam(parts[0])
-		if err != nil {
-			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
-			return
-		}
-		var body struct {
-			Title    string     `json:"title"`
-			Priority string     `json:"priority"`
-			Status   string     `json:"status"`
-			DueDate  *time.Time `json:"due_date"`
-		}
-		if err := DecodeJSON(r, &body); err != nil {
-			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
-			return
-		}
-		t, err := h.Svc.UpdateTask(r.Context(), companyID, id, body.Title, body.Priority, body.Status, body.DueDate)
-		if err != nil {
-			WriteErr(w, err)
-			return
-		}
-		WriteOK(w, http.StatusOK, t, nil)
-	case len(parts) == 2 && parts[1] == "dependencies" && r.Method == http.MethodPut:
-		id, err := ParseUUIDParam(parts[0])
-		if err != nil {
-			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
-			return
-		}
-		var body struct {
-			DependsOn []uuid.UUID `json:"depends_on"`
-		}
-		if err := DecodeJSON(r, &body); err != nil {
-			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
-			return
-		}
-		t, err := h.Svc.SetTaskDependencies(r.Context(), companyID, id, body.DependsOn)
 		if err != nil {
 			WriteErr(w, err)
 			return

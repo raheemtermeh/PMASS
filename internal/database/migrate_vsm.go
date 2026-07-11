@@ -175,7 +175,7 @@ func EnsureVSMSchema(db *sql.DB) error {
 	}
 
 	log.Println("[Bootstrap] VSM (Product-domain) schema ready.")
-	return EnsureMVPExtras(db)
+	return nil
 }
 
 func ensurePlanningAndSupportTables(db *sql.DB) error {

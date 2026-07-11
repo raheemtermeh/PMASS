@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import {
-  VSM_PERMISSIONS,
+  PERMISSIONS,
   PERMISSION_LABELS,
   type Permission,
 } from "@/shared/permissions";
@@ -101,7 +101,7 @@ export default function AdminUsersPage() {
     setter(list.includes(perm) ? list.filter((p) => p !== perm) : [...list, perm]);
   }
 
-  const assignablePerms = VSM_PERMISSIONS;
+  const assignablePerms = PERMISSIONS;
 
   return (
     <div className="page-stack">

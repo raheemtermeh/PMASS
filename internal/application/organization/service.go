@@ -2,6 +2,7 @@ package organizationapp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -32,14 +33,16 @@ func (s *Service) GetCompany(ctx context.Context, companyID uuid.UUID) (*organiz
 	return s.co.FindByID(ctx, companyID)
 }
 
-func (s *Service) UpdateCompany(ctx context.Context, companyID uuid.UUID, name, logoURL, language, timezone string) (*organization.Company, error) {
+func (s *Service) UpdateCompany(ctx context.Context, companyID uuid.UUID, name string) (*organization.Company, error) {
 	c, err := s.co.FindByID(ctx, companyID)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.UpdateProfile(name, logoURL, language, timezone); err != nil {
-		return nil, err
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, organization.ErrCompanyNameRequired
 	}
+	c.Name = name
 	if err := s.co.Update(ctx, c); err != nil {
 		return nil, err
 	}

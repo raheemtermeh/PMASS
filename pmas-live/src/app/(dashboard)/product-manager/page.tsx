@@ -46,19 +46,21 @@ export default function ProductManagerPage() {
     <div className="page-stack">
       <section className="pm-hero">
         <div>
-          <p className="wizard-kicker">Product Manager</p>
-          <h2 className="pm-hero-title">Value stream playbook</h2>
-          <p className="text-dim" style={{ maxWidth: "40rem", marginTop: "0.5rem" }}>
-            Filtered by your role ({roleLabel}). Product is the center — organization,
-            pipeline execution, and planning cascade around it.
+          <p className="wizard-kicker">Value Stream Management</p>
+          <h2 className="pm-hero-title">Product is the center</h2>
+          <p className="text-dim" style={{ maxWidth: "42rem", marginTop: "0.5rem" }}>
+            Company → Organization → <strong>Product</strong> → Pipeline → Stage Instance →
+            Project / Feature / Task. This hub tracks what you can do with your role ({roleLabel}).
           </p>
         </div>
         <div className="pm-hero-actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => resetTour(userKey)}
-          >
+          <Link href="/products" className="btn btn-primary">
+            Open Products
+          </Link>
+          <Link href="/organization" className="btn">
+            Organization
+          </Link>
+          <button type="button" className="btn" onClick={() => resetTour(userKey)}>
             Replay setup wizard
           </button>
           <div className="pm-progress-ring" aria-label={`${pct}% complete`}>
@@ -77,13 +79,7 @@ export default function ProductManagerPage() {
         </div>
         <div className="stat-card">
           <span className="stat-label">Permissions</span>
-          <strong className="stat-value">
-            {user.role === "tenant_admin" ||
-            user.role === "platform_admin" ||
-            user.role === "super_admin"
-              ? "All granted"
-              : user.permissions.length}
-          </strong>
+          <strong className="stat-value">{user.permissions?.length ?? 0}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-label">Workspace</span>
@@ -93,24 +89,17 @@ export default function ProductManagerPage() {
         </div>
       </section>
 
-      {caps.length === 0 ? (
-        <section className="data-panel">
-          <h2 className="panel-title">Nothing assigned yet</h2>
-          <p className="text-dim">
-            Ask your company admin to grant department permissions in User Management.
-          </p>
-        </section>
-      ) : (
-        <div className="pm-grid">
+      <section className="data-panel">
+        <div className="panel-header">
+          <h2 className="panel-title">Playbook</h2>
+        </div>
+        <div className="pm-cap-grid">
           {caps.map((cap) => {
             const checked = isChecked(userKey, cap.id);
             return (
-              <article
-                key={cap.id}
-                className={`pm-card${checked ? " pm-card-done" : ""}`}
-              >
-                <div className="pm-card-top">
-                  <label className="pm-check">
+              <article key={cap.id} className={`pm-cap-card${checked ? " is-done" : ""}`}>
+                <header className="pm-cap-header">
+                  <label className="pm-cap-check">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -119,42 +108,22 @@ export default function ProductManagerPage() {
                     <span>{cap.title}</span>
                   </label>
                   {cap.href ? (
-                    <Link href={cap.href} className="btn btn-sm btn-primary">
+                    <Link href={cap.href} className="btn btn-sm">
                       Open
                     </Link>
                   ) : null}
-                </div>
-                <p className="pm-card-summary">{cap.summary}</p>
-                <ol className="pm-card-steps">
+                </header>
+                <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+                  {cap.summary}
+                </p>
+                <ul className="pm-cap-actions">
                   {cap.actions.map((a) => (
                     <li key={a}>{a}</li>
                   ))}
-                </ol>
+                </ul>
               </article>
             );
           })}
-        </div>
-      )}
-
-      <section className="data-panel">
-        <h2 className="panel-title">How PMAS product areas fit together</h2>
-        <div className="pm-flow">
-          <div>
-            <strong>1. Access</strong>
-            <p className="text-dim">Users + permissions decide which panels appear.</p>
-          </div>
-          <div>
-            <strong>2. Workboard</strong>
-            <p className="text-dim">Employer-defined tasks / todos / status per section.</p>
-          </div>
-          <div>
-            <strong>3. Domain CRUD</strong>
-            <p className="text-dim">Campaigns, subsystems, tokens, ledger rows, nodes…</p>
-          </div>
-          <div>
-            <strong>4. Cross-links</strong>
-            <p className="text-dim">Graph edges and dependent subsystems connect impact.</p>
-          </div>
         </div>
       </section>
     </div>

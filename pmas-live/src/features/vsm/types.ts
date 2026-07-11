@@ -1,3 +1,15 @@
+export type EntityStatus = string;
+
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Employee {
   id: string;
   company_id: string;
@@ -6,6 +18,10 @@ export interface Employee {
   email: string;
   phone: string;
   status: string;
+  user_id?: number | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Department {
@@ -14,6 +30,9 @@ export interface Department {
   manager_id?: string | null;
   name: string;
   status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Team {
@@ -24,17 +43,17 @@ export interface Team {
   name: string;
   description: string;
   status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface Company {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  logo_url?: string;
-  language?: string;
-  timezone?: string;
-}
+export type ProductStatus = "DRAFT" | "READY" | "ACTIVE" | "COMPLETED" | "ARCHIVED" | string;
+export type ExecutionModel =
+  | "DIRECT_TASK"
+  | "PROJECT_FEATURE_TASK"
+  | "FEATURE_TASK"
+  | string;
 
 export interface Product {
   id: string;
@@ -43,17 +62,23 @@ export interface Product {
   name: string;
   description: string;
   category: string;
-  status: string;
-  execution_model: string;
+  status: ProductStatus;
+  execution_model: ExecutionModel;
   pipeline_id?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Pipeline {
   id: string;
-  product_id: string;
   company_id: string;
+  product_id: string;
   name: string;
   description: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Stage {
@@ -65,10 +90,14 @@ export interface Stage {
   entry_criteria: string;
   exit_criteria: string;
   department_id?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StageInstance {
   id: string;
+  company_id: string;
   product_id: string;
   stage_id: string;
   department_id?: string | null;
@@ -76,6 +105,10 @@ export interface StageInstance {
   started_at?: string | null;
   finished_at?: string | null;
   reject_reason?: string;
+  duration_seconds?: number | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Project {
@@ -85,6 +118,9 @@ export interface Project {
   name: string;
   description: string;
   status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Feature {
@@ -95,6 +131,9 @@ export interface Feature {
   title: string;
   status: string;
   priority: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Task {
@@ -105,8 +144,21 @@ export interface Task {
   title: string;
   status: string;
   priority: string;
+  due_date?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export function employeeLabel(e: Employee): string {
-  return `${e.first_name} ${e.last_name}`.trim() || e.email;
+export function employeeLabel(e: Pick<Employee, "first_name" | "last_name" | "email">): string {
+  const name = `${e.first_name} ${e.last_name}`.trim();
+  return name || e.email;
 }
+
+export const EXECUTION_MODELS = [
+  { value: "PROJECT_FEATURE_TASK", label: "Project → Feature → Task" },
+  { value: "FEATURE_TASK", label: "Feature → Task" },
+  { value: "DIRECT_TASK", label: "Direct Task" },
+] as const;
+
+export const PRODUCT_STATUSES = ["DRAFT", "READY", "ACTIVE", "COMPLETED", "ARCHIVED"] as const;

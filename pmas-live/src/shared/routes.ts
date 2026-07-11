@@ -1,15 +1,10 @@
 import type { Permission } from "./permissions";
 
 export type ViewId =
-  | "home"
-  | "organization"
   | "products"
-  | "planning"
+  | "organization"
+  | "product-manager"
   | "profile"
-  | "admin-users"
-  | "platform-tenants"
-  | "settings"
-  // Legacy ops (pages remain; not in primary nav)
   | "executive"
   | "uiux"
   | "engineering"
@@ -18,7 +13,9 @@ export type ViewId =
   | "graph-view"
   | "finance"
   | "legalhr"
-  | "product-manager";
+  | "settings"
+  | "admin-users"
+  | "platform-tenants";
 
 export interface RouteConfig {
   id: ViewId;
@@ -28,40 +25,35 @@ export interface RouteConfig {
   permission: Permission | null;
   platformOnly?: boolean;
   tenantOnly?: boolean;
+  group?: "value-stream" | "operations" | "admin";
 }
 
 export const routes: Record<ViewId, RouteConfig> = {
-  home: {
-    id: "home",
-    path: "/home",
-    title: "Value Stream Home",
-    subtitle: "Product lifecycle overview for your company",
-    permission: null,
+  products: {
+    id: "products",
+    path: "/products",
+    title: "Products",
+    subtitle: "Value stream aggregate — pipeline, stages, and delivery",
+    permission: "product.view",
     tenantOnly: true,
+    group: "value-stream",
   },
   organization: {
     id: "organization",
     path: "/organization",
     title: "Organization",
-    subtitle: "Company structure — departments, teams, and employees",
+    subtitle: "Company structure: employees, departments, and teams",
     permission: "employee.manage",
     tenantOnly: true,
+    group: "value-stream",
   },
-  products: {
-    id: "products",
-    path: "/products",
-    title: "Products",
-    subtitle: "Product aggregate — pipeline, stages, and execution",
-    permission: "product.view",
-    tenantOnly: true,
-  },
-  planning: {
-    id: "planning",
-    path: "/planning",
-    title: "Planning",
-    subtitle: "Projects → Features → Tasks under each Product",
-    permission: "project.create",
-    tenantOnly: true,
+  "product-manager": {
+    id: "product-manager",
+    path: "/product-manager",
+    title: "Value Stream Hub",
+    subtitle: "Product-centric playbook for this company workspace",
+    permission: null,
+    group: "value-stream",
   },
   profile: {
     id: "profile",
@@ -69,22 +61,79 @@ export const routes: Record<ViewId, RouteConfig> = {
     title: "Profile",
     subtitle: "Your identity, contact details, and account security",
     permission: null,
+    group: "value-stream",
   },
-  "admin-users": {
-    id: "admin-users",
-    path: "/admin/users",
-    title: "User Management",
-    subtitle: "Invite users and assign VSM permissions",
-    permission: "users",
+  executive: {
+    id: "executive",
+    path: "/executive",
+    title: "Executive Control Room",
+    subtitle: "Operational tickets and blocker resolution",
+    permission: "executive",
     tenantOnly: true,
+    group: "operations",
   },
-  "platform-tenants": {
-    id: "platform-tenants",
-    path: "/platform/tenants",
-    title: "Company Provisioning",
-    subtitle: "Create isolated company workspaces for customers",
-    permission: null,
-    platformOnly: true,
+  uiux: {
+    id: "uiux",
+    path: "/uiux",
+    title: "UI/UX Workspace",
+    subtitle: "Design tokens and asset management",
+    permission: "uiux",
+    tenantOnly: true,
+    group: "operations",
+  },
+  engineering: {
+    id: "engineering",
+    path: "/engineering",
+    title: "Engineering Core Platform",
+    subtitle: "Subsystems and CI/CD pipeline",
+    permission: "engineering",
+    tenantOnly: true,
+    group: "operations",
+  },
+  infrastructure: {
+    id: "infrastructure",
+    path: "/infrastructure",
+    title: "Infrastructure Gateway",
+    subtitle: "Cluster and deployment telemetry",
+    permission: "infrastructure",
+    tenantOnly: true,
+    group: "operations",
+  },
+  marketing: {
+    id: "marketing",
+    path: "/marketing",
+    title: "Marketing Workspace",
+    subtitle: "Campaign metrics and funnel telemetry",
+    permission: "marketing",
+    tenantOnly: true,
+    group: "operations",
+  },
+  "graph-view": {
+    id: "graph-view",
+    path: "/graph-view",
+    title: "Network Topology",
+    subtitle: "Cross-functional dependency graph",
+    permission: "graph-view",
+    tenantOnly: true,
+    group: "operations",
+  },
+  finance: {
+    id: "finance",
+    path: "/finance",
+    title: "Finance Telemetry",
+    subtitle: "Burn rate and expenditure tracking",
+    permission: "finance",
+    tenantOnly: true,
+    group: "operations",
+  },
+  legalhr: {
+    id: "legalhr",
+    path: "/legalhr",
+    title: "Legal & HR Compliance",
+    subtitle: "Compliance controls and workforce",
+    permission: "legalhr",
+    tenantOnly: true,
+    group: "operations",
   },
   settings: {
     id: "settings",
@@ -93,102 +142,53 @@ export const routes: Record<ViewId, RouteConfig> = {
     subtitle: "Integration credentials vault",
     permission: "settings",
     tenantOnly: true,
+    group: "admin",
   },
-  // Legacy
-  "product-manager": {
-    id: "product-manager",
-    path: "/product-manager",
-    title: "Capability Map",
-    subtitle: "Playbooks filtered by your access",
+  "admin-users": {
+    id: "admin-users",
+    path: "/admin/users",
+    title: "User Management",
+    subtitle: "Create accounts and assign workspace permissions",
+    permission: "users",
+    tenantOnly: true,
+    group: "admin",
+  },
+  "platform-tenants": {
+    id: "platform-tenants",
+    path: "/platform/tenants",
+    title: "Company Provisioning",
+    subtitle: "Create isolated company workspaces for customers",
     permission: null,
-  },
-  executive: {
-    id: "executive",
-    path: "/executive",
-    title: "Executive Control Room",
-    subtitle: "Legacy ops telemetry",
-    permission: "executive",
-    tenantOnly: true,
-  },
-  uiux: {
-    id: "uiux",
-    path: "/uiux",
-    title: "UI/UX Workspace",
-    subtitle: "Legacy design workspace",
-    permission: "uiux",
-    tenantOnly: true,
-  },
-  engineering: {
-    id: "engineering",
-    path: "/engineering",
-    title: "Engineering Core Platform",
-    subtitle: "Legacy engineering ops",
-    permission: "engineering",
-    tenantOnly: true,
-  },
-  infrastructure: {
-    id: "infrastructure",
-    path: "/infrastructure",
-    title: "Infrastructure Gateway",
-    subtitle: "Legacy infra telemetry",
-    permission: "infrastructure",
-    tenantOnly: true,
-  },
-  marketing: {
-    id: "marketing",
-    path: "/marketing",
-    title: "Marketing Workspace",
-    subtitle: "Legacy marketing ops",
-    permission: "marketing",
-    tenantOnly: true,
-  },
-  "graph-view": {
-    id: "graph-view",
-    path: "/graph-view",
-    title: "Network Topology",
-    subtitle: "Legacy dependency graph",
-    permission: "graph-view",
-    tenantOnly: true,
-  },
-  finance: {
-    id: "finance",
-    path: "/finance",
-    title: "Finance Telemetry",
-    subtitle: "Legacy finance ops",
-    permission: "finance",
-    tenantOnly: true,
-  },
-  legalhr: {
-    id: "legalhr",
-    path: "/legalhr",
-    title: "Legal & HR Compliance",
-    subtitle: "Legacy compliance ops",
-    permission: "legalhr",
-    tenantOnly: true,
+    platformOnly: true,
+    group: "admin",
   },
 };
 
-/** Primary navigation — Product-centric VSM. */
+/** Primary navigation order — Value Stream first. */
 export const navItems: ViewId[] = [
-  "home",
-  "organization",
+  "product-manager",
   "products",
-  "planning",
+  "organization",
   "profile",
-  "admin-users",
+  "executive",
+  "uiux",
+  "engineering",
+  "infrastructure",
+  "marketing",
+  "graph-view",
+  "finance",
+  "legalhr",
   "settings",
+  "admin-users",
   "platform-tenants",
 ];
 
 export function getRouteByPath(pathname: string): RouteConfig | null {
   const exact = Object.values(routes).find((route) => route.path === pathname);
   if (exact) return exact;
-
-  // Nested routes: /products/:id → Products
-  const ranked = Object.values(routes)
-    .filter((route) => pathname === route.path || pathname.startsWith(`${route.path}/`))
-    .sort((a, b) => b.path.length - a.path.length);
-  return ranked[0] ?? null;
+  // Nested product detail under /products/:id
+  if (pathname.startsWith("/products/")) return routes.products;
+  return null;
 }
 
 export function firstAllowedPath(
@@ -197,10 +197,10 @@ export function firstAllowedPath(
   hasTenant: boolean,
 ): string {
   if (role === "platform_admin" || role === "super_admin") {
-    return routes["platform-tenants"].path;
+    return routes["product-manager"].path;
   }
   if (hasTenant || role === "tenant_admin") {
-    return routes.home.path;
+    return routes.products.path;
   }
   for (const id of navItems) {
     const route = routes[id];
@@ -211,5 +211,5 @@ export function firstAllowedPath(
       return route.path;
     }
   }
-  return routes.profile.path;
+  return routes["product-manager"].path;
 }

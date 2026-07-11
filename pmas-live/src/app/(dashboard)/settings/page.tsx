@@ -16,9 +16,6 @@ interface Credential {
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [logoURL, setLogoURL] = useState("");
-  const [language, setLanguage] = useState("en");
-  const [timezone, setTimezone] = useState("UTC");
   const [credName, setCredName] = useState("");
   const [credValue, setCredValue] = useState("");
   const [credDesc, setCredDesc] = useState("");
@@ -32,18 +29,12 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!company) return;
     setName(company.name ?? "");
-    setLogoURL(company.logo_url ?? "");
-    setLanguage(company.language || "en");
-    setTimezone(company.timezone || "UTC");
   }, [company]);
 
   const saveCompany = useMutation({
     mutationFn: () =>
-      httpClient.patch<Company>("/api/v1/company", {
+      httpClient.put<Company>("/api/v1/company", {
         name,
-        logo_url: logoURL,
-        language,
-        timezone,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["vsm-company"] });
@@ -92,41 +83,24 @@ export default function SettingsPage() {
           Company profile
         </h2>
         <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-          MVP settings: name, logo URL, language, timezone.
+          Tenant = Company. Company delete is forbidden; you can update the display name.
         </p>
         {companyLoading ? (
           <p className="text-dim">Loading…</p>
         ) : (
           <form className="auth-form" onSubmit={handleCompany}>
-            <div className="grid grid-cols-2">
-              <div className="form-group">
-                <label htmlFor="co-name">Company name</label>
-                <input id="co-name" value={name} onChange={(e) => setName(e.target.value)} required />
-              </div>
-              <div className="form-group">
-                <label htmlFor="co-logo">Logo URL</label>
-                <input id="co-logo" value={logoURL} onChange={(e) => setLogoURL(e.target.value)} placeholder="https://..." />
-              </div>
-              <div className="form-group">
-                <label htmlFor="co-lang">Language</label>
-                <select id="co-lang" value={language} onChange={(e) => setLanguage(e.target.value)}>
-                  <option value="en">English</option>
-                  <option value="fa">Persian</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="co-tz">Timezone</label>
-                <select id="co-tz" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-                  <option value="UTC">UTC</option>
-                  <option value="Asia/Tehran">Asia/Tehran</option>
-                  <option value="Europe/London">Europe/London</option>
-                  <option value="America/New_York">America/New_York</option>
-                </select>
-              </div>
+            <div className="form-group">
+              <label htmlFor="co-name">Company name</label>
+              <input id="co-name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
+            {company?.slug ? (
+              <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+                Slug: <span className="font-mono">{company.slug}</span>
+              </p>
+            ) : null}
             {msg ? <p className="text-dim">{msg}</p> : null}
             <button type="submit" className="btn btn-primary" disabled={saveCompany.isPending}>
-              {saveCompany.isPending ? "Saving…" : "Save company settings"}
+              {saveCompany.isPending ? "Saving…" : "Save company name"}
             </button>
           </form>
         )}

@@ -20,34 +20,32 @@ func NewCompanyRepo(db *DB) *CompanyRepo { return &CompanyRepo{db: db} }
 
 func (r *CompanyRepo) Create(ctx context.Context, c *organization.Company) error {
 	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO companies (id, name, slug, status, logo_url, language, timezone, version, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		c.ID, c.Name, c.Slug, c.Status, c.LogoURL, c.Language, c.Timezone, c.Version, c.CreatedAt, c.UpdatedAt,
+		INSERT INTO companies (id, name, slug, status, version, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		c.ID, c.Name, c.Slug, c.Status, c.Version, c.CreatedAt, c.UpdatedAt,
 	)
 	return err
 }
 
 func (r *CompanyRepo) FindByID(ctx context.Context, id uuid.UUID) (*organization.Company, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, name, slug, status, COALESCE(logo_url,''), COALESCE(language,'en'), COALESCE(timezone,'UTC'),
-		       version, created_at, updated_at
+		SELECT id, name, slug, status, version, created_at, updated_at
 		FROM companies WHERE id = $1`, id)
 	return scanCompany(row)
 }
 
 func (r *CompanyRepo) FindBySlug(ctx context.Context, slug string) (*organization.Company, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, name, slug, status, COALESCE(logo_url,''), COALESCE(language,'en'), COALESCE(timezone,'UTC'),
-		       version, created_at, updated_at
+		SELECT id, name, slug, status, version, created_at, updated_at
 		FROM companies WHERE slug = $1`, slug)
 	return scanCompany(row)
 }
 
 func (r *CompanyRepo) Update(ctx context.Context, c *organization.Company) error {
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE companies SET name=$1, status=$2, logo_url=$3, language=$4, timezone=$5, version=version+1, updated_at=$6
-		WHERE id=$7 AND version=$8`,
-		c.Name, c.Status, c.LogoURL, c.Language, c.Timezone, time.Now().UTC(), c.ID, c.Version,
+		UPDATE companies SET name=$1, status=$2, version=version+1, updated_at=$3
+		WHERE id=$4 AND version=$5`,
+		c.Name, c.Status, time.Now().UTC(), c.ID, c.Version,
 	)
 	if err != nil {
 		return err
@@ -62,7 +60,7 @@ func (r *CompanyRepo) Update(ctx context.Context, c *organization.Company) error
 
 func scanCompany(row *sql.Row) (*organization.Company, error) {
 	var c organization.Company
-	err := row.Scan(&c.ID, &c.Name, &c.Slug, &c.Status, &c.LogoURL, &c.Language, &c.Timezone, &c.Version, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.Slug, &c.Status, &c.Version, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, organization.ErrCompanyNotFound
 	}

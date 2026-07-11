@@ -18,13 +18,13 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   auth?: boolean;
 }
 
-interface ApiEnvelope<T = unknown> {
+type ApiEnvelope = {
   success?: boolean;
-  data?: T;
+  data?: unknown;
   meta?: unknown;
   errors?: { code?: string; message?: string }[];
   error?: string;
-}
+};
 
 async function parseJsonSafe(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -40,32 +40,15 @@ function isEnvelope(payload: unknown): payload is ApiEnvelope {
   return (
     typeof payload === "object" &&
     payload !== null &&
-    ("success" in payload || "data" in payload || "errors" in payload)
+    "success" in payload &&
+    ("data" in payload || "errors" in payload)
   );
 }
 
-/** Unwraps VSM `{ success, data }` envelope; passes through legacy raw payloads. */
-export function unwrapData<T>(payload: unknown): T {
-  if (isEnvelope(payload) && "data" in payload && payload.data !== undefined) {
-    return payload.data as T;
-  }
-  return payload as T;
-}
-
-export function unwrapList<T>(payload: unknown): T[] {
-  const data = unwrapData<unknown>(payload);
-  return Array.isArray(data) ? (data as T[]) : [];
-}
-
-function errorFromPayload(payload: unknown, status: number): HttpError {
-  if (isEnvelope(payload) && Array.isArray(payload.errors) && payload.errors.length > 0) {
-    const first = payload.errors[0];
-    return new HttpError(
-      first.message || `Request failed with status ${status}`,
-      status,
-      payload,
-      first.code,
-    );
+function messageFromPayload(payload: unknown, status: number): { message: string; code?: string } {
+  if (isEnvelope(payload)) {
+    const first = payload.errors?.[0];
+    if (first?.message) return { message: first.message, code: first.code };
   }
   if (
     typeof payload === "object" &&
@@ -73,9 +56,21 @@ function errorFromPayload(payload: unknown, status: number): HttpError {
     "error" in payload &&
     typeof (payload as { error: unknown }).error === "string"
   ) {
-    return new HttpError((payload as { error: string }).error, status, payload);
+    return { message: (payload as { error: string }).error };
   }
-  return new HttpError(`Request failed with status ${status}`, status, payload);
+  return { message: `Request failed with status ${status}` };
+}
+
+/** Unwraps VSM `{ success, data, meta, errors }` while keeping legacy raw JSON. */
+export function unwrapApiData<T>(payload: unknown): T {
+  if (isEnvelope(payload)) {
+    if (payload.success === false) {
+      const first = payload.errors?.[0];
+      throw new HttpError(first?.message ?? "Request failed", 400, payload, first?.code);
+    }
+    return payload.data as T;
+  }
+  return payload as T;
 }
 
 export async function httpRequest<T>(
@@ -98,15 +93,11 @@ export async function httpRequest<T>(
   const payload = await parseJsonSafe(response);
 
   if (!response.ok) {
-    throw errorFromPayload(payload, response.status);
+    const { message, code } = messageFromPayload(payload, response.status);
+    throw new HttpError(message, response.status, payload, code);
   }
 
-  // Business errors sometimes returned as 200 with success:false — treat as failure.
-  if (isEnvelope(payload) && payload.success === false) {
-    throw errorFromPayload(payload, response.status || 400);
-  }
-
-  return unwrapData<T>(payload);
+  return unwrapApiData<T>(payload);
 }
 
 export const httpClient = {

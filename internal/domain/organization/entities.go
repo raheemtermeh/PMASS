@@ -15,12 +15,9 @@ const (
 
 type Company struct {
 	shared.BaseModel
-	Name     string `json:"name"`
-	Slug     string `json:"slug"`
-	Status   string `json:"status"`
-	LogoURL  string `json:"logo_url"`
-	Language string `json:"language"`
-	Timezone string `json:"timezone"`
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Status string `json:"status"`
 }
 
 func NewCompany(name, slug string) (*Company, error) {
@@ -37,26 +34,7 @@ func NewCompany(name, slug string) (*Company, error) {
 		Name:      name,
 		Slug:      slug,
 		Status:    StatusActive,
-		Language:  "en",
-		Timezone:  "UTC",
 	}, nil
-}
-
-func (c *Company) UpdateProfile(name, logoURL, language, timezone string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ErrCompanyNameRequired
-	}
-	c.Name = name
-	c.LogoURL = strings.TrimSpace(logoURL)
-	if language = strings.TrimSpace(language); language != "" {
-		c.Language = language
-	}
-	if timezone = strings.TrimSpace(timezone); timezone != "" {
-		c.Timezone = timezone
-	}
-	c.UpdatedAt = shared.NewBase().UpdatedAt
-	return nil
 }
 
 // Delete is always forbidden (PDF §3.5 COMPANY_DELETE_FORBIDDEN).

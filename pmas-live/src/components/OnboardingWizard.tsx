@@ -55,7 +55,7 @@ export function OnboardingWizard() {
   function next() {
     if (isLast) {
       finish();
-      router.push(sanitizeInternalPath("/home"));
+      router.push(sanitizeInternalPath("/products"));
       return;
     }
     setStepIndex((i) => i + 1);
@@ -91,7 +91,7 @@ export function OnboardingWizard() {
         <div className="modal-body">
           <p className="wizard-body">{step.body}</p>
           <ul className="wizard-bullets">
-            {step.bullets.map((b) => (
+            {(step.bullets ?? []).map((b) => (
               <li key={b}>{b}</li>
             ))}
           </ul>
@@ -113,7 +113,7 @@ export function OnboardingWizard() {
               </button>
             ) : (
               <button type="button" className="btn btn-primary" onClick={next}>
-                {isLast ? "Open Product Manager" : "Continue"}
+                {isLast ? "Open Products" : "Continue"}
               </button>
             )}
           </div>
