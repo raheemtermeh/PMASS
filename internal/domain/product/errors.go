@@ -1,0 +1,31 @@
+package product
+
+import "PMAS/internal/domain/shared"
+
+var (
+	ErrProductNameRequired    = shared.New("PRODUCT_NAME_REQUIRED", "Product name is required", 400)
+	ErrProductOwnerRequired   = shared.New("PRODUCT_OWNER_REQUIRED", "Product owner is required", 400)
+	ErrProductNotFound        = shared.New("PRODUCT_NOT_FOUND", "Product not found", 404)
+	ErrProductArchived        = shared.New("PRODUCT_ARCHIVED", "Product is archived and cannot be modified", 409)
+	ErrInvalidProductStatus   = shared.New("INVALID_PRODUCT_STATUS", "Invalid product status transition", 409)
+	ErrInvalidExecutionModel  = shared.New("INVALID_EXECUTION_MODEL", "Invalid execution model", 400)
+	ErrExecutionModelLocked   = shared.New("EXECUTION_MODEL_LOCKED", "Execution model cannot be changed after create", 409)
+	ErrCompanyNotFound        = shared.New("COMPANY_NOT_FOUND", "Company not found", 404)
+	ErrPipelineRequired       = shared.New("PIPELINE_REQUIRED", "Pipeline is mandatory", 400)
+	ErrPipelineNameRequired   = shared.New("PIPELINE_NAME_REQUIRED", "Pipeline name is required", 400)
+	ErrPipelineNotFound       = shared.New("PIPELINE_NOT_FOUND", "Pipeline not found", 404)
+	ErrPipelineInUse          = shared.New("PIPELINE_IN_USE", "Active pipeline cannot be deleted", 409)
+	ErrPipelineOwnerInvalid   = shared.New("PIPELINE_OWNER_INVALID", "Pipeline belongs to only one product", 409)
+	ErrPipelineBranchNotAllowed = shared.New("PIPELINE_BRANCH_NOT_ALLOWED", "Pipeline branching is not supported", 400)
+	ErrStageNameRequired      = shared.New("STAGE_NAME_REQUIRED", "Stage name is required", 400)
+	ErrStageOrderRequired     = shared.New("STAGE_ORDER_REQUIRED", "Stage order is required", 400)
+	ErrStageNotFound          = shared.New("STAGE_NOT_FOUND", "Stage not found", 404)
+	ErrStageInUse             = shared.New("STAGE_IN_USE", "Stage cannot be removed while executed", 409)
+	ErrMultipleActiveStage    = shared.New("MULTIPLE_ACTIVE_STAGE", "Only one active stage instance is allowed", 409)
+	ErrRejectReasonRequired   = shared.New("REJECT_REASON_REQUIRED", "Reject reason is required", 400)
+	ErrExitCriteriaFailed     = shared.New("EXIT_CRITERIA_FAILED", "Exit criteria must pass before completing stage", 409)
+	ErrInvalidStageStatus     = shared.New("INVALID_STAGE", "Invalid stage instance status", 409)
+	ErrNoActiveStage          = shared.New("NO_ACTIVE_STAGE", "No active stage instance found", 409)
+	ErrNoNextStage            = shared.New("NO_NEXT_STAGE", "No next stage in pipeline", 409)
+	ErrStageInstanceNotFound  = shared.New("STAGE_INSTANCE_NOT_FOUND", "Stage instance not found", 404)
+)

@@ -47,11 +47,10 @@ export default function ProductManagerPage() {
       <section className="pm-hero">
         <div>
           <p className="wizard-kicker">Product Manager</p>
-          <h2 className="pm-hero-title">Your operating playbook</h2>
+          <h2 className="pm-hero-title">Value stream playbook</h2>
           <p className="text-dim" style={{ maxWidth: "40rem", marginTop: "0.5rem" }}>
-            Filtered by your live role ({roleLabel}) and permissions. Check off
-            items as you complete them — this is your team&apos;s source of truth
-            for what PMAS Live can do in this account.
+            Filtered by your role ({roleLabel}). Product is the center — organization,
+            pipeline execution, and planning cascade around it.
           </p>
         </div>
         <div className="pm-hero-actions">

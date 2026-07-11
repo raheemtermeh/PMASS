@@ -138,12 +138,12 @@ export default function UIUXPage() {
         }}
         onUpdate={async (id, v) => {
           await updateToken.mutateAsync({
-            id,
+            id: Number(id),
             body: { category: v.category, token_data: parseTokenJSON(v.token_data) },
           });
         }}
         onDelete={async (id) => {
-          await deleteToken.mutateAsync(id);
+          await deleteToken.mutateAsync(Number(id));
         }}
       />
 
@@ -203,7 +203,7 @@ export default function UIUXPage() {
         }}
         onUpdate={async (id, v) => {
           await updateAsset.mutateAsync({
-            id,
+            id: Number(id),
             body: {
               name: v.name,
               size: v.size,
@@ -213,7 +213,7 @@ export default function UIUXPage() {
           });
         }}
         onDelete={async (id) => {
-          await deleteAsset.mutateAsync(id);
+          await deleteAsset.mutateAsync(Number(id));
         }}
       />
     </div>

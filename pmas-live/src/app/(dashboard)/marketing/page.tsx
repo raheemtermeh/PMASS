@@ -138,10 +138,10 @@ export default function MarketingPage() {
         await createMut.mutateAsync(payload(values));
       }}
       onUpdate={async (id, values) => {
-        await updateMut.mutateAsync({ id, body: payload(values) });
+        await updateMut.mutateAsync({ id: Number(id), body: payload(values) });
       }}
       onDelete={async (id) => {
-        await deleteMut.mutateAsync(id);
+        await deleteMut.mutateAsync(Number(id));
       }}
     />
     </div>

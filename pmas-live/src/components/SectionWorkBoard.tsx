@@ -212,10 +212,10 @@ export function SectionWorkBoard({
         onUpdate={async (id, v) => {
           const body = payload(v);
           const { section: _s, ...rest } = body;
-          await updateMut.mutateAsync({ id, body: rest });
+          await updateMut.mutateAsync({ id: Number(id), body: rest });
         }}
         onDelete={async (id) => {
-          await deleteMut.mutateAsync(id);
+          await deleteMut.mutateAsync(Number(id));
         }}
       />
     </div>

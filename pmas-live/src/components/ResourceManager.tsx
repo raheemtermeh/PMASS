@@ -16,7 +16,7 @@ export interface FieldDef {
   step?: string;
 }
 
-interface ResourceManagerProps<T extends { id: number }> {
+interface ResourceManagerProps<T extends { id: string | number }> {
   title: string;
   description?: string;
   columns: { key: string; label: string; render?: (row: T) => ReactNode }[];
@@ -26,9 +26,11 @@ interface ResourceManagerProps<T extends { id: number }> {
   emptyTitle: string;
   emptyDescription: string;
   createLabel?: string;
+  hideEdit?: boolean;
+  hideDelete?: boolean;
   onCreate: (values: Record<string, string>) => Promise<void> | void;
-  onUpdate: (id: number, values: Record<string, string>) => Promise<void> | void;
-  onDelete: (id: number) => Promise<void> | void;
+  onUpdate?: (id: string | number, values: Record<string, string>) => Promise<void> | void;
+  onDelete?: (id: string | number) => Promise<void> | void;
   toFormValues?: (row: T) => Record<string, string>;
   extraActions?: (row: T) => ReactNode;
 }
@@ -37,7 +39,7 @@ function blankValues(fields: FieldDef[]): Record<string, string> {
   return Object.fromEntries(fields.map((f) => [f.name, ""]));
 }
 
-export function ResourceManager<T extends { id: number }>({
+export function ResourceManager<T extends { id: string | number }>({
   title,
   description,
   columns,
@@ -47,6 +49,8 @@ export function ResourceManager<T extends { id: number }>({
   emptyTitle,
   emptyDescription,
   createLabel = "Add",
+  hideEdit,
+  hideDelete,
   onCreate,
   onUpdate,
   onDelete,
@@ -81,8 +85,10 @@ export function ResourceManager<T extends { id: number }>({
     setBusy(true);
     setError("");
     try {
-      if (editing) await onUpdate(editing.id, values);
-      else await onCreate(values);
+      if (editing) {
+        if (!onUpdate) throw new Error("Update not supported");
+        await onUpdate(editing.id, values);
+      } else await onCreate(values);
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -92,6 +98,7 @@ export function ResourceManager<T extends { id: number }>({
   }
 
   async function handleDelete(row: T) {
+    if (!onDelete) return;
     if (!window.confirm(`Delete “${String((row as { title?: string; name?: string }).title ?? (row as { name?: string }).name ?? `#${row.id}`)}”?`)) {
       return;
     }
@@ -152,16 +159,20 @@ export function ResourceManager<T extends { id: number }>({
                     ))}
                     <td className="actions-cell">
                       {extraActions?.(row)}
-                      <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={() => void handleDelete(row)}
-                      >
-                        Delete
-                      </button>
+                      {!hideEdit && onUpdate ? (
+                        <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
+                          Edit
+                        </button>
+                      ) : null}
+                      {!hideDelete && onDelete ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          onClick={() => void handleDelete(row)}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

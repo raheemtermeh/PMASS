@@ -55,7 +55,7 @@ export function OnboardingWizard() {
   function next() {
     if (isLast) {
       finish();
-      router.push(sanitizeInternalPath("/product-manager"));
+      router.push(sanitizeInternalPath("/home"));
       return;
     }
     setStepIndex((i) => i + 1);

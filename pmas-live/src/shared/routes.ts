@@ -1,6 +1,15 @@
 import type { Permission } from "./permissions";
 
 export type ViewId =
+  | "home"
+  | "organization"
+  | "products"
+  | "planning"
+  | "profile"
+  | "admin-users"
+  | "platform-tenants"
+  | "settings"
+  // Legacy ops (pages remain; not in primary nav)
   | "executive"
   | "uiux"
   | "engineering"
@@ -9,11 +18,7 @@ export type ViewId =
   | "graph-view"
   | "finance"
   | "legalhr"
-  | "settings"
-  | "admin-users"
-  | "platform-tenants"
-  | "product-manager"
-  | "profile";
+  | "product-manager";
 
 export interface RouteConfig {
   id: ViewId;
@@ -26,83 +31,50 @@ export interface RouteConfig {
 }
 
 export const routes: Record<ViewId, RouteConfig> = {
-  executive: {
-    id: "executive",
-    path: "/executive",
-    title: "Executive Control Room",
-    subtitle: "Global Project Portfolio Telemetry",
-    permission: "executive",
+  home: {
+    id: "home",
+    path: "/home",
+    title: "Value Stream Home",
+    subtitle: "Product lifecycle overview for your company",
+    permission: null,
     tenantOnly: true,
   },
-  uiux: {
-    id: "uiux",
-    path: "/uiux",
-    title: "UI/UX Workspace",
-    subtitle: "Design tokens and asset management",
-    permission: "uiux",
+  organization: {
+    id: "organization",
+    path: "/organization",
+    title: "Organization",
+    subtitle: "Company structure — departments, teams, and employees",
+    permission: "employee.manage",
     tenantOnly: true,
   },
-  engineering: {
-    id: "engineering",
-    path: "/engineering",
-    title: "Engineering Core Platform",
-    subtitle: "Subsystems and CI/CD pipeline",
-    permission: "engineering",
+  products: {
+    id: "products",
+    path: "/products",
+    title: "Products",
+    subtitle: "Product aggregate — pipeline, stages, and execution",
+    permission: "product.view",
     tenantOnly: true,
   },
-  infrastructure: {
-    id: "infrastructure",
-    path: "/infrastructure",
-    title: "Infrastructure Gateway",
-    subtitle: "Cluster and deployment telemetry",
-    permission: "infrastructure",
+  planning: {
+    id: "planning",
+    path: "/planning",
+    title: "Planning",
+    subtitle: "Projects → Features → Tasks under each Product",
+    permission: "project.create",
     tenantOnly: true,
   },
-  marketing: {
-    id: "marketing",
-    path: "/marketing",
-    title: "Marketing Workspace",
-    subtitle: "Campaign metrics and funnel telemetry",
-    permission: "marketing",
-    tenantOnly: true,
-  },
-  "graph-view": {
-    id: "graph-view",
-    path: "/graph-view",
-    title: "Network Topology",
-    subtitle: "Cross-functional dependency graph",
-    permission: "graph-view",
-    tenantOnly: true,
-  },
-  finance: {
-    id: "finance",
-    path: "/finance",
-    title: "Finance Telemetry",
-    subtitle: "Burn rate and expenditure tracking",
-    permission: "finance",
-    tenantOnly: true,
-  },
-  legalhr: {
-    id: "legalhr",
-    path: "/legalhr",
-    title: "Legal & HR Compliance",
-    subtitle: "Compliance controls and workforce",
-    permission: "legalhr",
-    tenantOnly: true,
-  },
-  settings: {
-    id: "settings",
-    path: "/settings",
-    title: "System Settings",
-    subtitle: "Integration credentials vault",
-    permission: "settings",
-    tenantOnly: true,
+  profile: {
+    id: "profile",
+    path: "/profile",
+    title: "Profile",
+    subtitle: "Your identity, contact details, and account security",
+    permission: null,
   },
   "admin-users": {
     id: "admin-users",
     path: "/admin/users",
     title: "User Management",
-    subtitle: "Create employees and assign workspace permissions",
+    subtitle: "Invite users and assign VSM permissions",
     permission: "users",
     tenantOnly: true,
   },
@@ -114,40 +86,109 @@ export const routes: Record<ViewId, RouteConfig> = {
     permission: null,
     platformOnly: true,
   },
+  settings: {
+    id: "settings",
+    path: "/settings",
+    title: "System Settings",
+    subtitle: "Integration credentials vault",
+    permission: "settings",
+    tenantOnly: true,
+  },
+  // Legacy
   "product-manager": {
     id: "product-manager",
     path: "/product-manager",
-    title: "Product Manager",
-    subtitle: "Playbooks and capability map filtered by your access",
+    title: "Capability Map",
+    subtitle: "Playbooks filtered by your access",
     permission: null,
   },
-  profile: {
-    id: "profile",
-    path: "/profile",
-    title: "Profile",
-    subtitle: "Your identity, contact details, and account security",
-    permission: null,
+  executive: {
+    id: "executive",
+    path: "/executive",
+    title: "Executive Control Room",
+    subtitle: "Legacy ops telemetry",
+    permission: "executive",
+    tenantOnly: true,
+  },
+  uiux: {
+    id: "uiux",
+    path: "/uiux",
+    title: "UI/UX Workspace",
+    subtitle: "Legacy design workspace",
+    permission: "uiux",
+    tenantOnly: true,
+  },
+  engineering: {
+    id: "engineering",
+    path: "/engineering",
+    title: "Engineering Core Platform",
+    subtitle: "Legacy engineering ops",
+    permission: "engineering",
+    tenantOnly: true,
+  },
+  infrastructure: {
+    id: "infrastructure",
+    path: "/infrastructure",
+    title: "Infrastructure Gateway",
+    subtitle: "Legacy infra telemetry",
+    permission: "infrastructure",
+    tenantOnly: true,
+  },
+  marketing: {
+    id: "marketing",
+    path: "/marketing",
+    title: "Marketing Workspace",
+    subtitle: "Legacy marketing ops",
+    permission: "marketing",
+    tenantOnly: true,
+  },
+  "graph-view": {
+    id: "graph-view",
+    path: "/graph-view",
+    title: "Network Topology",
+    subtitle: "Legacy dependency graph",
+    permission: "graph-view",
+    tenantOnly: true,
+  },
+  finance: {
+    id: "finance",
+    path: "/finance",
+    title: "Finance Telemetry",
+    subtitle: "Legacy finance ops",
+    permission: "finance",
+    tenantOnly: true,
+  },
+  legalhr: {
+    id: "legalhr",
+    path: "/legalhr",
+    title: "Legal & HR Compliance",
+    subtitle: "Legacy compliance ops",
+    permission: "legalhr",
+    tenantOnly: true,
   },
 };
 
+/** Primary navigation — Product-centric VSM. */
 export const navItems: ViewId[] = [
-  "product-manager",
+  "home",
+  "organization",
+  "products",
+  "planning",
   "profile",
-  "executive",
-  "uiux",
-  "engineering",
-  "infrastructure",
-  "marketing",
-  "graph-view",
-  "finance",
-  "legalhr",
-  "settings",
   "admin-users",
+  "settings",
   "platform-tenants",
 ];
 
 export function getRouteByPath(pathname: string): RouteConfig | null {
-  return Object.values(routes).find((route) => route.path === pathname) ?? null;
+  const exact = Object.values(routes).find((route) => route.path === pathname);
+  if (exact) return exact;
+
+  // Nested routes: /products/:id → Products
+  const ranked = Object.values(routes)
+    .filter((route) => pathname === route.path || pathname.startsWith(`${route.path}/`))
+    .sort((a, b) => b.path.length - a.path.length);
+  return ranked[0] ?? null;
 }
 
 export function firstAllowedPath(
@@ -156,24 +197,19 @@ export function firstAllowedPath(
   hasTenant: boolean,
 ): string {
   if (role === "platform_admin" || role === "super_admin") {
-    return routes["product-manager"].path;
+    return routes["platform-tenants"].path;
   }
-  // Always land on Product Manager when the user has any tenant workspace access.
   if (hasTenant || role === "tenant_admin") {
-    return routes["product-manager"].path;
+    return routes.home.path;
   }
   for (const id of navItems) {
     const route = routes[id];
     if (route.platformOnly) continue;
-    if (route.id === "product-manager") continue;
     if (route.tenantOnly && !hasTenant) continue;
     if (!route.permission) continue;
-    if (
-      role === "tenant_admin" ||
-      permissions.includes(route.permission)
-    ) {
+    if (role === "tenant_admin" || permissions.includes(route.permission)) {
       return route.path;
     }
   }
-  return routes["product-manager"].path;
+  return routes.profile.path;
 }

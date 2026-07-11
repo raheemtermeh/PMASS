@@ -18,6 +18,22 @@ const (
 	PermLegalHR        = "legalhr"
 	PermSettings       = "settings"
 	PermUsers          = "users"
+
+	// Product-domain permissions (Backend Analysis Document §7.6).
+	PermProductCreate  = "product.create"
+	PermProductUpdate  = "product.update"
+	PermProductArchive = "product.archive"
+	PermProductView    = "product.view"
+	PermProjectCreate  = "project.create"
+	PermProjectUpdate  = "project.update"
+	PermFeatureCreate  = "feature.create"
+	PermFeatureUpdate  = "feature.update"
+	PermTaskCreate     = "task.create"
+	PermTaskAssign     = "task.assign"
+	PermTaskComplete   = "task.complete"
+	PermDepartmentManage = "department.manage"
+	PermTeamManage       = "team.manage"
+	PermEmployeeManage   = "employee.manage"
 )
 
 var AllPermissions = []string{
@@ -31,6 +47,20 @@ var AllPermissions = []string{
 	PermLegalHR,
 	PermSettings,
 	PermUsers,
+	PermProductCreate,
+	PermProductUpdate,
+	PermProductArchive,
+	PermProductView,
+	PermProjectCreate,
+	PermProjectUpdate,
+	PermFeatureCreate,
+	PermFeatureUpdate,
+	PermTaskCreate,
+	PermTaskAssign,
+	PermTaskComplete,
+	PermDepartmentManage,
+	PermTeamManage,
+	PermEmployeeManage,
 }
 
 func IsPlatformAdmin(role string) bool {

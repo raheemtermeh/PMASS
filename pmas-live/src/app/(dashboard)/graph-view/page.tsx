@@ -140,7 +140,7 @@ export default function GraphViewPage() {
         }}
         onUpdate={async (id, v) => {
           await updateMember.mutateAsync({
-            id,
+            id: Number(id),
             body: {
               name: v.name,
               role: v.role,
@@ -151,7 +151,7 @@ export default function GraphViewPage() {
           });
         }}
         onDelete={async (id) => {
-          await deleteMember.mutateAsync(id);
+          await deleteMember.mutateAsync(Number(id));
         }}
       />
 
@@ -222,7 +222,7 @@ export default function GraphViewPage() {
         }}
         onUpdate={async (id, v) => {
           await updateEdge.mutateAsync({
-            id,
+            id: Number(id),
             body: {
               source_id: num(v.source_id),
               target_id: num(v.target_id),
@@ -232,7 +232,7 @@ export default function GraphViewPage() {
           });
         }}
         onDelete={async (id) => {
-          await deleteEdge.mutateAsync(id);
+          await deleteEdge.mutateAsync(Number(id));
         }}
       />
     </div>

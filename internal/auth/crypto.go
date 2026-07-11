@@ -85,8 +85,8 @@ func IsEncryptedSecret(stored string) bool {
 
 // ValidatePasswordStrength enforces a baseline anti-bruteforce password policy.
 func ValidatePasswordStrength(password string) error {
-	if len(password) < 10 {
-		return fmt.Errorf("password must be at least 10 characters")
+	if len(password) < 12 {
+		return fmt.Errorf("password must be at least 12 characters")
 	}
 	if len(password) > 128 {
 		return fmt.Errorf("password must be at most 128 characters")
@@ -105,11 +105,8 @@ func ValidatePasswordStrength(password string) error {
 			special = true
 		}
 	}
-	if !upper || !lower || !digit {
-		return fmt.Errorf("password must include upper, lower, and digit characters")
-	}
-	if !(special || len(password) >= 14) {
-		return fmt.Errorf("password must include a symbol, or be at least 14 characters")
+	if !upper || !lower || !digit || !special {
+		return fmt.Errorf("password must include upper, lower, digit, and symbol characters")
 	}
 	return nil
 }

@@ -134,10 +134,10 @@ export default function FinancePage() {
           await createMut.mutateAsync(payload(v));
         }}
         onUpdate={async (id, v) => {
-          await updateMut.mutateAsync({ id, body: payload(v) });
+          await updateMut.mutateAsync({ id: Number(id), body: payload(v) });
         }}
         onDelete={async (id) => {
-          await deleteMut.mutateAsync(id);
+          await deleteMut.mutateAsync(Number(id));
         }}
       />
     </div>

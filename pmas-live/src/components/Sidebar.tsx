@@ -29,7 +29,11 @@ export function Sidebar() {
 
   const visibleNav = navItems.filter((id) => {
     const route = routes[id];
-    if (route.id === "product-manager" || route.id === "profile") return true;
+    if (route.id === "home" || route.id === "profile" || route.id === "product-manager") {
+      if (route.tenantOnly && !hasTenant && !platform) return false;
+      if (route.id === "home" && !hasTenant) return false;
+      return true;
+    }
     if (route.platformOnly) return platform;
     if (route.tenantOnly && !hasTenant) return false;
     if (!route.permission) return false;
@@ -65,7 +69,8 @@ export function Sidebar() {
         <ul className="nav-links">
           {visibleNav.map((viewId) => {
             const route = routes[viewId];
-            const isActive = pathname === route.path;
+            const isActive =
+              pathname === route.path || pathname.startsWith(`${route.path}/`);
             return (
               <li key={viewId} className={`nav-item${isActive ? " active" : ""}`}>
                 <Link href={route.path}>

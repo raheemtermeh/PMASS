@@ -250,7 +250,7 @@ func EnsureSchema(db *sql.DB) error {
 	}
 
 	log.Println("[Database] Multi-tenant schema ensured")
-	return nil
+	return EnsureVSMSchema(db)
 }
 
 // promoteLegacyPlatformAdmin converts the first orphan super_admin (no tenant)

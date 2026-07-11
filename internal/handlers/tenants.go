@@ -119,10 +119,15 @@ func (h *Handler) ProvisionTenant(w http.ResponseWriter, r *http.Request) {
 
 	var tenant models.Tenant
 	err = tx.QueryRowContext(r.Context(), `
-		INSERT INTO tenants (slug, name)
-		VALUES ($1, $2)
+		WITH new_company AS (
+			INSERT INTO companies (name, slug, status)
+			VALUES ($1, $2, 'ACTIVE')
+			RETURNING id
+		)
+		INSERT INTO tenants (slug, name, company_id)
+		SELECT $2, $1, new_company.id FROM new_company
 		RETURNING id, slug, name, is_active, created_at, updated_at
-	`, req.TenantSlug, req.TenantName).Scan(
+	`, req.TenantName, req.TenantSlug).Scan(
 		&tenant.ID, &tenant.Slug, &tenant.Name, &tenant.IsActive, &tenant.CreatedAt, &tenant.UpdatedAt,
 	)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"PMAS/internal/auth"
 	"PMAS/internal/config"
 	"PMAS/internal/database"
+	httpapi "PMAS/internal/delivery/http"
 	"PMAS/internal/handlers"
 	"PMAS/internal/middleware"
 )
@@ -100,6 +101,10 @@ func main() {
 
 	mux.HandleFunc("/api/v1/work-items", authz.RequireAuth(h.HandleSectionWorkItems))
 	mux.HandleFunc("/api/v1/work-items/", authz.RequireAuth(h.HandleSectionWorkItems))
+
+	// Value Stream Management (Product-domain) — Backend Analysis Document
+	vsm := httpapi.NewDependencies(db)
+	vsm.Register(mux, authz)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
