@@ -48,6 +48,15 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
         <path d="M9 21v-6h6v6" />
       </svg>
     ),
+    "platform-access-requests": (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6" />
+        <path d="M16 13H8" />
+        <path d="M16 17H8" />
+        <path d="M10 9H8" />
+      </svg>
+    ),
     settings: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <circle cx="12" cy="12" r="3" />
@@ -69,7 +78,8 @@ export const navLabels: Record<ViewId, string> = {
   planning: "Planning",
   profile: "Profile",
   "admin-users": "User Management",
-  "platform-tenants": "Companies",
+  "platform-tenants": "Add Company",
+  "platform-access-requests": "Membership Requests",
   settings: "Settings",
   "product-manager": "Capability Map",
   executive: "Executive",

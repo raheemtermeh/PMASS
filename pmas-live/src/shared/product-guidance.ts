@@ -70,10 +70,19 @@ export const PRODUCT_CAPABILITIES: ProductCapability[] = [
     id: "platform-tenants",
     section: "platform",
     permission: null,
-    title: "Provision companies",
-    summary: "Platform admins create Tenant = Company workspaces.",
-    actions: ["Open Companies", "Provision slug + admin"],
+    title: "Add company manually",
+    summary: "Platform admins create Tenant = Company workspaces with admin credentials.",
+    actions: ["Open Add Company", "Set slug + company admin", "Share Company ID with customer"],
     href: "/platform/tenants",
+  },
+  {
+    id: "platform-access-requests",
+    section: "platform",
+    permission: null,
+    title: "Review access requests",
+    summary: "Approve landing-page requests and issue credentials automatically.",
+    actions: ["Open Access Requests", "Review pending", "Approve with password"],
+    href: "/platform/access-requests",
   },
 ];
 
@@ -112,13 +121,30 @@ export function buildWizardSteps(input: {
   ];
 
   if (isPlatformRole(input.role)) {
-    steps.push({
-      title: "Provision a company",
-      body: "As platform admin, create a Tenant (= Company) workspace first.",
-      bullets: ["Open Companies", "Set slug + company admin", "Customers log in with that Company ID"],
-      href: "/platform/tenants",
-      ctaLabel: "Open Companies",
-    });
+    steps.push(
+      {
+        title: "Add a company",
+        body: "Create a company workspace with Company ID and admin credentials.",
+        bullets: [
+          "Open Add Company in the sidebar",
+          "Set company name, slug, and admin login",
+          "Share credentials with the customer",
+        ],
+        href: "/platform/tenants",
+        ctaLabel: "Add Company",
+      },
+      {
+        title: "Review access requests",
+        body: "Companies can also apply from the public landing page.",
+        bullets: [
+          "Open Access Requests",
+          "Approve and set password",
+          "Credentials are created automatically",
+        ],
+        href: "/platform/access-requests",
+        ctaLabel: "Access Requests",
+      },
+    );
     return steps;
   }
 

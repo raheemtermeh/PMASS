@@ -1,5 +1,0 @@
-{
-  "name": "next-intl",
-  "version": "^9.0.1",
-  "main": "./lib/index.js"
-}

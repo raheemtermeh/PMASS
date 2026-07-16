@@ -22,7 +22,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
       if (!token) {
         verifiedTokenRef.current = null;
         setReady(false);
-        router.replace("/login");
+        router.replace("/welcome");
         return;
       }
 
@@ -43,7 +43,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         verifiedTokenRef.current = null;
         useAuthStore.getState().clearSession();
         setReady(false);
-        router.replace("/login");
+        router.replace("/welcome");
       }
     }
 

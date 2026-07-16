@@ -168,6 +168,25 @@ func EnsureSchema(db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS company_access_requests (
+			id SERIAL PRIMARY KEY,
+			company_name VARCHAR(255) NOT NULL,
+			preferred_slug VARCHAR(64),
+			contact_name VARCHAR(255) NOT NULL,
+			contact_email VARCHAR(255) NOT NULL,
+			contact_phone VARCHAR(50),
+			company_size VARCHAR(50),
+			industry VARCHAR(100),
+			message TEXT,
+			status VARCHAR(50) NOT NULL DEFAULT 'pending',
+			admin_notes TEXT,
+			reviewed_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+			reviewed_at TIMESTAMPTZ,
+			provisioned_tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 
 	for _, stmt := range statements {
@@ -237,6 +256,59 @@ func EnsureSchema(db *sql.DB) error {
 
 		`CREATE INDEX IF NOT EXISTS idx_section_work_items_tenant ON section_work_items(tenant_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_section_work_items_section ON section_work_items(tenant_id, section)`,
+
+		// company_access_requests — rebuild if an older partial schema exists
+		`DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_schema = current_schema()
+				  AND table_name = 'company_access_requests'
+			) AND NOT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'company_access_requests'
+				  AND column_name = 'contact_name'
+			) THEN
+				DROP TABLE company_access_requests;
+			END IF;
+		END $$`,
+
+		`CREATE TABLE IF NOT EXISTS company_access_requests (
+			id SERIAL PRIMARY KEY,
+			company_name VARCHAR(255) NOT NULL,
+			preferred_slug VARCHAR(64),
+			contact_name VARCHAR(255) NOT NULL,
+			contact_email VARCHAR(255) NOT NULL,
+			contact_phone VARCHAR(50),
+			company_size VARCHAR(50),
+			industry VARCHAR(100),
+			message TEXT,
+			status VARCHAR(50) NOT NULL DEFAULT 'pending',
+			admin_notes TEXT,
+			reviewed_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL,
+			reviewed_at TIMESTAMPTZ,
+			provisioned_tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+
+		// company_access_requests — safe column upgrades on existing full tables
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS preferred_slug VARCHAR(64)`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50)`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS company_size VARCHAR(50)`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS industry VARCHAR(100)`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS message TEXT`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS provisioned_tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+
+		`CREATE INDEX IF NOT EXISTS idx_access_requests_status ON company_access_requests(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_access_requests_email ON company_access_requests(contact_email)`,
+		`ALTER TABLE company_access_requests DROP CONSTRAINT IF EXISTS company_access_requests_status_check`,
+		`ALTER TABLE company_access_requests ADD CONSTRAINT company_access_requests_status_check CHECK (status IN ('pending', 'approved', 'rejected'))`,
 	}
 
 	for _, stmt := range upgrades {

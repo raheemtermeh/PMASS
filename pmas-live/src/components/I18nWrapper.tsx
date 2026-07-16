@@ -7,8 +7,7 @@ export function I18nWrapper({ children }: { children: React.ReactNode }) {
   const [locale, setLocale] = useState('en');
 
   useEffect(() => {
-    const detectedLocale = 'fa';
-    setLocale(detectedLocale);
+    setLocale('en');
   }, []);
 
   return (

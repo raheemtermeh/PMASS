@@ -23,7 +23,7 @@ export default function HomePage() {
           return;
         }
       } catch {
-        router.replace("/login");
+        router.replace("/welcome");
         return;
       }
 
@@ -33,7 +33,7 @@ export default function HomePage() {
         );
         return;
       }
-      router.replace("/login");
+      router.replace("/welcome");
     }
     void redirect();
   }, [router, token, user]);

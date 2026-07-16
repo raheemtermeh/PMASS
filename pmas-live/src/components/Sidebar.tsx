@@ -3,10 +3,38 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { NavIcon, navLabels } from "@/lib/navigation";
 import { hasPermission, isPlatformRole } from "@/shared/permissions";
-import { navItems, routes } from "@/shared/routes";
+import {
+  platformNavGroups,
+  routes,
+  tenantNavItems,
+  type ViewId,
+} from "@/shared/routes";
+
+interface AccessRequestRow {
+  id: number;
+  status: string;
+}
+
+function isNavVisible(
+  id: ViewId,
+  platform: boolean,
+  hasTenant: boolean,
+  role: string,
+  permissions: string[],
+): boolean {
+  const route = routes[id];
+  if (route.platformOnly) return platform;
+  if (route.tenantOnly && !hasTenant && !platform) return false;
+  if (route.id === "profile") return true;
+  if (route.id === "home") return hasTenant;
+  if (!route.permission) return false;
+  return hasPermission(role, permissions, route.permission);
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -20,6 +48,17 @@ export function Sidebar() {
   const platform = isPlatformRole(user.role);
   const hasTenant = Boolean(user.tenant_id);
 
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ["access-requests", "pending", "sidebar"],
+    queryFn: () =>
+      httpClient.get<AccessRequestRow[]>("/api/v1/access-requests?status=pending"),
+    enabled: platform,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  const pendingCount = pendingRequests.length;
+
   const initials = user.full_name
     .split(" ")
     .map((p) => p[0])
@@ -27,24 +66,35 @@ export function Sidebar() {
     .slice(0, 2)
     .toUpperCase();
 
-  const visibleNav = navItems.filter((id) => {
-    const route = routes[id];
-    if (route.id === "home" || route.id === "profile" || route.id === "product-manager") {
-      if (route.tenantOnly && !hasTenant && !platform) return false;
-      if (route.id === "home" && !hasTenant) return false;
-      return true;
-    }
-    if (route.platformOnly) return platform;
-    if (route.tenantOnly && !hasTenant) return false;
-    if (!route.permission) return false;
-    return hasPermission(user.role, user.permissions, route.permission);
-  });
+  const tenantNav = tenantNavItems.filter((id) =>
+    isNavVisible(id, platform, hasTenant, user.role, user.permissions),
+  );
 
   const roleLabel = platform
     ? "Platform Admin"
     : user.role === "tenant_admin"
       ? "Company Admin"
       : "User";
+
+  function renderNavItem(viewId: ViewId) {
+    const route = routes[viewId];
+    const isActive = pathname === route.path || pathname.startsWith(`${route.path}/`);
+    const showBadge = viewId === "platform-access-requests" && pendingCount > 0;
+
+    return (
+      <li key={viewId} className={`nav-item${isActive ? " active" : ""}`}>
+        <Link href={route.path}>
+          <NavIcon viewId={viewId} />
+          <span>{navLabels[viewId]}</span>
+          {showBadge && !collapsed ? (
+            <span className="nav-badge" aria-label={`${pendingCount} pending requests`}>
+              {pendingCount}
+            </span>
+          ) : null}
+        </Link>
+      </li>
+    );
+  }
 
   return (
     <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
@@ -66,21 +116,24 @@ export function Sidebar() {
       </Link>
 
       <nav className="flex-1">
-        <ul className="nav-links">
-          {visibleNav.map((viewId) => {
-            const route = routes[viewId];
-            const isActive =
-              pathname === route.path || pathname.startsWith(`${route.path}/`);
-            return (
-              <li key={viewId} className={`nav-item${isActive ? " active" : ""}`}>
-                <Link href={route.path}>
-                  <NavIcon viewId={viewId} />
-                  <span>{navLabels[viewId]}</span>
-                </Link>
-              </li>
+        {platform ? (
+          platformNavGroups.map((group) => {
+            const items = group.items.filter((id) =>
+              isNavVisible(id, platform, hasTenant, user.role, user.permissions),
             );
-          })}
-        </ul>
+            if (items.length === 0) return null;
+            return (
+              <div key={group.label} className="sidebar-nav-group">
+                {!collapsed ? (
+                  <p className="sidebar-nav-group-label">{group.label}</p>
+                ) : null}
+                <ul className="nav-links">{items.map(renderNavItem)}</ul>
+              </div>
+            );
+          })
+        ) : (
+          <ul className="nav-links">{tenantNav.map(renderNavItem)}</ul>
+        )}
       </nav>
 
       <div className="sidebar-footer">
@@ -96,7 +149,7 @@ export function Sidebar() {
           className="sidebar-logout-btn"
           onClick={() => {
             clearSession();
-            router.replace("/login");
+            router.replace("/welcome");
           }}
         >
           Sign out

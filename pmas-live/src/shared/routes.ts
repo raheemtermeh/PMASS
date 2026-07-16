@@ -8,6 +8,7 @@ export type ViewId =
   | "profile"
   | "admin-users"
   | "platform-tenants"
+  | "platform-access-requests"
   | "settings"
   // Legacy ops (pages remain; not in primary nav)
   | "executive"
@@ -81,8 +82,16 @@ export const routes: Record<ViewId, RouteConfig> = {
   "platform-tenants": {
     id: "platform-tenants",
     path: "/platform/tenants",
-    title: "Company Provisioning",
-    subtitle: "Create isolated company workspaces for customers",
+    title: "Add Company",
+    subtitle: "Create a company workspace with Company ID and admin credentials",
+    permission: null,
+    platformOnly: true,
+  },
+  "platform-access-requests": {
+    id: "platform-access-requests",
+    path: "/platform/access-requests",
+    title: "Membership Requests",
+    subtitle: "Review landing-page signup requests and issue credentials",
     permission: null,
     platformOnly: true,
   },
@@ -168,8 +177,8 @@ export const routes: Record<ViewId, RouteConfig> = {
   },
 };
 
-/** Primary navigation — Product-centric VSM. */
-export const navItems: ViewId[] = [
+/** Tenant company workspace navigation. */
+export const tenantNavItems: ViewId[] = [
   "home",
   "organization",
   "products",
@@ -177,7 +186,36 @@ export const navItems: ViewId[] = [
   "profile",
   "admin-users",
   "settings",
+];
+
+/** Platform admin navigation — isolated from tenant workspace. */
+export const platformNavItems: ViewId[] = [
   "platform-tenants",
+  "platform-access-requests",
+  "profile",
+];
+
+export interface PlatformNavGroup {
+  label: string;
+  items: ViewId[];
+}
+
+/** Grouped platform sidebar sections. */
+export const platformNavGroups: PlatformNavGroup[] = [
+  {
+    label: "Company management",
+    items: ["platform-tenants", "platform-access-requests"],
+  },
+  {
+    label: "Account",
+    items: ["profile"],
+  },
+];
+
+/** @deprecated Use tenantNavItems or platformNavItems */
+export const navItems: ViewId[] = [
+  ...tenantNavItems,
+  ...platformNavItems.filter((id) => id !== "profile"),
 ];
 
 export function getRouteByPath(pathname: string): RouteConfig | null {

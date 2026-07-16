@@ -11,7 +11,7 @@ export function OnboardingWizard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const forceOpen = useOnboardingStore((s) => s.forceOpen);
-  const isCompleted = useOnboardingStore((s) => s.isCompleted);
+  const completedByUser = useOnboardingStore((s) => s.completedByUser);
   const markCompleted = useOnboardingStore((s) => s.markCompleted);
   const setForceOpen = useOnboardingStore((s) => s.setForceOpen);
 
@@ -35,7 +35,8 @@ export function OnboardingWizard() {
   if (!mounted || !user || steps.length === 0) return null;
 
   const userKey = String(user.id);
-  const shouldShow = forceOpen || !isCompleted(userKey);
+  const tourCompleted = Boolean(completedByUser[userKey]);
+  const shouldShow = forceOpen || !tourCompleted;
   if (!shouldShow) return null;
 
   const step = steps[Math.min(stepIndex, steps.length - 1)];
@@ -70,7 +71,13 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="modal-backdrop active wizard-backdrop" role="dialog" aria-modal="true">
+    <div
+      className="modal-backdrop active wizard-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-wizard-title"
+      onClick={skip}
+    >
       <div className="modal-content wizard-modal" onClick={(e) => e.stopPropagation()}>
         <div className="wizard-progress-track" aria-hidden>
           <div className="wizard-progress-fill" style={{ width: `${progress}%` }} />
@@ -81,10 +88,10 @@ export function OnboardingWizard() {
             <p className="wizard-kicker">
               Guided setup · Step {stepIndex + 1} of {steps.length}
             </p>
-            <h3 className="modal-title">{step.title}</h3>
+            <h3 id="onboarding-wizard-title" className="modal-title">{step.title}</h3>
           </div>
-          <button type="button" className="modal-close" onClick={skip} aria-label="Skip tour">
-            ×
+          <button type="button" className="modal-close wizard-close" onClick={skip} aria-label="Close tour">
+            <span aria-hidden>×</span>
           </button>
         </div>
 

@@ -27,6 +27,10 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
     }
 
     if (!allowed) {
+      if (route.platformOnly && !platform) {
+        router.replace("/platform/login");
+        return;
+      }
       router.replace(firstAllowedPath(user.role, user.permissions, hasTenant));
     }
   }, [pathname, user, router]);

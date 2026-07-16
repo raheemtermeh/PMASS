@@ -59,6 +59,15 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/profile", authz.RequireAuth(h.GetMe))
 	mux.HandleFunc("/api/v1/auth/permissions", authz.RequireAuth(h.GetPermissionsCatalog))
 
+	mux.HandleFunc("/api/v1/access-requests", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			h.HandleAccessRequests(w, r)
+			return
+		}
+		authz.RequireAuth(h.HandleAccessRequests)(w, r)
+	})
+	mux.HandleFunc("/api/v1/access-requests/", authz.RequireAuth(h.HandleAccessRequests))
+
 	mux.HandleFunc("/api/v1/tenants", authz.RequireAuth(h.HandleTenants))
 	mux.HandleFunc("/api/v1/tenants/", authz.RequireAuth(h.HandleTenants))
 

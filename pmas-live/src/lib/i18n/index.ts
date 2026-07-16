@@ -1,3 +1,2 @@
-export { default as getMessages } from './getMessages';
-export { useLocale } from './client';
-export { useMessages } from './client';
+export { getMessages } from "./getMessages";
+export { useLocale, useMessages } from "./client";
