@@ -213,6 +213,55 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models.LoginResponse{Token: token, User: *user})
 }
 
+// ForgotPassword accepts a reset request without revealing whether the account exists.
+// Email delivery is out of MVP scope — operators reset passwords from User Management.
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.setupResponse(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.ForgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request payload"})
+		return
+	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.TenantSlug = strings.TrimSpace(strings.ToLower(req.TenantSlug))
+	if req.Email == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "email is required"})
+		return
+	}
+
+	var userID int
+	var err error
+	if req.TenantSlug == "" || req.TenantSlug == "platform" {
+		err = h.db.QueryRowContext(r.Context(), `
+			SELECT id FROM app_users WHERE email = $1 AND tenant_id IS NULL AND is_active = true
+		`, req.Email).Scan(&userID)
+	} else {
+		err = h.db.QueryRowContext(r.Context(), `
+			SELECT u.id FROM app_users u
+			JOIN tenants t ON t.id = u.tenant_id
+			WHERE u.email = $1 AND t.slug = $2 AND t.is_active = true AND u.is_active = true
+		`, req.Email, req.TenantSlug).Scan(&userID)
+	}
+
+	if err == nil {
+		log.Printf("Forgot password requested for user_id=%d email=%s tenant=%s", userID, req.Email, req.TenantSlug)
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "If an account exists for that email, your company administrator can reset the password from User Management. Contact your admin if you still cannot sign in.",
+	})
+}
+
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	if !h.setupResponse(w, r) {
 		return

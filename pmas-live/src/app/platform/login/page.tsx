@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
+import { isPlatformRole } from "@/shared/permissions";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
 
@@ -18,6 +19,8 @@ export default function PlatformLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   useEffect(() => {
     async function checkBootstrap() {
@@ -33,7 +36,13 @@ export default function PlatformLoginPage() {
         if (token && user) {
           router.replace(
             sanitizeInternalPath(
-              firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
+              isPlatformRole(user.role)
+                ? "/platform/tenants"
+                : firstAllowedPath(
+                    user.role,
+                    user.permissions,
+                    Boolean(user.tenant_id),
+                  ),
             ),
           );
         }
@@ -47,6 +56,7 @@ export default function PlatformLoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setForgotMsg("");
     setLoading(true);
     try {
       const res = await httpClient.post<{ token: string; user: AuthUser }>(
@@ -59,15 +69,34 @@ export default function PlatformLoginPage() {
         false,
       );
       setSession(res.token, res.user);
-      router.replace(
-        sanitizeInternalPath(
-          firstAllowedPath(res.user.role, res.user.permissions, Boolean(res.user.tenant_id)),
-        ),
-      );
+      // Same landing as bootstrap setup — platform operators manage companies first.
+      router.replace("/platform/tenants");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    setError("");
+    setForgotMsg("");
+    if (!email.trim()) {
+      setError("Enter your email first, then request a password reset.");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const res = await httpClient.post<{ message: string }>(
+        "/api/v1/auth/forgot-password",
+        { tenant_slug: "platform", email: email.trim().toLowerCase() },
+        false,
+      );
+      setForgotMsg(res.message || "Request received.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -108,8 +137,17 @@ export default function PlatformLoginPage() {
             />
           </div>
           {error && <p className="auth-error">{error}</p>}
+          {forgotMsg ? <p className="landing-success-inline">{forgotMsg}</p> : null}
           <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
             {loading ? "Signing in…" : "Sign in to platform panel"}
+          </button>
+          <button
+            type="button"
+            className="landing-forgot-link"
+            onClick={() => void handleForgotPassword()}
+            disabled={forgotLoading}
+          >
+            {forgotLoading ? "Submitting…" : "Forgot password?"}
           </button>
         </form>
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
+import { PmasLoader } from "@/components/PmasLoader";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -54,12 +55,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [token, router]);
 
   if (!ready) {
-    return (
-      <div className="auth-loading">
-        <div className="auth-loading-spinner" />
-        <p>Verifying session…</p>
-      </div>
-    );
+    return <PmasLoader message="Verifying session…" />;
   }
 
   return <>{children}</>;

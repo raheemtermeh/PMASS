@@ -4,7 +4,7 @@ import { FormEvent, ReactNode, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { sanitizeDisplayText } from "@/shared/security";
 
-export type FieldType = "text" | "number" | "select" | "textarea" | "password";
+export type FieldType = "text" | "number" | "select" | "textarea" | "password" | "date";
 
 export interface FieldDef {
   name: string;

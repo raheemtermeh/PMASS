@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
 import { buildWizardSteps } from "@/shared/product-guidance";
+import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
 
 export function OnboardingWizard() {
@@ -56,7 +57,11 @@ export function OnboardingWizard() {
   function next() {
     if (isLast) {
       finish();
-      router.push(sanitizeInternalPath("/home"));
+      router.push(
+        sanitizeInternalPath(
+          firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
+        ),
+      );
       return;
     }
     setStepIndex((i) => i + 1);

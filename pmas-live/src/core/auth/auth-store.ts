@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { isPlatformRole } from "@/shared/permissions";
 
 export interface TenantInfo {
   id: number;
@@ -41,10 +42,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       setSession: (token, user) => set({ token, user }),
       clearSession: () => set({ token: null, user: null }),
-      isPlatformAdmin: () => {
-        const role = get().user?.role;
-        return role === "platform_admin" || role === "super_admin";
-      },
+      isPlatformAdmin: () => isPlatformRole(get().user?.role),
     }),
     {
       name: "pmas-live-auth",

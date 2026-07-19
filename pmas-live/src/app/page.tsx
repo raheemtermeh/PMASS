@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { PmasLoader } from "@/components/PmasLoader";
 import { firstAllowedPath } from "@/shared/routes";
 
 export default function HomePage() {
@@ -38,10 +39,5 @@ export default function HomePage() {
     void redirect();
   }, [router, token, user]);
 
-  return (
-    <div className="auth-loading">
-      <div className="auth-loading-spinner" />
-      <p>Loading PMAS Live…</p>
-    </div>
-  );
+  return <PmasLoader message="Loading PMAS Live…" />;
 }

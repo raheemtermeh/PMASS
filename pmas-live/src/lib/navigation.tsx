@@ -72,7 +72,7 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
 }
 
 export const navLabels: Record<ViewId, string> = {
-  home: "Home",
+  home: "Command Center",
   organization: "Organization",
   products: "Products",
   planning: "Planning",

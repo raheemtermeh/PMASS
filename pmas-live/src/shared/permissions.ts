@@ -87,5 +87,6 @@ export function hasPermission(
 }
 
 export function isPlatformRole(role: string | undefined | null): boolean {
-  return role === "platform_admin" || role === "super_admin";
+  const normalized = (role ?? "").trim().toLowerCase();
+  return normalized === "platform_admin" || normalized === "super_admin";
 }

@@ -60,6 +60,12 @@ export default function WelcomePage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSlug, setForgotSlug] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const [companyName, setCompanyName] = useState("");
   const [preferredSlug, setPreferredSlug] = useState("");
@@ -122,6 +128,28 @@ export default function WelcomePage() {
       setLoginError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoginLoading(false);
+    }
+  }
+
+  async function handleForgotPassword(e: FormEvent) {
+    e.preventDefault();
+    setForgotError("");
+    setForgotMsg("");
+    setForgotLoading(true);
+    try {
+      const res = await httpClient.post<{ message: string }>(
+        "/api/v1/auth/forgot-password",
+        {
+          tenant_slug: forgotSlug.trim().toLowerCase() || tenantSlug.trim().toLowerCase(),
+          email: forgotEmail.trim().toLowerCase() || email.trim().toLowerCase(),
+        },
+        false,
+      );
+      setForgotMsg(res.message || "Request received. Contact your company admin if needed.");
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -320,9 +348,89 @@ export default function WelcomePage() {
             <button type="submit" className="btn btn-primary auth-submit" disabled={loginLoading}>
               {loginLoading ? "Signing in…" : "Sign in"}
             </button>
+            <button
+              type="button"
+              className="landing-forgot-link"
+              onClick={() => {
+                setForgotOpen(true);
+                setForgotSlug(tenantSlug);
+                setForgotEmail(email);
+                setForgotMsg("");
+                setForgotError("");
+              }}
+            >
+              Forgot password?
+            </button>
           </form>
         </div>
       </section>
+
+      {forgotOpen ? (
+        <div
+          className="modal-backdrop active"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="forgot-password-title"
+          onClick={() => !forgotLoading && setForgotOpen(false)}
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="forgot-password-title" className="modal-title">
+                Forgot password
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setForgotOpen(false)}
+                disabled={forgotLoading}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleForgotPassword} className="modal-body auth-form">
+              <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
+                Enter your Company ID and email. Your company administrator can reset the password
+                from User Management.
+              </p>
+              <div className="form-group">
+                <label htmlFor="forgot-slug">Company ID</label>
+                <input
+                  id="forgot-slug"
+                  value={forgotSlug}
+                  onChange={(e) => setForgotSlug(e.target.value)}
+                  placeholder="acme-corp"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="forgot-email">Email</label>
+                <input
+                  id="forgot-email"
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                />
+              </div>
+              {forgotError ? <p className="auth-error">{forgotError}</p> : null}
+              {forgotMsg ? <p className="landing-success-inline">{forgotMsg}</p> : null}
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setForgotOpen(false)}
+                  disabled={forgotLoading}
+                >
+                  Close
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={forgotLoading}>
+                  {forgotLoading ? "Sending…" : "Submit request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       <section id="request" className="landing-section landing-section-alt">
         <div className="landing-request-wrap">

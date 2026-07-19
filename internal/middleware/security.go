@@ -61,6 +61,7 @@ func WithSecurity(opts SecurityOptions, next http.Handler) http.Handler {
 		path := r.URL.Path
 		if strings.HasPrefix(path, "/api/v1/auth/login") ||
 			strings.HasPrefix(path, "/api/v1/auth/bootstrap") ||
+			strings.HasPrefix(path, "/api/v1/auth/forgot-password") ||
 			(path == "/api/v1/access-requests" && r.Method == http.MethodPost) {
 			if !authLimiter.Allow(ip) {
 				w.Header().Set("Retry-After", "60")

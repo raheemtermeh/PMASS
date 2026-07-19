@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { PmasLoader } from "@/components/PmasLoader";
 
 export default function LoginRedirectPage() {
   const router = useRouter();
@@ -10,10 +11,5 @@ export default function LoginRedirectPage() {
     router.replace("/welcome#login");
   }, [router]);
 
-  return (
-    <div className="auth-loading">
-      <div className="auth-loading-spinner" />
-      <p>Redirecting…</p>
-    </div>
-  );
+  return <PmasLoader message="Redirecting…" />;
 }

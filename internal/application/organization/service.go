@@ -104,6 +104,26 @@ func (s *Service) ChangeDepartmentManager(ctx context.Context, companyID, deptID
 	return d, nil
 }
 
+func (s *Service) UpdateDepartment(ctx context.Context, companyID, deptID uuid.UUID, name string, managerID uuid.UUID) (*organization.Department, error) {
+	if _, err := s.emp.FindByID(ctx, companyID, managerID); err != nil {
+		return nil, err
+	}
+	d, err := s.dept.FindByID(ctx, companyID, deptID)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.Rename(name); err != nil {
+		return nil, err
+	}
+	if err := d.ChangeManager(managerID); err != nil {
+		return nil, err
+	}
+	if err := s.dept.Update(ctx, d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 func (s *Service) ArchiveDepartment(ctx context.Context, companyID, id uuid.UUID) (*organization.Department, error) {
 	d, err := s.dept.FindByID(ctx, companyID, id)
 	if err != nil {
@@ -169,6 +189,33 @@ func (s *Service) AssignTeamLead(ctx context.Context, companyID, teamID, leadID 
 	return t, nil
 }
 
+func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, name, description string, leadID uuid.UUID) (*organization.Team, error) {
+	if _, err := s.emp.FindByID(ctx, companyID, leadID); err != nil {
+		return nil, err
+	}
+	t, err := s.team.FindByID(ctx, companyID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.UpdateDetails(name, description); err != nil {
+		return nil, err
+	}
+	if err := t.AssignLead(leadID); err != nil {
+		return nil, err
+	}
+	if err := s.team.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Service) ListTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.Employee, error) {
+	if _, err := s.team.FindByID(ctx, companyID, teamID); err != nil {
+		return nil, err
+	}
+	return s.emp.ListByTeam(ctx, companyID, teamID)
+}
+
 func (s *Service) ArchiveTeam(ctx context.Context, companyID, id uuid.UUID) (*organization.Team, error) {
 	t, err := s.team.FindByID(ctx, companyID, id)
 	if err != nil {
@@ -211,6 +258,20 @@ func (s *Service) ListEmployees(ctx context.Context, companyID uuid.UUID, q shar
 		return nil, shared.PageMeta{}, err
 	}
 	return items, shared.NewPageMeta(q, total), nil
+}
+
+func (s *Service) UpdateEmployee(ctx context.Context, companyID, id uuid.UUID, in CreateEmployeeInput) (*organization.Employee, error) {
+	e, err := s.emp.FindByID(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.UpdateProfile(in.FirstName, in.LastName, in.Email, in.Phone); err != nil {
+		return nil, err
+	}
+	if err := s.emp.Update(ctx, e); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
 func (s *Service) ArchiveEmployee(ctx context.Context, companyID, id uuid.UUID) (*organization.Employee, error) {

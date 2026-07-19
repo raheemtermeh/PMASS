@@ -105,6 +105,7 @@ export interface Task {
   title: string;
   status: string;
   priority: string;
+  due_date?: string | null;
 }
 
 export function employeeLabel(e: Employee): string {

@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { PmasLoader } from "@/components/PmasLoader";
 import { hasPermission, isPlatformRole } from "@/shared/permissions";
 import { firstAllowedPath, getRouteByPath } from "@/shared/routes";
 
@@ -52,9 +53,5 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
 }
 
 function Redirecting() {
-  return (
-    <div className="auth-loading">
-      <p>Redirecting…</p>
-    </div>
-  );
+  return <PmasLoader message="Redirecting…" />;
 }

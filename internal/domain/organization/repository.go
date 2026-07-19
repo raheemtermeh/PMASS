@@ -39,4 +39,5 @@ type EmployeeRepository interface {
 	Update(ctx context.Context, e *Employee) error
 	AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error
 	RemoveFromTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error
+	ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]Employee, error)
 }

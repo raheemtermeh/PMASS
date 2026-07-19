@@ -50,6 +50,11 @@ type LoginRequest struct {
 	Password   string `json:"password"`
 }
 
+type ForgotPasswordRequest struct {
+	TenantSlug string `json:"tenant_slug"`
+	Email      string `json:"email"`
+}
+
 type LoginResponse struct {
 	Token string                 `json:"token"`
 	User  AppUserWithPermissions `json:"user"`

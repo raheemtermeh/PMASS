@@ -55,6 +55,7 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/status", h.GetAuthStatus)
 	mux.HandleFunc("/api/v1/auth/bootstrap", h.Bootstrap)
 	mux.HandleFunc("/api/v1/auth/login", h.Login)
+	mux.HandleFunc("/api/v1/auth/forgot-password", h.ForgotPassword)
 	mux.HandleFunc("/api/v1/auth/me", authz.RequireAuth(h.GetMe))
 	mux.HandleFunc("/api/v1/auth/profile", authz.RequireAuth(h.GetMe))
 	mux.HandleFunc("/api/v1/auth/permissions", authz.RequireAuth(h.GetPermissionsCatalog))

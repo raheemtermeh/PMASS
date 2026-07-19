@@ -13,7 +13,13 @@ interface DashboardData {
     open_tasks: number;
     unread_notifications: number;
   };
-  my_tasks: { id: string; title: string; status: string; priority: string }[];
+  my_tasks: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    due_date?: string | null;
+  }[];
   pipeline_statuses: {
     product_id: string;
     product_name: string;
@@ -42,6 +48,15 @@ interface DashboardData {
   }[];
 }
 
+const QUICK_ACTIONS = [
+  { href: "/products", label: "Create product", hint: "Start a new product lifecycle" },
+  { href: "/planning", label: "Create project", hint: "Plan work under a product" },
+  { href: "/planning", label: "Create feature", hint: "Break a project into capabilities" },
+  { href: "/planning", label: "Create task", hint: "Assign executable work" },
+  { href: "/organization", label: "Organization", hint: "Employees, departments, teams" },
+  { href: "/settings", label: "Company settings", hint: "Profile, language, timezone" },
+] as const;
+
 export default function HomePage() {
   const qc = useQueryClient();
   const { data: employees = [] } = useQuery({
@@ -57,7 +72,7 @@ export default function HomePage() {
     retry: false,
   });
 
-  const employeeID = employees[0]?.id;
+  const employeeID = employees.find((e) => e.status === "ACTIVE")?.id ?? employees[0]?.id;
   const dashPath = employeeID
     ? `/api/v1/dashboard?employee_id=${employeeID}`
     : "/api/v1/dashboard";
@@ -75,32 +90,60 @@ export default function HomePage() {
   });
 
   const s = dash?.summary;
+  const openFeaturesHint = (dash?.pipeline_statuses ?? []).length;
+  const overdueTasks = (dash?.my_tasks ?? []).filter((t) => {
+    if (!t.due_date || ["COMPLETED", "ARCHIVED"].includes(t.status)) return false;
+    return new Date(t.due_date).getTime() < Date.now();
+  }).length;
 
   return (
-    <div className="page-stack">
-      <section className="data-panel">
-        <h2 className="panel-title" style={{ marginBottom: "0.5rem" }}>
-          {company?.name ? `${company.name} dashboard` : "MVP Dashboard"}
-        </h2>
-        <p className="text-dim" style={{ fontSize: "0.875rem", maxWidth: 720 }}>
-          Active products, pipeline status, my tasks, notifications, and recent activity — core MVP
-          management view.
-        </p>
+    <div className="page-stack command-center">
+      <section className="data-panel command-hero">
+        <div>
+          <p className="command-eyebrow">Command Center</p>
+          <h2 className="panel-title" style={{ marginBottom: "0.5rem" }}>
+            {company?.name ? `${company.name} workspace` : "Organization dashboard"}
+          </h2>
+          <p className="text-dim" style={{ fontSize: "0.875rem", maxWidth: 720 }}>
+            Personal and organization view of products, projects, features, tasks, workflows, and
+            recent activity — the MVP decision hub.
+          </p>
+        </div>
+        <div className="command-hero-meta">
+          <span className="status-pill">{s?.unread_notifications ?? 0} unread</span>
+          <span className="status-pill">{s?.open_tasks ?? 0} open tasks</span>
+        </div>
       </section>
 
       {isLoading ? <p className="text-dim">Loading dashboard…</p> : null}
 
-      <div className="grid grid-cols-2" style={{ gap: "1rem" }}>
+      <div className="command-stats">
         <Stat label="Active products" value={s?.active_products ?? 0} href="/products" />
-        <Stat label="Completed" value={s?.completed_products ?? 0} />
-        <Stat label="Draft / Ready" value={s?.draft_ready_products ?? 0} />
+        <Stat label="Draft / Ready" value={s?.draft_ready_products ?? 0} href="/products" />
+        <Stat label="Completed products" value={s?.completed_products ?? 0} />
         <Stat label="Open tasks" value={s?.open_tasks ?? 0} href="/planning" />
+        <Stat label="Workflows in flight" value={openFeaturesHint} href="/products" />
+        <Stat label="Overdue (my tasks)" value={overdueTasks} href="/planning" />
         <Stat label="Unread notifications" value={s?.unread_notifications ?? 0} />
       </div>
 
       <section className="data-panel">
         <div className="panel-header">
-          <h3 className="panel-title">Pipeline status</h3>
+          <h3 className="panel-title">Quick actions</h3>
+        </div>
+        <div className="quick-actions-grid">
+          {QUICK_ACTIONS.map((action) => (
+            <Link key={action.label} href={action.href} className="quick-action-card">
+              <strong>{action.label}</strong>
+              <span className="text-dim">{action.hint}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="data-panel">
+        <div className="panel-header">
+          <h3 className="panel-title">Workflow & pipeline status</h3>
           <Link href="/products" className="btn btn-sm">
             Products
           </Link>
@@ -138,22 +181,29 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-2" style={{ gap: "1rem" }}>
+      <div className="command-split">
         <section className="data-panel">
-          <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
-            My tasks
-          </h3>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <div className="panel-header">
+            <h3 className="panel-title">My workspace — tasks</h3>
+            <Link href="/planning" className="btn btn-sm">
+              Planning
+            </Link>
+          </div>
+          <ul className="command-list">
             {(dash?.my_tasks ?? []).map((t) => (
-              <li key={t.id} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
-                <strong>{t.title}</strong>
-                <div className="text-dim" style={{ fontSize: "0.75rem" }}>
-                  {t.status} · {t.priority}
+              <li key={t.id}>
+                <div>
+                  <strong>{t.title}</strong>
+                  <div className="text-dim" style={{ fontSize: "0.75rem" }}>
+                    {t.status} · {t.priority}
+                    {t.due_date ? ` · due ${new Date(t.due_date).toLocaleDateString()}` : ""}
+                  </div>
                 </div>
+                <span className="status-pill">{t.status}</span>
               </li>
             ))}
             {(dash?.my_tasks ?? []).length === 0 ? (
-              <li className="text-dim">No assigned tasks yet.</li>
+              <li className="text-dim">No assigned tasks yet. Assign tasks in Planning.</li>
             ) : null}
           </ul>
         </section>
@@ -162,11 +212,11 @@ export default function HomePage() {
           <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
             Products by department
           </h3>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <ul className="command-list">
             {(dash?.department_products ?? []).map((d) => (
-              <li key={d.department_id} style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
-                {d.department_name}
-                <strong style={{ float: "right" }}>{d.product_count}</strong>
+              <li key={d.department_id}>
+                <span>{d.department_name}</span>
+                <strong>{d.product_count}</strong>
               </li>
             ))}
             {(dash?.department_products ?? []).length === 0 ? (
@@ -176,16 +226,21 @@ export default function HomePage() {
         </section>
       </div>
 
-      <div className="grid grid-cols-2" style={{ gap: "1rem" }}>
+      <div className="command-split">
         <section className="data-panel">
           <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
-            Latest activity
+            Recent activities
           </h3>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.875rem" }}>
+          <ul className="command-list compact">
             {(dash?.recent_activities ?? []).map((a) => (
-              <li key={a.id} style={{ padding: "0.45rem 0", borderBottom: "1px solid var(--border)" }}>
-                <span className="font-mono">{a.action}</span>
-                <span className="text-dim"> · {a.entity_type}</span>
+              <li key={a.id}>
+                <div>
+                  <span className="font-mono">{a.action}</span>
+                  <span className="text-dim"> · {a.entity_type}</span>
+                </div>
+                <span className="text-dim" style={{ fontSize: "0.72rem" }}>
+                  {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
+                </span>
               </li>
             ))}
             {(dash?.recent_activities ?? []).length === 0 ? (
@@ -198,20 +253,22 @@ export default function HomePage() {
           <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
             Notifications
           </h3>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.875rem" }}>
+          <ul className="command-list compact">
             {(dash?.notifications ?? []).map((n) => (
-              <li key={n.id} style={{ padding: "0.45rem 0", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                  <div>
-                    <strong>{n.title}</strong>
-                    <div className="text-dim">{n.body}</div>
-                  </div>
-                  {!n.is_read ? (
-                    <button type="button" className="btn btn-sm" onClick={() => markRead.mutate(n.id)}>
-                      Read
-                    </button>
-                  ) : null}
+              <li key={n.id}>
+                <div>
+                  <strong>{n.title}</strong>
+                  <div className="text-dim">{n.body}</div>
                 </div>
+                {!n.is_read ? (
+                  <button type="button" className="btn btn-sm" onClick={() => markRead.mutate(n.id)}>
+                    Read
+                  </button>
+                ) : (
+                  <span className="text-dim" style={{ fontSize: "0.72rem" }}>
+                    Read
+                  </span>
+                )}
               </li>
             ))}
             {(dash?.notifications ?? []).length === 0 ? (
@@ -223,18 +280,18 @@ export default function HomePage() {
 
       <section className="data-panel">
         <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
-          Core flow checklist
+          Core MVP flow
         </h3>
-        <ol style={{ paddingLeft: "1.25rem", lineHeight: 1.7, fontSize: "0.9rem" }}>
+        <ol className="command-flow">
           <li>
-            <Link href="/organization">Organization</Link> — employees, departments, teams
+            <Link href="/organization">Organization</Link> — employees, departments, teams, membership
           </li>
           <li>
             <Link href="/products">Products</Link> — create product + dedicated pipeline
           </li>
-          <li>Start execution → move / reject stages</li>
+          <li>Start execution → move / complete / reject stages</li>
           <li>
-            <Link href="/planning">Planning</Link> — project → feature → task
+            <Link href="/planning">Planning</Link> — project → feature → task (assign & due dates)
           </li>
           <li>
             <Link href="/settings">Settings</Link> — company profile, language, timezone

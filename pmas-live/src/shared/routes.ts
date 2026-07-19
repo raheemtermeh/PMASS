@@ -1,4 +1,4 @@
-import type { Permission } from "./permissions";
+import { isPlatformRole, type Permission } from "./permissions";
 
 export type ViewId =
   | "home"
@@ -35,8 +35,8 @@ export const routes: Record<ViewId, RouteConfig> = {
   home: {
     id: "home",
     path: "/home",
-    title: "Value Stream Home",
-    subtitle: "Product lifecycle overview for your company",
+    title: "Command Center",
+    subtitle: "Products, tasks, workflows, and activity at a glance",
     permission: null,
     tenantOnly: true,
   },
@@ -231,13 +231,17 @@ export function getRouteByPath(pathname: string): RouteConfig | null {
 
 export function firstAllowedPath(
   role: string,
-  permissions: string[],
+  permissions: string[] | null | undefined,
   hasTenant: boolean,
 ): string {
-  if (role === "platform_admin" || role === "super_admin") {
+  const normalizedRole = (role ?? "").trim().toLowerCase();
+  const perms = Array.isArray(permissions) ? permissions : [];
+
+  // Platform operators always land on company provisioning — never profile/home.
+  if (isPlatformRole(normalizedRole)) {
     return routes["platform-tenants"].path;
   }
-  if (hasTenant || role === "tenant_admin") {
+  if (hasTenant || normalizedRole === "tenant_admin") {
     return routes.home.path;
   }
   for (const id of navItems) {
@@ -245,7 +249,7 @@ export function firstAllowedPath(
     if (route.platformOnly) continue;
     if (route.tenantOnly && !hasTenant) continue;
     if (!route.permission) continue;
-    if (role === "tenant_admin" || permissions.includes(route.permission)) {
+    if (normalizedRole === "tenant_admin" || perms.includes(route.permission)) {
       return route.path;
     }
   }

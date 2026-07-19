@@ -75,6 +75,26 @@ func (h *OrgHandler) HandleDepartments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, d, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Name      string    `json:"name"`
+			ManagerID uuid.UUID `json:"manager_id"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		d, err := h.Svc.UpdateDepartment(r.Context(), companyID, id, body.Name, body.ManagerID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, d, nil)
 	case len(parts) == 2 && parts[1] == "manager" && r.Method == http.MethodPut:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -156,6 +176,39 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Name        string    `json:"name"`
+			Description string    `json:"description"`
+			LeadID      uuid.UUID `json:"lead_id"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		t, err := h.Svc.UpdateTeam(r.Context(), companyID, id, body.Name, body.Description, body.LeadID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		members, err := h.Svc.ListTeamMembers(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, members, nil)
 	case len(parts) == 2 && parts[1] == "lead" && r.Method == http.MethodPut:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -234,6 +287,30 @@ func (h *OrgHandler) HandleEmployees(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e, err := h.Svc.ArchiveEmployee(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, e, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			FirstName string `json:"first_name"`
+			LastName  string `json:"last_name"`
+			Email     string `json:"email"`
+			Phone     string `json:"phone"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		e, err := h.Svc.UpdateEmployee(r.Context(), companyID, id, organizationapp.CreateEmployeeInput{
+			FirstName: body.FirstName, LastName: body.LastName, Email: body.Email, Phone: body.Phone,
+		})
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -782,13 +859,14 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			Title      string     `json:"title"`
 			Priority   string     `json:"priority"`
 			AssigneeID *uuid.UUID `json:"assignee_id"`
+			DueDate    *time.Time `json:"due_date"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
 		t, err := h.Svc.CreateTask(r.Context(), companyID, planningapp.CreateTaskInput{
-			FeatureID: body.FeatureID, Title: body.Title, Priority: body.Priority, AssigneeID: body.AssigneeID,
+			FeatureID: body.FeatureID, Title: body.Title, Priority: body.Priority, AssigneeID: body.AssigneeID, DueDate: body.DueDate,
 		})
 		if err != nil {
 			WriteErr(w, err)

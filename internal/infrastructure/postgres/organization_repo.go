@@ -351,3 +351,25 @@ func (r *EmployeeRepo) RemoveFromTeam(ctx context.Context, companyID, employeeID
 		companyID, teamID, employeeID)
 	return err
 }
+
+func (r *EmployeeRepo) ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.Employee, error) {
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT e.id, e.company_id, e.first_name, e.last_name, e.email, e.phone, e.status, e.user_id, e.version, e.created_at, e.updated_at
+		FROM employees e
+		INNER JOIN team_members_vsm tm ON tm.employee_id = e.id AND tm.company_id = e.company_id
+		WHERE e.company_id=$1 AND tm.team_id=$2 AND e.status <> 'ARCHIVED'
+		ORDER BY e.first_name, e.last_name`, companyID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]organization.Employee, 0)
+	for rows.Next() {
+		var e organization.Employee
+		if err := rows.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}

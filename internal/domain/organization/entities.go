@@ -102,6 +102,16 @@ func (d *Department) ChangeManager(managerID uuid.UUID) error {
 	return nil
 }
 
+func (d *Department) Rename(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ErrDepartmentNameRequired
+	}
+	d.Name = name
+	d.UpdatedAt = shared.NewBase().UpdatedAt
+	return nil
+}
+
 func (d *Department) Archive() {
 	d.Status = StatusArchived
 	d.UpdatedAt = shared.NewBase().UpdatedAt
@@ -152,6 +162,17 @@ func (t *Team) AssignLead(leadID uuid.UUID) error {
 	return nil
 }
 
+func (t *Team) UpdateDetails(name, description string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ErrTeamNameRequired
+	}
+	t.Name = name
+	t.Description = strings.TrimSpace(description)
+	t.UpdatedAt = shared.NewBase().UpdatedAt
+	return nil
+}
+
 func (t *Team) Archive() {
 	t.Status = StatusArchived
 	t.UpdatedAt = shared.NewBase().UpdatedAt
@@ -190,6 +211,24 @@ func NewEmployee(companyID uuid.UUID, firstName, lastName, email, phone string) 
 		Phone:     strings.TrimSpace(phone),
 		Status:    StatusActive,
 	}, nil
+}
+
+func (e *Employee) UpdateProfile(firstName, lastName, email, phone string) error {
+	firstName = strings.TrimSpace(firstName)
+	lastName = strings.TrimSpace(lastName)
+	email = strings.TrimSpace(strings.ToLower(email))
+	if firstName == "" || lastName == "" {
+		return ErrEmployeeNameRequired
+	}
+	if email == "" {
+		return ErrEmployeeEmailRequired
+	}
+	e.FirstName = firstName
+	e.LastName = lastName
+	e.Email = email
+	e.Phone = strings.TrimSpace(phone)
+	e.UpdatedAt = shared.NewBase().UpdatedAt
+	return nil
 }
 
 func (e *Employee) Archive() {

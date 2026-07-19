@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { NotificationBell } from "@/components/NotificationBell";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
@@ -142,6 +143,7 @@ export function TopBar() {
             </span>
           </div>
         )}
+        <NotificationBell />
         <button
           type="button"
           className="btn btn-sm"

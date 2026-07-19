@@ -2,6 +2,7 @@ package dashboardapp
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -17,10 +18,11 @@ type Summary struct {
 }
 
 type MyTask struct {
-	ID       uuid.UUID `json:"id"`
-	Title    string    `json:"title"`
-	Status   string    `json:"status"`
-	Priority string    `json:"priority"`
+	ID       uuid.UUID  `json:"id"`
+	Title    string     `json:"title"`
+	Status   string     `json:"status"`
+	Priority string     `json:"priority"`
+	DueDate  *time.Time `json:"due_date,omitempty"`
 }
 
 type PipelineStatus struct {
@@ -69,14 +71,14 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 
 	if employeeID != nil && *employeeID != uuid.Nil {
 		rows, err := q.QueryContext(ctx, `
-			SELECT id, title, status, priority FROM tasks
+			SELECT id, title, status, priority, due_date FROM tasks
 			WHERE company_id=$1 AND assignee_id=$2 AND status NOT IN ('ARCHIVED','CANCELLED')
 			ORDER BY created_at DESC LIMIT 10`, companyID, *employeeID)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var t MyTask
-				if err := rows.Scan(&t.ID, &t.Title, &t.Status, &t.Priority); err == nil {
+				if err := rows.Scan(&t.ID, &t.Title, &t.Status, &t.Priority, &t.DueDate); err == nil {
 					out.MyTasks = append(out.MyTasks, t)
 				}
 			}
