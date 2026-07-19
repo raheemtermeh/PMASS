@@ -55,10 +55,8 @@ func Load() *Config {
 
 	origins := parseOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	if len(origins) == 0 {
-		origins = []string{
-			"http://localhost:3000",
-			"http://127.0.0.1:3000",
-		}
+		// Open by default until explicit origins are configured for the server.
+		origins = []string{"*"}
 	}
 
 	return &Config{

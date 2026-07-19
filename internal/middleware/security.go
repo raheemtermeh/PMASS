@@ -91,7 +91,15 @@ func applySecurityHeaders(w http.ResponseWriter) {
 
 func originAllowed(origin string, allowed []string) bool {
 	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	if origin == "" {
+		return false
+	}
 	for _, a := range allowed {
+		a = strings.TrimSpace(a)
+		// Temporary deploy mode: CORS_ALLOWED_ORIGINS=* reflects any Origin.
+		if a == "*" {
+			return true
+		}
 		if strings.EqualFold(origin, strings.TrimRight(a, "/")) {
 			return true
 		}
