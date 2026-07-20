@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [logoURL, setLogoURL] = useState("");
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("UTC");
+  const [status, setStatus] = useState("ACTIVE");
   const [credName, setCredName] = useState("");
   const [credValue, setCredValue] = useState("");
   const [credDesc, setCredDesc] = useState("");
@@ -35,6 +36,7 @@ export default function SettingsPage() {
     setLogoURL(company.logo_url ?? "");
     setLanguage(company.language || "en");
     setTimezone(company.timezone || "UTC");
+    setStatus(company.status || "ACTIVE");
   }, [company]);
 
   const saveCompany = useMutation({
@@ -44,6 +46,7 @@ export default function SettingsPage() {
         logo_url: logoURL,
         language,
         timezone,
+        status,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["vsm-company"] });
@@ -121,6 +124,14 @@ export default function SettingsPage() {
                   <option value="Asia/Tehran">Asia/Tehran</option>
                   <option value="Europe/London">Europe/London</option>
                   <option value="America/New_York">America/New_York</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="co-status">Company status</label>
+                <select id="co-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="ACTIVE">Active</option>
+                  <option value="ON_HOLD">On hold</option>
+                  <option value="ARCHIVED">Archived</option>
                 </select>
               </div>
             </div>

@@ -29,8 +29,9 @@ export interface AuthUser {
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   user: AuthUser | null;
-  setSession: (token: string, user: AuthUser) => void;
+  setSession: (token: string, user: AuthUser, refreshToken?: string | null) => void;
   clearSession: () => void;
   isPlatformAdmin: () => boolean;
 }
@@ -39,15 +40,25 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       token: null,
+      refreshToken: null,
       user: null,
-      setSession: (token, user) => set({ token, user }),
-      clearSession: () => set({ token: null, user: null }),
+      setSession: (token, user, refreshToken) =>
+        set((state) => ({
+          token,
+          user,
+          refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
+        })),
+      clearSession: () => set({ token: null, refreshToken: null, user: null }),
       isPlatformAdmin: () => isPlatformRole(get().user?.role),
     }),
     {
       name: "pmas-live-auth",
       storage: createJSONStorage(() => sessionStorage),
-      partialize: (state) => ({ token: state.token, user: state.user }),
+      partialize: (state) => ({
+        token: state.token,
+        refreshToken: state.refreshToken,
+        user: state.user,
+      }),
     },
   ),
 );

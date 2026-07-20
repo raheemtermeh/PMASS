@@ -7,6 +7,16 @@ export interface DashboardSummary {
   employees: number;
   departments: number;
   projects: number;
+
+  // MVP additions — optional/additive.
+  on_hold_products?: number;
+  overdue_tasks?: number;
+  completed_tasks?: number;
+  active_projects?: number;
+  features?: number;
+  open_features?: number;
+  completed_features?: number;
+  active_workflows?: number;
 }
 
 export interface NamedCount {
@@ -53,6 +63,12 @@ export interface FlowGraph {
   products: FlowProduct[];
 }
 
+export interface NamedWorkspaceItem {
+  id: string;
+  name: string;
+  status: string;
+}
+
 export interface DashboardData {
   summary: DashboardSummary;
   charts: DashboardCharts;
@@ -64,6 +80,10 @@ export interface DashboardData {
     priority: string;
     due_date?: string | null;
   }[];
+  // MVP additions — optional/additive.
+  my_products?: NamedWorkspaceItem[];
+  my_projects?: NamedWorkspaceItem[];
+  my_features?: NamedWorkspaceItem[];
   pipeline_statuses: {
     product_id: string;
     product_name: string;

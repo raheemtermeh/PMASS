@@ -88,6 +88,11 @@ export default function OrganizationPage() {
     mutationFn: (id: string | number) => httpClient.delete(`/api/v1/teams/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
   });
+  const teamMove = useMutation({
+    mutationFn: ({ id, departmentId }: { id: string; departmentId: string }) =>
+      httpClient.post(`/api/v1/teams/${id}/move`, { department_id: departmentId }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
+  });
 
   const assignMember = useMutation({
     mutationFn: ({ employeeId, teamId }: { employeeId: string; teamId: string }) =>
@@ -411,6 +416,28 @@ export default function OrganizationPage() {
           onDelete={async (id) => {
             await teamArchive.mutateAsync(id);
           }}
+          extraActions={(row) => (
+            <select
+              className="btn btn-sm"
+              aria-label={`Move ${row.name} to another department`}
+              value=""
+              disabled={teamMove.isPending}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                teamMove.mutate({ id: row.id, departmentId: e.target.value });
+                e.target.value = "";
+              }}
+            >
+              <option value="">Move to…</option>
+              {deptOptions
+                .filter((d) => d.value !== row.department_id)
+                .map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+            </select>
+          )}
         />
       ) : null}
 

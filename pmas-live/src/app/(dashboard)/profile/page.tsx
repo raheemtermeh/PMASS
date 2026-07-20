@@ -37,11 +37,16 @@ export default function ProfilePage() {
   const [jobTitle, setJobTitle] = useState(user?.job_title ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [bio, setBio] = useState(user?.bio ?? "");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -74,10 +79,6 @@ export default function ProfilePage() {
       setError("First name and last name are required.");
       return;
     }
-    if (password && password !== confirm) {
-      setError("Password confirmation does not match.");
-      return;
-    }
 
     setBusy(true);
     try {
@@ -88,18 +89,45 @@ export default function ProfilePage() {
         phone: phone.trim() || null,
         bio: bio.trim() || null,
       };
-      if (password.trim()) body.password = password;
 
       if (!token) throw new Error("Session expired. Please sign in again.");
       const updated = await httpClient.put<AuthUser>("/api/v1/auth/me", body);
       setSession(token, updated);
-      setPassword("");
-      setConfirm("");
       setSuccess("Profile saved successfully.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onChangePassword(e: FormEvent) {
+    e.preventDefault();
+    setPwError("");
+    setPwSuccess("");
+    if (!currentPassword.trim() || !newPassword.trim()) {
+      setPwError("Current and new password are required.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError("Password confirmation does not match.");
+      return;
+    }
+
+    setPwBusy(true);
+    try {
+      await httpClient.post("/api/v1/auth/change-password", {
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPwSuccess("Password changed. Other sessions have been signed out.");
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Failed to change password");
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -136,6 +164,7 @@ export default function ProfilePage() {
       </section>
 
       <div className="profile-layout">
+        <div className="flex-col" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <form className="profile-card" onSubmit={onSubmit}>
           <div className="profile-card-head">
             <h3>Personal details</h3>
@@ -199,35 +228,6 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="profile-divider" />
-
-          <div className="profile-card-head">
-            <h3>Security</h3>
-            <p className="text-dim">Leave password blank to keep your current password.</p>
-          </div>
-          <div className="grid grid-cols-2">
-            <div className="form-group">
-              <label htmlFor="new-password">New password</label>
-              <input
-                id="new-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="confirm-password">Confirm password</label>
-              <input
-                id="confirm-password"
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-          </div>
-
           {error ? <p className="auth-error">{error}</p> : null}
           {success ? <p className="profile-success">{success}</p> : null}
 
@@ -237,6 +237,55 @@ export default function ProfilePage() {
             </button>
           </div>
         </form>
+
+        <form className="profile-card" onSubmit={onChangePassword}>
+          <div className="profile-card-head">
+            <h3>Security</h3>
+            <p className="text-dim">Change your password. This will sign you out of other sessions.</p>
+          </div>
+          <div className="grid grid-cols-2">
+            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="current-password">Current password</label>
+              <input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="new-password">New password</label>
+              <input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="confirm-password">Confirm new password</label>
+              <input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+
+          {pwError ? <p className="auth-error">{pwError}</p> : null}
+          {pwSuccess ? <p className="profile-success">{pwSuccess}</p> : null}
+
+          <div className="profile-actions">
+            <button type="submit" className="btn btn-primary" disabled={pwBusy}>
+              {pwBusy ? "Changing…" : "Change password"}
+            </button>
+          </div>
+        </form>
+        </div>
 
         <aside className="profile-side">
           <section className="profile-card profile-card-compact">

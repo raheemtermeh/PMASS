@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -24,11 +27,20 @@ type Claims struct {
 }
 
 var (
-	secretMu     sync.RWMutex
+	secretMu         sync.RWMutex
 	configuredSecret []byte
 )
 
 const defaultTokenTTL = 2 * time.Hour
+
+// RefreshTokenTTL is the lifetime of an opaque refresh token.
+const RefreshTokenTTL = 7 * 24 * time.Hour
+
+// PasswordResetTokenTTL is the lifetime of an opaque password reset token.
+const PasswordResetTokenTTL = 1 * time.Hour
+
+// opaqueTokenBytes is the amount of randomness backing generated opaque tokens.
+const opaqueTokenBytes = 32
 
 // ConfigureJWTSecret sets the signing key (required at process start).
 func ConfigureJWTSecret(secret string) {
@@ -98,4 +110,23 @@ func ParseToken(tokenString string) (*Claims, error) {
 		return nil, errors.New("invalid token subject")
 	}
 	return claims, nil
+}
+
+// GenerateOpaqueToken creates a cryptographically random token (returned as hex)
+// along with its SHA-256 hash. Only the hash should ever be persisted; the
+// plaintext is handed back once so it can be returned to the client (refresh
+// tokens) or embedded in a reset URL (password reset tokens) and never stored.
+func GenerateOpaqueToken() (plain string, hash string, err error) {
+	buf := make([]byte, opaqueTokenBytes)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	plain = hex.EncodeToString(buf)
+	return plain, HashOpaqueToken(plain), nil
+}
+
+// HashOpaqueToken deterministically hashes an opaque token for DB lookups/storage.
+func HashOpaqueToken(plain string) string {
+	sum := sha256.Sum256([]byte(plain))
+	return hex.EncodeToString(sum[:])
 }

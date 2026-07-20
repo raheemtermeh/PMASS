@@ -14,11 +14,19 @@ type Summary struct {
 	ActiveProducts     int64 `json:"active_products"`
 	CompletedProducts  int64 `json:"completed_products"`
 	DraftReadyProducts int64 `json:"draft_ready_products"`
+	OnHoldProducts     int64 `json:"on_hold_products"`
 	OpenTasks          int64 `json:"open_tasks"`
+	OverdueTasks       int64 `json:"overdue_tasks"`
+	CompletedTasks     int64 `json:"completed_tasks"`
 	UnreadNotifs       int64 `json:"unread_notifications"`
 	Employees          int64 `json:"employees"`
 	Departments        int64 `json:"departments"`
 	Projects           int64 `json:"projects"`
+	ActiveProjects     int64 `json:"active_projects"`
+	Features           int64 `json:"features"`
+	OpenFeatures       int64 `json:"open_features"`
+	CompletedFeatures  int64 `json:"completed_features"`
+	ActiveWorkflows    int64 `json:"active_workflows"`
 }
 
 type MyTask struct {
@@ -98,10 +106,20 @@ type Dashboard struct {
 	Charts           Charts           `json:"charts"`
 	Flow             FlowGraph        `json:"flow"`
 	MyTasks          []MyTask         `json:"my_tasks"`
+	MyProducts       []NamedID        `json:"my_products"`
+	MyProjects       []NamedID        `json:"my_projects"`
+	MyFeatures       []NamedID        `json:"my_features"`
 	PipelineStatuses []PipelineStatus `json:"pipeline_statuses"`
 	DeptProducts     []DeptProduct    `json:"department_products"`
 	RecentActivities []map[string]any `json:"recent_activities"`
 	Notifications    []map[string]any `json:"notifications"`
+}
+
+// NamedID is a lightweight workspace item for "My Products/Projects/Features".
+type NamedID struct {
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Status string    `json:"status"`
 }
 
 type Service struct {
@@ -124,23 +142,34 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 			Products: []FlowProduct{},
 		},
 		MyTasks:          []MyTask{},
+		MyProducts:       []NamedID{},
+		MyProjects:       []NamedID{},
+		MyFeatures:       []NamedID{},
 		PipelineStatuses: []PipelineStatus{},
 		DeptProducts:     []DeptProduct{},
 		RecentActivities: []map[string]any{},
 		Notifications:    []map[string]any{},
 	}
 
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ACTIVE'`, companyID).Scan(&out.Summary.ActiveProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='COMPLETED'`, companyID).Scan(&out.Summary.CompletedProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status IN ('DRAFT','READY')`, companyID).Scan(&out.Summary.DraftReadyProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED')`, companyID).Scan(&out.Summary.OpenTasks)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.ActiveProducts)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='COMPLETED' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.CompletedProducts)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status IN ('DRAFT','READY','PLANNING') AND deleted_at IS NULL`, companyID).Scan(&out.Summary.DraftReadyProducts)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ON_HOLD' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.OnHoldProducts)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OpenTasks)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND due_date < NOW() AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OverdueTasks)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('COMPLETED','DONE')`, companyID).Scan(&out.Summary.CompletedTasks)
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM notifications WHERE company_id=$1 AND is_read=false AND COALESCE(is_archived,false)=false`, companyID).Scan(&out.Summary.UnreadNotifs)
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM employees WHERE company_id=$1`, companyID).Scan(&out.Summary.Employees)
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM departments WHERE company_id=$1 AND status='ACTIVE'`, companyID).Scan(&out.Summary.Departments)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1`, companyID).Scan(&out.Summary.Projects)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL`, companyID).Scan(&out.Summary.Projects)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('ACTIVE','IN_PROGRESS','PLANNING')`, companyID).Scan(&out.Summary.ActiveProjects)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL`, companyID).Scan(&out.Summary.Features)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL AND status NOT IN ('COMPLETED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OpenFeatures)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('COMPLETED','DONE')`, companyID).Scan(&out.Summary.CompletedFeatures)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND deleted_at IS NULL AND status='ACTIVE'`, companyID).Scan(&out.Summary.ActiveWorkflows)
 
 	out.Charts.ProductsByStatus = scanNamedCounts(ctx, q, `
-		SELECT status, COUNT(*) FROM products WHERE company_id=$1
+		SELECT status, COUNT(*) FROM products WHERE company_id=$1 AND deleted_at IS NULL
 		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
 	out.Charts.TasksByStatus = scanNamedCounts(ctx, q, `
 		SELECT status, COUNT(*) FROM tasks WHERE company_id=$1
@@ -157,7 +186,7 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 	if employeeID != nil && *employeeID != uuid.Nil {
 		rows, err := q.QueryContext(ctx, `
 			SELECT id, title, status, priority, due_date FROM tasks
-			WHERE company_id=$1 AND assignee_id=$2 AND status NOT IN ('ARCHIVED','CANCELLED')
+			WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND status NOT IN ('ARCHIVED','CANCELLED')
 			ORDER BY created_at DESC LIMIT 10`, companyID, *employeeID)
 		if err == nil {
 			defer rows.Close()
@@ -168,6 +197,72 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 				}
 			}
 		}
+
+		prows, err := q.QueryContext(ctx, `
+			SELECT id, name, status FROM products
+			WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
+			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
+		if err == nil {
+			defer prows.Close()
+			for prows.Next() {
+				var n NamedID
+				if err := prows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+					out.MyProducts = append(out.MyProducts, n)
+				}
+			}
+		}
+
+		pjrows, err := q.QueryContext(ctx, `
+			SELECT id, name, status FROM projects
+			WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
+			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
+		if err == nil {
+			defer pjrows.Close()
+			for pjrows.Next() {
+				var n NamedID
+				if err := pjrows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+					out.MyProjects = append(out.MyProjects, n)
+				}
+			}
+		}
+
+		frows, err := q.QueryContext(ctx, `
+			SELECT id, title, status FROM features
+			WHERE company_id=$1 AND deleted_at IS NULL AND owner_id=$2
+			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
+		if err == nil {
+			defer frows.Close()
+			for frows.Next() {
+				var n NamedID
+				if err := frows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+					out.MyFeatures = append(out.MyFeatures, n)
+				}
+			}
+		}
+
+		_ = q.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM notifications
+			WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false`,
+			companyID, *employeeID).Scan(&out.Summary.UnreadNotifs)
+
+		nrows, err := q.QueryContext(ctx, `
+			SELECT id::text, type, title, body, is_read, created_at
+			FROM notifications
+			WHERE company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false
+			ORDER BY created_at DESC LIMIT 10`, companyID, *employeeID)
+		if err == nil {
+			defer nrows.Close()
+			for nrows.Next() {
+				var id, typ, title, body string
+				var isRead bool
+				var created any
+				if err := nrows.Scan(&id, &typ, &title, &body, &isRead, &created); err == nil {
+					out.Notifications = append(out.Notifications, map[string]any{
+						"id": id, "type": typ, "title": title, "body": body, "is_read": isRead, "created_at": created,
+					})
+				}
+			}
+		}
 	}
 
 	rows, err := q.QueryContext(ctx, `
@@ -175,7 +270,7 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 		FROM products p
 		LEFT JOIN stage_instances si ON si.product_id = p.id AND si.status = 'ACTIVE' AND si.company_id = p.company_id
 		LEFT JOIN stages s ON s.id = si.stage_id
-		WHERE p.company_id=$1 AND p.status IN ('ACTIVE','READY','DRAFT')
+		WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.status IN ('ACTIVE','READY','DRAFT','PLANNING','ON_HOLD')
 		ORDER BY p.updated_at DESC LIMIT 15`, companyID)
 	if err == nil {
 		defer rows.Close()
@@ -221,20 +316,22 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 		}
 	}
 
-	nrows, err := q.QueryContext(ctx, `
-		SELECT id::text, type, title, body, is_read, created_at
-		FROM notifications WHERE company_id=$1 AND COALESCE(is_archived,false)=false
-		ORDER BY created_at DESC LIMIT 10`, companyID)
-	if err == nil {
-		defer nrows.Close()
-		for nrows.Next() {
-			var id, typ, title, body string
-			var isRead bool
-			var created any
-			if err := nrows.Scan(&id, &typ, &title, &body, &isRead, &created); err == nil {
-				out.Notifications = append(out.Notifications, map[string]any{
-					"id": id, "type": typ, "title": title, "body": body, "is_read": isRead, "created_at": created,
-				})
+	if employeeID == nil || *employeeID == uuid.Nil {
+		nrows, err := q.QueryContext(ctx, `
+			SELECT id::text, type, title, body, is_read, created_at
+			FROM notifications WHERE company_id=$1 AND COALESCE(is_archived,false)=false
+			ORDER BY created_at DESC LIMIT 10`, companyID)
+		if err == nil {
+			defer nrows.Close()
+			for nrows.Next() {
+				var id, typ, title, body string
+				var isRead bool
+				var created any
+				if err := nrows.Scan(&id, &typ, &title, &body, &isRead, &created); err == nil {
+					out.Notifications = append(out.Notifications, map[string]any{
+						"id": id, "type": typ, "title": title, "body": body, "is_read": isRead, "created_at": created,
+					})
+				}
 			}
 		}
 	}

@@ -60,10 +60,12 @@ export default function HomePage() {
 
   const s = dash?.summary;
   const charts = dash?.charts;
-  const overdueTasks = (dash?.my_tasks ?? []).filter((t) => {
-    if (!t.due_date || ["COMPLETED", "ARCHIVED"].includes(t.status)) return false;
-    return new Date(t.due_date).getTime() < Date.now();
-  }).length;
+  const overdueTasks =
+    s?.overdue_tasks ??
+    (dash?.my_tasks ?? []).filter((t) => {
+      if (!t.due_date || ["COMPLETED", "ARCHIVED"].includes(t.status)) return false;
+      return new Date(t.due_date).getTime() < Date.now();
+    }).length;
 
   const refreshed = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -117,6 +119,9 @@ export default function HomePage() {
         <Kpi tone="blue" label="Departments" value={s?.departments ?? 0} href="/organization" />
         <Kpi tone="teal" label="Employees" value={s?.employees ?? 0} href="/organization" />
         <Kpi tone="pink" label="Unread" value={s?.unread_notifications ?? 0} />
+        <Kpi tone="amber" label="On hold" value={s?.on_hold_products ?? 0} href="/products" />
+        <Kpi tone="rose" label="Overdue tasks" value={overdueTasks} href="/planning" />
+        <Kpi tone="emerald" label="Features" value={s?.features ?? 0} href="/planning" />
       </div>
 
       <div className="cc-charts-grid">
@@ -157,6 +162,64 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {(dash?.my_products?.length || dash?.my_projects?.length || dash?.my_features?.length) ? (
+        <section className="data-panel cc-panel">
+          <div className="panel-header">
+            <h3 className="panel-title">My workspace — assignments</h3>
+          </div>
+          <div className="command-split">
+            <div>
+              <h4 className="text-dim" style={{ marginBottom: "0.5rem" }}>
+                Products
+              </h4>
+              <ul className="command-list compact">
+                {(dash?.my_products ?? []).map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/products/${p.id}`}>{p.name}</Link>
+                    <span className="status-pill">{p.status}</span>
+                  </li>
+                ))}
+                {(dash?.my_products ?? []).length === 0 ? (
+                  <li className="text-dim">No assigned products.</li>
+                ) : null}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-dim" style={{ marginBottom: "0.5rem" }}>
+                Projects
+              </h4>
+              <ul className="command-list compact">
+                {(dash?.my_projects ?? []).map((p) => (
+                  <li key={p.id}>
+                    <Link href="/planning">{p.name}</Link>
+                    <span className="status-pill">{p.status}</span>
+                  </li>
+                ))}
+                {(dash?.my_projects ?? []).length === 0 ? (
+                  <li className="text-dim">No assigned projects.</li>
+                ) : null}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-dim" style={{ marginBottom: "0.5rem" }}>
+                Features
+              </h4>
+              <ul className="command-list compact">
+                {(dash?.my_features ?? []).map((f) => (
+                  <li key={f.id}>
+                    <Link href="/planning">{f.name}</Link>
+                    <span className="status-pill">{f.status}</span>
+                  </li>
+                ))}
+                {(dash?.my_features ?? []).length === 0 ? (
+                  <li className="text-dim">No assigned features.</li>
+                ) : null}
+              </ul>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="data-panel cc-panel">
         <div className="panel-header">

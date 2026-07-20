@@ -15,6 +15,7 @@ type AppUser struct {
 	ID             int       `json:"id"`
 	TenantID       *int      `json:"tenant_id"`
 	Email          string    `json:"email"`
+	Username       *string   `json:"username"`
 	FullName       string    `json:"full_name"`
 	FirstName      string    `json:"first_name"`
 	LastName       string    `json:"last_name"`
@@ -47,6 +48,7 @@ type BootstrapRequest struct {
 type LoginRequest struct {
 	TenantSlug string `json:"tenant_slug"`
 	Email      string `json:"email"`
+	Username   string `json:"username"`
 	Password   string `json:"password"`
 }
 
@@ -55,13 +57,33 @@ type ForgotPasswordRequest struct {
 	Email      string `json:"email"`
 }
 
+type ResetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
 type LoginResponse struct {
-	Token string                 `json:"token"`
-	User  AppUserWithPermissions `json:"user"`
+	Token        string                 `json:"token"`
+	RefreshToken string                 `json:"refresh_token"`
+	User         AppUserWithPermissions `json:"user"`
 }
 
 type CreateUserRequest struct {
 	Email       string   `json:"email"`
+	Username    string   `json:"username,omitempty"`
 	Password    string   `json:"password"`
 	FullName    string   `json:"full_name"`
 	Role        string   `json:"role"`
@@ -77,20 +99,21 @@ type UpdateUserRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	FirstName string  `json:"first_name"`
-	LastName  string  `json:"last_name"`
-	JobTitle  *string `json:"job_title"`
-	Phone     *string `json:"phone"`
-	Bio       *string `json:"bio"`
-	Password  *string `json:"password,omitempty"`
+	FirstName       string  `json:"first_name"`
+	LastName        string  `json:"last_name"`
+	JobTitle        *string `json:"job_title"`
+	Phone           *string `json:"phone"`
+	Bio             *string `json:"bio"`
+	Password        *string `json:"password,omitempty"`
+	CurrentPassword *string `json:"current_password,omitempty"`
 }
 
 type ProvisionTenantRequest struct {
-	TenantName      string `json:"tenant_name"`
-	TenantSlug      string `json:"tenant_slug"`
-	AdminEmail      string `json:"admin_email"`
-	AdminPassword   string `json:"admin_password"`
-	AdminFullName   string `json:"admin_full_name"`
+	TenantName    string `json:"tenant_name"`
+	TenantSlug    string `json:"tenant_slug"`
+	AdminEmail    string `json:"admin_email"`
+	AdminPassword string `json:"admin_password"`
+	AdminFullName string `json:"admin_full_name"`
 }
 
 type ProvisionTenantResponse struct {

@@ -40,3 +40,10 @@ type StageInstanceRepository interface {
 	ListByProduct(ctx context.Context, companyID, productID uuid.UUID) ([]StageInstance, error)
 	Update(ctx context.Context, si *StageInstance) error
 }
+
+// ProductMemberRepository manages collaborative product membership (MVP addition).
+type ProductMemberRepository interface {
+	Add(ctx context.Context, m *ProductMember) error
+	Remove(ctx context.Context, companyID, productID, employeeID uuid.UUID) error
+	ListByProduct(ctx context.Context, companyID, productID uuid.UUID) ([]ProductMember, error)
+}

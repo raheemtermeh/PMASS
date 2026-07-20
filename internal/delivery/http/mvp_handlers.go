@@ -42,11 +42,13 @@ func (h *CollabHandler) HandleComments(w http.ResponseWriter, r *http.Request) {
 		WriteOK(w, http.StatusOK, items, nil)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			EntityType string     `json:"entity_type"`
-			EntityID   uuid.UUID  `json:"entity_id"`
-			AuthorID   uuid.UUID  `json:"author_id"`
-			Body       string     `json:"body"`
-			ParentID   *uuid.UUID `json:"parent_id"`
+			EntityType         string      `json:"entity_type"`
+			EntityID           uuid.UUID   `json:"entity_id"`
+			AuthorID           uuid.UUID   `json:"author_id"`
+			Body               string      `json:"body"`
+			ParentID           *uuid.UUID  `json:"parent_id"`
+			MentionEmployeeIDs []uuid.UUID `json:"mention_employee_ids"`
+			MentionTeamIDs     []uuid.UUID `json:"mention_team_ids"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -55,6 +57,7 @@ func (h *CollabHandler) HandleComments(w http.ResponseWriter, r *http.Request) {
 		c, err := h.Svc.CreateComment(r.Context(), companyID, collabapp.CreateCommentInput{
 			EntityType: body.EntityType, EntityID: body.EntityID, AuthorID: body.AuthorID,
 			Body: body.Body, ParentID: body.ParentID,
+			MentionEmployeeIDs: body.MentionEmployeeIDs, MentionTeamIDs: body.MentionTeamIDs,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -179,7 +182,22 @@ func (h *CollabHandler) HandleNotifications(w http.ResponseWriter, r *http.Reque
 
 	switch {
 	case len(parts) == 0 && r.Method == http.MethodGet:
-		items, meta, err := h.Svc.ListNotifications(r.Context(), companyID, PageQueryFromRequest(r))
+		q := PageQueryFromRequest(r)
+		if raw := r.URL.Query().Get("receiver_id"); raw != "" {
+			rid, err := ParseUUIDParam(raw)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid receiver_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListNotificationsForReceiver(r.Context(), companyID, rid, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
+		items, meta, err := h.Svc.ListNotifications(r.Context(), companyID, q)
 		if err != nil {
 			WriteErr(w, err)
 			return

@@ -27,5 +27,8 @@ var (
 	ErrInvalidStageStatus     = shared.New("INVALID_STAGE", "Invalid stage instance status", 409)
 	ErrNoActiveStage          = shared.New("NO_ACTIVE_STAGE", "No active stage instance found", 409)
 	ErrNoNextStage            = shared.New("NO_NEXT_STAGE", "No next stage in pipeline", 409)
+	ErrNoPreviousStage        = shared.New("NO_PREVIOUS_STAGE", "No previous stage in pipeline", 409)
 	ErrStageInstanceNotFound  = shared.New("STAGE_INSTANCE_NOT_FOUND", "Stage instance not found", 404)
+	ErrProductMemberNotFound  = shared.New("PRODUCT_MEMBER_NOT_FOUND", "Product member not found", 404)
+	ErrProductDeleted         = shared.New("PRODUCT_DELETED", "Product is deleted", 409)
 )

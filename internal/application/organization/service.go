@@ -2,6 +2,7 @@ package organizationapp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -40,6 +41,26 @@ func (s *Service) UpdateCompany(ctx context.Context, companyID uuid.UUID, name, 
 	if err := c.UpdateProfile(name, logoURL, language, timezone); err != nil {
 		return nil, err
 	}
+	if err := s.co.Update(ctx, c); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// UpdateCompanyStatus sets company lifecycle status (ACTIVE / ON_HOLD / ARCHIVED) without removing data.
+func (s *Service) UpdateCompanyStatus(ctx context.Context, companyID uuid.UUID, status string) (*organization.Company, error) {
+	status = strings.TrimSpace(strings.ToUpper(status))
+	switch status {
+	case organization.StatusActive, organization.StatusOnHold, organization.StatusArchived:
+	default:
+		return nil, shared.New("INVALID_COMPANY_STATUS", "status must be ACTIVE, ON_HOLD, or ARCHIVED", 400)
+	}
+	c, err := s.co.FindByID(ctx, companyID)
+	if err != nil {
+		return nil, err
+	}
+	c.Status = status
+	c.UpdatedAt = shared.NewBase().UpdatedAt
 	if err := s.co.Update(ctx, c); err != nil {
 		return nil, err
 	}
@@ -203,6 +224,23 @@ func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, n
 	if err := t.AssignLead(leadID); err != nil {
 		return nil, err
 	}
+	if err := s.team.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// MoveTeamBetweenDepartments relocates a team under another department in the same company.
+func (s *Service) MoveTeamBetweenDepartments(ctx context.Context, companyID, teamID, departmentID uuid.UUID) (*organization.Team, error) {
+	if _, err := s.dept.FindByID(ctx, companyID, departmentID); err != nil {
+		return nil, err
+	}
+	t, err := s.team.FindByID(ctx, companyID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	t.DepartmentID = departmentID
+	t.UpdatedAt = shared.NewBase().UpdatedAt
 	if err := s.team.Update(ctx, t); err != nil {
 		return nil, err
 	}

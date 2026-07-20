@@ -9,6 +9,8 @@ import { isPlatformRole } from "@/shared/permissions";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function PlatformLoginPage() {
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
@@ -59,16 +61,19 @@ export default function PlatformLoginPage() {
     setForgotMsg("");
     setLoading(true);
     try {
-      const res = await httpClient.post<{ token: string; user: AuthUser }>(
+      const identifier = email.trim();
+      const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/login",
         {
           tenant_slug: "platform",
-          email,
+          ...(EMAIL_PATTERN.test(identifier)
+            ? { email: identifier.toLowerCase() }
+            : { username: identifier }),
           password,
         },
         false,
       );
-      setSession(res.token, res.user);
+      setSession(res.token, res.user, res.refresh_token ?? null);
       // Same landing as bootstrap setup — platform operators manage companies first.
       router.replace("/platform/tenants");
     } catch (err) {
@@ -81,8 +86,8 @@ export default function PlatformLoginPage() {
   async function handleForgotPassword() {
     setError("");
     setForgotMsg("");
-    if (!email.trim()) {
-      setError("Enter your email first, then request a password reset.");
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError("Enter your email address above first, then request a password reset.");
       return;
     }
     setForgotLoading(true);
@@ -115,14 +120,13 @@ export default function PlatformLoginPage() {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">Email or username</label>
             <input
               id="email"
-              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div className="form-group">
@@ -156,6 +160,8 @@ export default function PlatformLoginPage() {
           <Link href="/welcome#login">Company sign in</Link>
           {" · "}
           <Link href="/welcome">Home</Link>
+          {" · "}
+          <Link href="/reset-password">Reset password</Link>
         </p>
       </div>
     </div>

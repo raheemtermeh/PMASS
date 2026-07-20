@@ -48,6 +48,8 @@ const STEPS = [
   { num: "4", title: "Get Started", desc: "Sign in to your company panel and invite your team." },
 ];
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function WelcomePage() {
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
@@ -56,7 +58,7 @@ export default function WelcomePage() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [tenantSlug, setTenantSlug] = useState("");
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -109,16 +111,19 @@ export default function WelcomePage() {
     setLoginError("");
     setLoginLoading(true);
     try {
-      const res = await httpClient.post<{ token: string; user: AuthUser }>(
+      const identifier = loginId.trim();
+      const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/login",
         {
           tenant_slug: tenantSlug.trim().toLowerCase(),
-          email,
+          ...(EMAIL_PATTERN.test(identifier)
+            ? { email: identifier.toLowerCase() }
+            : { username: identifier }),
           password,
         },
         false,
       );
-      setSession(res.token, res.user);
+      setSession(res.token, res.user, res.refresh_token ?? null);
       router.replace(
         sanitizeInternalPath(
           firstAllowedPath(res.user.role, res.user.permissions, Boolean(res.user.tenant_id)),
@@ -141,11 +146,14 @@ export default function WelcomePage() {
         "/api/v1/auth/forgot-password",
         {
           tenant_slug: forgotSlug.trim().toLowerCase() || tenantSlug.trim().toLowerCase(),
-          email: forgotEmail.trim().toLowerCase() || email.trim().toLowerCase(),
+          email: forgotEmail.trim().toLowerCase(),
         },
         false,
       );
-      setForgotMsg(res.message || "Request received. Contact your company admin if needed.");
+      setForgotMsg(
+        res.message ||
+          "If an account exists, a reset token has been generated. Ask your company admin to check the server logs and share the reset link with you.",
+      );
     } catch (err) {
       setForgotError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -323,14 +331,13 @@ export default function WelcomePage() {
               />
             </div>
             <div className="form-group">
-              <label htmlFor="login-email">Email</label>
+              <label htmlFor="login-email">Email or username</label>
               <input
                 id="login-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
                 required
-                autoComplete="email"
+                autoComplete="username"
               />
             </div>
             <div className="form-group">
@@ -354,7 +361,7 @@ export default function WelcomePage() {
               onClick={() => {
                 setForgotOpen(true);
                 setForgotSlug(tenantSlug);
-                setForgotEmail(email);
+                setForgotEmail(EMAIL_PATTERN.test(loginId.trim()) ? loginId.trim() : "");
                 setForgotMsg("");
                 setForgotError("");
               }}
@@ -389,8 +396,9 @@ export default function WelcomePage() {
             </div>
             <form onSubmit={handleForgotPassword} className="modal-body auth-form">
               <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-                Enter your Company ID and email. Your company administrator can reset the password
-                from User Management.
+                Enter your Company ID and email. A one-time reset token is generated server-side —
+                your company administrator can find it in the server logs, or reset your password
+                directly from User Management.
               </p>
               <div className="form-group">
                 <label htmlFor="forgot-slug">Company ID</label>
@@ -413,7 +421,15 @@ export default function WelcomePage() {
                 />
               </div>
               {forgotError ? <p className="auth-error">{forgotError}</p> : null}
-              {forgotMsg ? <p className="landing-success-inline">{forgotMsg}</p> : null}
+              {forgotMsg ? (
+                <p className="landing-success-inline">
+                  {forgotMsg} Already have a reset token?{" "}
+                  <Link href="/reset-password" onClick={() => setForgotOpen(false)}>
+                    Reset your password
+                  </Link>
+                  .
+                </p>
+              ) : null}
               <div className="modal-footer">
                 <button
                   type="button"

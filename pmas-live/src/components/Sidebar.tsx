@@ -41,8 +41,10 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const refreshToken = useAuthStore((s) => s.refreshToken);
   const clearSession = useAuthStore((s) => s.clearSession);
   const [collapsed, setCollapsed] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const { close: closeMobileNav } = useMobileNav();
 
   const platform = Boolean(user && isPlatformRole(user.role));
@@ -165,13 +167,21 @@ export function Sidebar() {
         <button
           type="button"
           className="sidebar-logout-btn"
+          disabled={signingOut}
           onClick={() => {
             closeMobileNav();
-            clearSession();
-            router.replace("/welcome");
+            setSigningOut(true);
+            const done = () => {
+              clearSession();
+              router.replace("/welcome");
+            };
+            httpClient
+              .post("/api/v1/auth/logout", { refresh_token: refreshToken ?? "" })
+              .catch(() => undefined)
+              .finally(done);
           }}
         >
-          Sign out
+          {signingOut ? "Signing out…" : "Sign out"}
         </button>
       </div>
     </aside>

@@ -30,11 +30,13 @@ func NewService(
 }
 
 type CreateCommentInput struct {
-	EntityType string
-	EntityID   uuid.UUID
-	AuthorID   uuid.UUID
-	Body       string
-	ParentID   *uuid.UUID
+	EntityType          string
+	EntityID            uuid.UUID
+	AuthorID            uuid.UUID
+	Body                string
+	ParentID            *uuid.UUID
+	MentionEmployeeIDs  []uuid.UUID
+	MentionTeamIDs      []uuid.UUID
 }
 
 func (s *Service) CreateComment(ctx context.Context, companyID uuid.UUID, in CreateCommentInput) (*support.Comment, error) {
@@ -49,6 +51,42 @@ func (s *Service) CreateComment(ctx context.Context, companyID uuid.UUID, in Cre
 		"comment_id": c.ID,
 	})
 	_ = s.act.Append(ctx, act)
+
+	seen := map[uuid.UUID]bool{}
+	for _, empID := range in.MentionEmployeeIDs {
+		if empID == uuid.Nil || empID == in.AuthorID || seen[empID] {
+			continue
+		}
+		seen[empID] = true
+		_, _ = s.db.Q(ctx).ExecContext(ctx, `
+			INSERT INTO comment_mentions (id, company_id, comment_id, mentioned_employee_id, created_at)
+			VALUES ($1,$2,$3,$4,NOW())`, uuid.New(), companyID, c.ID, empID)
+		n := support.NewNotification(companyID, empID, "MENTION", "You were mentioned", in.Body)
+		_ = s.ntf.Create(ctx, n)
+	}
+	for _, teamID := range in.MentionTeamIDs {
+		if teamID == uuid.Nil {
+			continue
+		}
+		_, _ = s.db.Q(ctx).ExecContext(ctx, `
+			INSERT INTO comment_mentions (id, company_id, comment_id, mentioned_team_id, created_at)
+			VALUES ($1,$2,$3,$4,NOW())`, uuid.New(), companyID, c.ID, teamID)
+		rows, err := s.db.Q(ctx).QueryContext(ctx, `
+			SELECT employee_id FROM team_members_vsm WHERE company_id=$1 AND team_id=$2`, companyID, teamID)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var empID uuid.UUID
+			if err := rows.Scan(&empID); err != nil || empID == in.AuthorID || seen[empID] {
+				continue
+			}
+			seen[empID] = true
+			n := support.NewNotification(companyID, empID, "MENTION", "Your team was mentioned", in.Body)
+			_ = s.ntf.Create(ctx, n)
+		}
+		rows.Close()
+	}
 	return c, nil
 }
 
@@ -108,6 +146,15 @@ func (s *Service) ListActivity(ctx context.Context, companyID uuid.UUID, entityT
 
 func (s *Service) ListNotifications(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]support.Notification, shared.PageMeta, error) {
 	items, total, err := s.ntf.ListByCompany(ctx, companyID, q)
+	if err != nil {
+		return nil, shared.PageMeta{}, err
+	}
+	return items, shared.NewPageMeta(q, total), nil
+}
+
+// ListNotificationsForReceiver returns the personal inbox for an employee.
+func (s *Service) ListNotificationsForReceiver(ctx context.Context, companyID, receiverID uuid.UUID, q shared.PageQuery) ([]support.Notification, shared.PageMeta, error) {
+	items, total, err := s.ntf.ListByReceiver(ctx, companyID, receiverID, q)
 	if err != nil {
 		return nil, shared.PageMeta{}, err
 	}

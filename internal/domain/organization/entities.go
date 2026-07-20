@@ -11,6 +11,9 @@ import (
 const (
 	StatusActive   = "ACTIVE"
 	StatusArchived = "ARCHIVED"
+	// StatusOnHold is an MVP Feature Planning addition for companies temporarily
+	// paused (e.g. billing/compliance hold) without being archived.
+	StatusOnHold = "ON_HOLD"
 )
 
 type Company struct {

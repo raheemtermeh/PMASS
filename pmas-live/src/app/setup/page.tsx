@@ -43,12 +43,12 @@ export default function SetupPage() {
     }
     setLoading(true);
     try {
-      const res = await httpClient.post<{ token: string; user: AuthUser }>(
+      const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/bootstrap",
         { email, password, full_name: fullName },
         false,
       );
-      setSession(res.token, res.user);
+      setSession(res.token, res.user, res.refresh_token ?? null);
       router.replace("/platform/tenants");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed");

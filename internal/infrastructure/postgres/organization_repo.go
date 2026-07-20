@@ -235,9 +235,9 @@ func (r *TeamRepo) list(ctx context.Context, companyID, departmentID uuid.UUID, 
 
 func (r *TeamRepo) Update(ctx context.Context, t *organization.Team) error {
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE teams SET lead_id=$1, name=$2, description=$3, status=$4, version=version+1, updated_at=$5
-		WHERE company_id=$6 AND id=$7 AND version=$8`,
-		t.LeadID, t.Name, t.Description, t.Status, time.Now().UTC(), t.CompanyID, t.ID, t.Version,
+		UPDATE teams SET department_id=$1, lead_id=$2, name=$3, description=$4, status=$5, version=version+1, updated_at=$6
+		WHERE company_id=$7 AND id=$8 AND version=$9`,
+		t.DepartmentID, t.LeadID, t.Name, t.Description, t.Status, time.Now().UTC(), t.CompanyID, t.ID, t.Version,
 	)
 	if err != nil {
 		return err

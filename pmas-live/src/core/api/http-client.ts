@@ -16,6 +16,8 @@ export class HttpError extends Error {
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   auth?: boolean;
+  /** Internal: prevents the 401 refresh interceptor from retrying an already-retried request. */
+  _retried?: boolean;
 }
 
 interface ApiEnvelope<T = unknown> {
@@ -78,11 +80,60 @@ function errorFromPayload(payload: unknown, status: number): HttpError {
   return new HttpError(`Request failed with status ${status}`, status, payload);
 }
 
+// Endpoints that must never trigger the 401 refresh-and-retry flow (they are
+// either unauthenticated already, or are the refresh call itself).
+const NO_REFRESH_PATHS = [
+  "/api/v1/auth/login",
+  "/api/v1/auth/refresh",
+  "/api/v1/auth/logout",
+  "/api/v1/auth/status",
+  "/api/v1/auth/bootstrap",
+  "/api/v1/auth/forgot-password",
+  "/api/v1/auth/reset-password",
+];
+
+// Single-flight guard so concurrent 401s only trigger one refresh call.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const { refreshToken, user, setSession, clearSession } = useAuthStore.getState();
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        const payload = await parseJsonSafe(res);
+        if (!res.ok) {
+          clearSession();
+          return null;
+        }
+        const data = unwrapData<{ token: string; refresh_token: string; user: typeof user }>(payload);
+        if (!data?.token || !data?.user) {
+          clearSession();
+          return null;
+        }
+        setSession(data.token, data.user, data.refresh_token ?? null);
+        return data.token;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
 export async function httpRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { body, headers, auth = true, ...rest } = options;
+  const { body, headers, auth = true, _retried, ...rest } = options;
   const token = useAuthStore.getState().token;
 
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -94,6 +145,18 @@ export async function httpRequest<T>(
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  if (
+    response.status === 401 &&
+    auth &&
+    !_retried &&
+    !NO_REFRESH_PATHS.some((p) => path.startsWith(p))
+  ) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return httpRequest<T>(path, { ...options, _retried: true });
+    }
+  }
 
   const payload = await parseJsonSafe(response);
 

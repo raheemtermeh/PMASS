@@ -11,6 +11,7 @@ import (
 	planningapp "PMAS/internal/application/planning"
 	productapp "PMAS/internal/application/product"
 	"PMAS/internal/domain/shared"
+	"PMAS/internal/middleware"
 )
 
 type OrgHandler struct {
@@ -197,6 +198,25 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "move" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			DepartmentID uuid.UUID `json:"department_id"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		t, err := h.Svc.MoveTeamBetweenDepartments(r.Context(), companyID, id, body.DepartmentID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
 	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -364,6 +384,7 @@ func (h *OrgHandler) HandleCompany(w http.ResponseWriter, r *http.Request) {
 			LogoURL  string `json:"logo_url"`
 			Language string `json:"language"`
 			Timezone string `json:"timezone"`
+			Status   string `json:"status"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -373,6 +394,13 @@ func (h *OrgHandler) HandleCompany(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			WriteErr(w, err)
 			return
+		}
+		if strings.TrimSpace(body.Status) != "" {
+			c, err = h.Svc.UpdateCompanyStatus(r.Context(), companyID, body.Status)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
 		}
 		WriteOK(w, http.StatusOK, c, nil)
 	case http.MethodDelete:
@@ -405,11 +433,20 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			OwnerID        uuid.UUID `json:"owner_id"`
-			Name           string    `json:"name"`
-			Description    string    `json:"description"`
-			Category       string    `json:"category"`
-			ExecutionModel string    `json:"execution_model"`
+			OwnerID        uuid.UUID  `json:"owner_id"`
+			Name           string     `json:"name"`
+			Description    string     `json:"description"`
+			Category       string     `json:"category"`
+			ExecutionModel string     `json:"execution_model"`
+			Code           string     `json:"code"`
+			ProductType    string     `json:"product_type"`
+			ManagerID      *uuid.UUID `json:"manager_id"`
+			Priority       string     `json:"priority"`
+			Vision         string     `json:"vision"`
+			Goal           string     `json:"goal"`
+			SuccessMetrics string     `json:"success_metrics"`
+			BusinessValue  string     `json:"business_value"`
+			Visibility     string     `json:"visibility"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -418,6 +455,9 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		p, err := h.Svc.CreateProduct(r.Context(), companyID, productapp.CreateProductInput{
 			OwnerID: body.OwnerID, Name: body.Name, Description: body.Description,
 			Category: body.Category, ExecutionModel: body.ExecutionModel,
+			Code: body.Code, ProductType: body.ProductType, ManagerID: body.ManagerID,
+			Priority: body.Priority, Vision: body.Vision, Goal: body.Goal,
+			SuccessMetrics: body.SuccessMetrics, BusinessValue: body.BusinessValue, Visibility: body.Visibility,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -447,6 +487,14 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 			Description    *string `json:"description"`
 			Category       *string `json:"category"`
 			ExecutionModel *string `json:"execution_model"`
+			Code           *string `json:"code"`
+			ProductType    *string `json:"product_type"`
+			Priority       *string `json:"priority"`
+			Vision         *string `json:"vision"`
+			Goal           *string `json:"goal"`
+			SuccessMetrics *string `json:"success_metrics"`
+			BusinessValue  *string `json:"business_value"`
+			Visibility     *string `json:"visibility"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -458,6 +506,9 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		}
 		p, err := h.Svc.UpdateProduct(r.Context(), companyID, id, productapp.UpdateProductInput{
 			Name: body.Name, Description: body.Description, Category: body.Category,
+			Code: body.Code, ProductType: body.ProductType, Priority: body.Priority,
+			Vision: body.Vision, Goal: body.Goal, SuccessMetrics: body.SuccessMetrics,
+			BusinessValue: body.BusinessValue, Visibility: body.Visibility,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -495,6 +546,147 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "manager" && r.Method == http.MethodPut:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			ManagerID *uuid.UUID `json:"manager_id"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		p, err := h.Svc.ChangeManager(r.Context(), companyID, id, body.ManagerID, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.RestoreProduct(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "soft-delete" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.SoftDeleteProduct(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "hold" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.HoldProduct(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "resume" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.ResumeProduct(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		items, err := h.Svc.ListProductMembers(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			EmployeeID uuid.UUID `json:"employee_id"`
+			Role       string    `json:"role"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		m, err := h.Svc.AddProductMember(r.Context(), companyID, id, productapp.AddProductMemberInput{
+			EmployeeID: body.EmployeeID, Role: body.Role,
+		})
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusCreated, m, nil)
+	case len(parts) == 3 && parts[1] == "members" && r.Method == http.MethodDelete:
+		id, err1 := ParseUUIDParam(parts[0])
+		empID, err2 := ParseUUIDParam(parts[2])
+		if err1 != nil || err2 != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		if err := h.Svc.RemoveProductMember(r.Context(), companyID, id, empID, nil); err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, map[string]string{"status": "removed"}, nil)
+	case len(parts) == 2 && parts[1] == "move-prev" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		_ = DecodeJSON(r, &body)
+		si, err := h.Svc.MoveToPreviousStage(r.Context(), companyID, id, body.Reason, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, si, nil)
+	case len(parts) == 2 && parts[1] == "reopen-stage" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		si, err := h.Svc.ReopenStage(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, si, nil)
 	case len(parts) == 2 && parts[1] == "start" && r.Method == http.MethodPost:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -629,6 +821,53 @@ func (h *ProductHandler) HandlePipelines(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		WriteOK(w, http.StatusOK, map[string]string{"status": "deleted"}, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Name        *string `json:"name"`
+			Description *string `json:"description"`
+			Status      *string `json:"status"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		pl, err := h.Svc.UpdatePipeline(r.Context(), companyID, id, productapp.UpdatePipelineInput{
+			Name: body.Name, Description: body.Description, Status: body.Status,
+		})
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, pl, nil)
+	case len(parts) == 2 && parts[1] == "archive" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		pl, err := h.Svc.ArchivePipeline(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, pl, nil)
+	case len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		pl, err := h.Svc.RestorePipeline(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, pl, nil)
 	case len(parts) == 2 && parts[1] == "stages" && r.Method == http.MethodPost:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -658,7 +897,9 @@ func (h *ProductHandler) HandleStages(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/stages"), "/")
 	parts := splitPath(path)
-	if len(parts) == 1 && r.Method == http.MethodDelete {
+
+	switch {
+	case len(parts) == 1 && r.Method == http.MethodDelete:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
 			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
@@ -669,9 +910,50 @@ func (h *ProductHandler) HandleStages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, map[string]string{"status": "deleted"}, nil)
-		return
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Name          *string `json:"name"`
+			Description   *string `json:"description"`
+			EntryCriteria *string `json:"entry_criteria"`
+			ExitCriteria  *string `json:"exit_criteria"`
+			Color         *string `json:"color"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		st, err := h.Svc.UpdateStage(r.Context(), companyID, id, productapp.UpdateStageInput{
+			Name: body.Name, Description: body.Description,
+			EntryCriteria: body.EntryCriteria, ExitCriteria: body.ExitCriteria, Color: body.Color,
+		})
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, st, nil)
+	case len(parts) == 1 && parts[0] == "reorder" && r.Method == http.MethodPost:
+		var body struct {
+			PipelineID uuid.UUID   `json:"pipeline_id"`
+			OrderedIDs []uuid.UUID `json:"ordered_ids"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		stages, err := h.Svc.ReorderStages(r.Context(), companyID, body.PipelineID, body.OrderedIDs)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, stages, nil)
+	default:
+		WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 	}
-	WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 }
 
 type PlanningHandler struct {
@@ -697,6 +979,20 @@ func (h *PlanningHandler) HandleProjects(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			items, meta, err := h.Svc.ListProjectsByProduct(r.Context(), companyID, productID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
+		if oid := r.URL.Query().Get("owner_id"); oid != "" {
+			ownerID, err := ParseUUIDParam(oid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid owner_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListProjectsByOwner(r.Context(), companyID, ownerID, q)
 			if err != nil {
 				WriteErr(w, err)
 				return
@@ -740,6 +1036,39 @@ func (h *PlanningHandler) HandleProjects(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Name                  *string    `json:"name"`
+			Description           *string    `json:"description"`
+			Code                  *string    `json:"code"`
+			Goal                  *string    `json:"goal"`
+			Priority              *string    `json:"priority"`
+			Status                *string    `json:"status"`
+			OwnerID               *uuid.UUID `json:"owner_id"`
+			ManagerID             *uuid.UUID `json:"manager_id"`
+			StartDate             *time.Time `json:"start_date"`
+			TargetEndDate         *time.Time `json:"target_end_date"`
+			EstimatedDurationDays *int       `json:"estimated_duration_days"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		p, err := h.Svc.UpdateProject(r.Context(), companyID, id, planningapp.UpdateProjectInput{
+			Name: body.Name, Description: body.Description, Code: body.Code, Goal: body.Goal,
+			Priority: body.Priority, Status: body.Status, OwnerID: body.OwnerID, ManagerID: body.ManagerID,
+			StartDate: body.StartDate, TargetEndDate: body.TargetEndDate, EstimatedDurationDays: body.EstimatedDurationDays,
+		})
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -752,6 +1081,74 @@ func (h *PlanningHandler) HandleProjects(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.RestoreProject(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "soft-delete" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		p, err := h.Svc.SoftDeleteProject(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, p, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		items, err := h.Svc.ListProjectMembers(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			EmployeeID uuid.UUID `json:"employee_id"`
+			Role       string    `json:"role"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		m, err := h.Svc.AddProjectMember(r.Context(), companyID, id, body.EmployeeID, body.Role)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusCreated, m, nil)
+	case len(parts) == 3 && parts[1] == "members" && r.Method == http.MethodDelete:
+		id, err1 := ParseUUIDParam(parts[0])
+		employeeID, err2 := ParseUUIDParam(parts[2])
+		if err1 != nil || err2 != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		if err := h.Svc.RemoveProjectMember(r.Context(), companyID, id, employeeID); err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, map[string]string{"status": "removed"}, nil)
 	default:
 		WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 	}
@@ -767,12 +1164,27 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 
 	switch {
 	case len(parts) == 0 && r.Method == http.MethodGet:
+		q := PageQueryFromRequest(r)
+		if oid := r.URL.Query().Get("owner_id"); oid != "" {
+			ownerID, err := ParseUUIDParam(oid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid owner_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListFeaturesByOwner(r.Context(), companyID, ownerID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
 		projectID, err := ParseUUIDParam(r.URL.Query().Get("project_id"))
 		if err != nil {
 			WriteErr(w, shared.New("INVALID_ID", "project_id is required", 400))
 			return
 		}
-		items, meta, err := h.Svc.ListFeaturesByProject(r.Context(), companyID, projectID, PageQueryFromRequest(r))
+		items, meta, err := h.Svc.ListFeaturesByProject(r.Context(), companyID, projectID, q)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -808,6 +1220,68 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		WriteOK(w, http.StatusOK, f, nil)
+	case len(parts) == 1 && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Title           *string    `json:"title"`
+			Description     *string    `json:"description"`
+			Code            *string    `json:"code"`
+			Goal            *string    `json:"goal"`
+			FeatureType     *string    `json:"feature_type"`
+			Priority        *string    `json:"priority"`
+			Status          *string    `json:"status"`
+			OwnerID         *uuid.UUID `json:"owner_id"`
+			TeamID          *uuid.UUID `json:"team_id"`
+			ParentFeatureID *uuid.UUID `json:"parent_feature_id"`
+			StartDate       *time.Time `json:"start_date"`
+			TargetEndDate   *time.Time `json:"target_end_date"`
+			EstimatedEffort *int       `json:"estimated_effort"`
+			ProgressPct     *int       `json:"progress_pct"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		f, err := h.Svc.UpdateFeature(r.Context(), companyID, id, planningapp.UpdateFeatureInput{
+			Title: body.Title, Description: body.Description, Code: body.Code, Goal: body.Goal,
+			FeatureType: body.FeatureType, Priority: body.Priority, Status: body.Status,
+			OwnerID: body.OwnerID, TeamID: body.TeamID, ParentFeatureID: body.ParentFeatureID,
+			StartDate: body.StartDate, TargetEndDate: body.TargetEndDate,
+			EstimatedEffort: body.EstimatedEffort, ProgressPct: body.ProgressPct,
+		})
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, f, nil)
+	case len(parts) == 1 && r.Method == http.MethodDelete:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		f, err := h.Svc.ArchiveFeature(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, f, nil)
+	case len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		f, err := h.Svc.RestoreFeature(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, f, nil)
 	case len(parts) == 2 && parts[1] == "status" && r.Method == http.MethodPut:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -827,6 +1301,81 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		WriteOK(w, http.StatusOK, f, nil)
+	case len(parts) == 2 && parts[1] == "dependencies" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		deps, err := h.Svc.ListFeatureDependencies(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, deps, nil)
+	case len(parts) == 2 && parts[1] == "dependencies" && r.Method == http.MethodPut:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			DependsOn []uuid.UUID `json:"depends_on"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		f, err := h.Svc.SetFeatureDependencies(r.Context(), companyID, id, body.DependsOn)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, f, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		items, err := h.Svc.ListFeatureMembers(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
+	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			EmployeeID uuid.UUID `json:"employee_id"`
+			Role       string    `json:"role"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		m, err := h.Svc.AddFeatureMember(r.Context(), companyID, id, body.EmployeeID, body.Role)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusCreated, m, nil)
+	case len(parts) == 3 && parts[1] == "members" && r.Method == http.MethodDelete:
+		id, err1 := ParseUUIDParam(parts[0])
+		employeeID, err2 := ParseUUIDParam(parts[2])
+		if err1 != nil || err2 != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		if err := h.Svc.RemoveFeatureMember(r.Context(), companyID, id, employeeID); err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, map[string]string{"status": "removed"}, nil)
 	default:
 		WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 	}
@@ -841,13 +1390,57 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 	parts := splitPath(path)
 
 	switch {
+	case len(parts) == 1 && parts[0] == "my" && r.Method == http.MethodGet:
+		var assigneeOverride *uuid.UUID
+		if aid := r.URL.Query().Get("assignee_id"); aid != "" {
+			id, err := ParseUUIDParam(aid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid assignee_id", 400))
+				return
+			}
+			assigneeOverride = &id
+		}
+		email := ""
+		if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
+			email = claims.Email
+		}
+		items, meta, err := h.Svc.ListMyTasks(r.Context(), companyID, email, assigneeOverride, PageQueryFromRequest(r))
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodGet:
+		q := PageQueryFromRequest(r)
+		if aid := r.URL.Query().Get("assignee_id"); aid != "" {
+			assigneeID, err := ParseUUIDParam(aid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid assignee_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListMyTasks(r.Context(), companyID, "", &assigneeID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
+		if r.URL.Query().Get("overdue") == "true" {
+			items, meta, err := h.Svc.ListOverdueTasks(r.Context(), companyID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
 		featureID, err := ParseUUIDParam(r.URL.Query().Get("feature_id"))
 		if err != nil {
 			WriteErr(w, shared.New("INVALID_ID", "feature_id is required", 400))
 			return
 		}
-		items, meta, err := h.Svc.ListTasksByFeature(r.Context(), companyID, featureID, PageQueryFromRequest(r))
+		items, meta, err := h.Svc.ListTasksByFeature(r.Context(), companyID, featureID, q)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -928,6 +1521,66 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "pause" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		t, err := h.Svc.PauseTask(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "resume" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		t, err := h.Svc.ResumeTask(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "reopen" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		t, err := h.Svc.ReopenTask(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		t, err := h.Svc.RestoreTask(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "soft-delete" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		t, err := h.Svc.SoftDeleteTask(r.Context(), companyID, id, nil)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -947,16 +1600,25 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Title    string     `json:"title"`
-			Priority string     `json:"priority"`
-			Status   string     `json:"status"`
-			DueDate  *time.Time `json:"due_date"`
+			Title            *string    `json:"title"`
+			Description      *string    `json:"description"`
+			TaskType         *string    `json:"task_type"`
+			Priority         *string    `json:"priority"`
+			Status           *string    `json:"status"`
+			DueDate          *time.Time `json:"due_date"`
+			StartDate        *time.Time `json:"start_date"`
+			EstimatedMinutes *int       `json:"estimated_minutes"`
+			ActualMinutes    *int       `json:"actual_minutes"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		t, err := h.Svc.UpdateTask(r.Context(), companyID, id, body.Title, body.Priority, body.Status, body.DueDate)
+		t, err := h.Svc.UpdateTask(r.Context(), companyID, id, planningapp.UpdateTaskInput{
+			Title: body.Title, Description: body.Description, TaskType: body.TaskType, Priority: body.Priority,
+			Status: body.Status, DueDate: body.DueDate, StartDate: body.StartDate,
+			EstimatedMinutes: body.EstimatedMinutes, ActualMinutes: body.ActualMinutes,
+		})
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -981,6 +1643,86 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "checklist" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		items, err := h.Svc.ListChecklist(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
+	case len(parts) == 2 && parts[1] == "checklist" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Title string `json:"title"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		item, err := h.Svc.CreateChecklistItem(r.Context(), companyID, id, body.Title)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusCreated, item, nil)
+	case len(parts) == 3 && parts[1] == "checklist" && parts[2] == "reorder" && r.Method == http.MethodPut:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			OrderedIDs []uuid.UUID `json:"ordered_ids"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		items, err := h.Svc.ReorderChecklist(r.Context(), companyID, id, body.OrderedIDs)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
+	case len(parts) == 3 && parts[1] == "checklist" && (r.Method == http.MethodPut || r.Method == http.MethodPatch):
+		itemID, err := ParseUUIDParam(parts[2])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			IsDone bool `json:"is_done"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		item, err := h.Svc.ToggleChecklist(r.Context(), companyID, itemID, body.IsDone)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, item, nil)
+	case len(parts) == 3 && parts[1] == "checklist" && r.Method == http.MethodDelete:
+		itemID, err := ParseUUIDParam(parts[2])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		if err := h.Svc.DeleteChecklistItem(r.Context(), companyID, itemID); err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, map[string]string{"status": "deleted"}, nil)
 	default:
 		WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 	}

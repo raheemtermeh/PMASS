@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"PMAS/internal/auth"
 	"PMAS/internal/middleware"
@@ -120,14 +121,14 @@ func (h *Handler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.issueSession(user)
+	accessToken, refreshToken, err := h.issueSession(r, user)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(models.LoginResponse{Token: token, User: *user})
+	json.NewEncoder(w).Encode(models.LoginResponse{Token: accessToken, RefreshToken: refreshToken, User: *user})
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -147,18 +148,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Username = strings.TrimSpace(req.Username)
 	req.TenantSlug = strings.TrimSpace(strings.ToLower(req.TenantSlug))
-	if req.Email == "" || req.Password == "" {
+	if (req.Email == "" && req.Username == "") || req.Password == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "email and password are required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "email or username, and password, are required"})
 		return
 	}
 
 	var (
-		userID           int
+		userID               int
 		hash, fullName, role string
-		isActive         bool
-		tenantID         sql.NullInt64
+		isActive             bool
+		tenantID             sql.NullInt64
 	)
 
 	var err error
@@ -166,20 +168,22 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		err = h.db.QueryRowContext(r.Context(), `
 			SELECT id, password_hash, full_name, role, is_active, tenant_id
 			FROM app_users
-			WHERE email = $1 AND tenant_id IS NULL
-		`, req.Email).Scan(&userID, &hash, &fullName, &role, &isActive, &tenantID)
+			WHERE tenant_id IS NULL
+			  AND ((CAST($1 AS TEXT) <> '' AND email = $1) OR (CAST($2 AS TEXT) <> '' AND username = $2))
+		`, req.Email, req.Username).Scan(&userID, &hash, &fullName, &role, &isActive, &tenantID)
 	} else {
 		err = h.db.QueryRowContext(r.Context(), `
 			SELECT u.id, u.password_hash, u.full_name, u.role, u.is_active, u.tenant_id
 			FROM app_users u
 			JOIN tenants t ON t.id = u.tenant_id
-			WHERE u.email = $1 AND t.slug = $2 AND t.is_active = true
-		`, req.Email, req.TenantSlug).Scan(&userID, &hash, &fullName, &role, &isActive, &tenantID)
+			WHERE t.slug = $3 AND t.is_active = true
+			  AND ((CAST($1 AS TEXT) <> '' AND u.email = $1) OR (CAST($2 AS TEXT) <> '' AND u.username = $2))
+		`, req.Email, req.Username, req.TenantSlug).Scan(&userID, &hash, &fullName, &role, &isActive, &tenantID)
 	}
 
 	if err == sql.ErrNoRows {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email, or password"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email/username, or password"})
 		return
 	}
 	if err != nil {
@@ -194,7 +198,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !auth.CheckPassword(hash, req.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email, or password"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email/username, or password"})
 		return
 	}
 
@@ -204,17 +208,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.issueSession(user)
+	accessToken, refreshToken, err := h.issueSession(r, user)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(models.LoginResponse{Token: token, User: *user})
+	json.NewEncoder(w).Encode(models.LoginResponse{Token: accessToken, RefreshToken: refreshToken, User: *user})
 }
 
 // ForgotPassword accepts a reset request without revealing whether the account exists.
-// Email delivery is out of MVP scope — operators reset passwords from User Management.
+// A one-time reset token is generated and stored (hashed); the plaintext token is
+// logged to stdout so operators can hand it to the user until SMTP delivery exists.
 func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if !h.setupResponse(w, r) {
 		return
@@ -254,12 +259,329 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		log.Printf("Forgot password requested for user_id=%d email=%s tenant=%s", userID, req.Email, req.TenantSlug)
+		plainToken, hash, genErr := auth.GenerateOpaqueToken()
+		if genErr != nil {
+			log.Printf("Error generating password reset token for user_id=%d: %v", userID, genErr)
+		} else {
+			expiresAt := time.Now().Add(auth.PasswordResetTokenTTL)
+			if _, insErr := h.db.ExecContext(r.Context(), `
+				INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+				VALUES ($1, $2, $3)
+			`, userID, hash, expiresAt); insErr != nil {
+				log.Printf("Error storing password reset token for user_id=%d: %v", userID, insErr)
+			} else {
+				log.Printf("Password reset token for user_id=%d: %s", userID, plainToken)
+			}
+		}
 	}
 
+	// Deliberately identical response whether or not the account exists.
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "If an account exists for that email, your company administrator can reset the password from User Management. Contact your admin if you still cannot sign in.",
+		"message": "If an account exists for that email, a password reset link has been generated.",
 	})
+}
+
+// ResetPassword consumes a one-time password reset token (issued via ForgotPassword)
+// and sets a new password, invalidating the token and all existing sessions.
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.setupResponse(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.ResetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request payload"})
+		return
+	}
+
+	req.Token = strings.TrimSpace(req.Token)
+	if req.Token == "" || req.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "token and password are required"})
+		return
+	}
+	if err := auth.ValidatePasswordStrength(req.Password); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	hash := auth.HashOpaqueToken(req.Token)
+
+	var (
+		tokenID   string
+		userID    int
+		expiresAt time.Time
+		usedAt    sql.NullTime
+	)
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = $1
+	`, hash).Scan(&tokenID, &userID, &expiresAt, &usedAt)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired reset token"})
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if usedAt.Valid || time.Now().After(expiresAt) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired reset token"})
+		return
+	}
+
+	passHash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE app_users
+		SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`, passHash, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1
+	`, tokenID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL
+	`, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "Password has been reset"})
+}
+
+// ChangePassword lets an authenticated user set a new password after confirming
+// their current one. All existing refresh tokens are revoked.
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if !h.setupResponse(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request payload"})
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "current_password and new_password are required"})
+		return
+	}
+	if err := auth.ValidatePasswordStrength(req.NewPassword); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	var currentHash string
+	if err := h.db.QueryRowContext(r.Context(), `SELECT password_hash FROM app_users WHERE id = $1`, claims.UserID).Scan(&currentHash); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !auth.CheckPassword(currentHash, req.CurrentPassword) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Current password is incorrect"})
+		return
+	}
+
+	newHash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE app_users
+		SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`, newHash, claims.UserID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL
+	`, claims.UserID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "Password changed"})
+}
+
+// Refresh validates an opaque refresh token, rotates it, and issues a new
+// access/refresh token pair. The presented token is revoked whether or not
+// rotation succeeds, so a stolen-and-replayed token cannot be reused.
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	if !h.setupResponse(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.RefreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request payload"})
+		return
+	}
+
+	req.RefreshToken = strings.TrimSpace(req.RefreshToken)
+	if req.RefreshToken == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "refresh_token is required"})
+		return
+	}
+
+	hash := auth.HashOpaqueToken(req.RefreshToken)
+
+	var (
+		tokenID   string
+		userID    int
+		expiresAt time.Time
+		revokedAt sql.NullTime
+	)
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1
+	`, hash).Scan(&tokenID, &userID, &expiresAt, &revokedAt)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired refresh token"})
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if revokedAt.Valid || time.Now().After(expiresAt) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired refresh token"})
+		return
+	}
+
+	// Revoke immediately (rotation) before minting a replacement, so a failure
+	// mid-request cannot leave the old token usable again.
+	if _, err := h.db.ExecContext(r.Context(), `
+		UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1
+	`, tokenID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.loadUserWithPermissions(r, userID)
+	if err != nil || !user.IsActive {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Session revoked or expired"})
+		return
+	}
+
+	accessToken, refreshToken, err := h.issueSession(r, user)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(models.LoginResponse{Token: accessToken, RefreshToken: refreshToken, User: *user})
+}
+
+// Logout revokes the refresh token supplied in the request body (if any) and,
+// when a still-valid access token is presented, revokes every refresh token
+// belonging to that user. Authentication is intentionally optional: a client
+// that only kept its refresh token (expired access token) can still log out.
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	if !h.setupResponse(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.LogoutRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	req.RefreshToken = strings.TrimSpace(req.RefreshToken)
+
+	if req.RefreshToken != "" {
+		hash := auth.HashOpaqueToken(req.RefreshToken)
+		if _, err := h.db.ExecContext(r.Context(), `
+			UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
+			WHERE token_hash = $1 AND revoked_at IS NULL
+		`, hash); err != nil {
+			log.Printf("Error revoking refresh token on logout: %v", err)
+		}
+	}
+
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			if claims, err := auth.ParseToken(parts[1]); err == nil {
+				if _, err := h.db.ExecContext(r.Context(), `
+					UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
+					WHERE user_id = $1 AND revoked_at IS NULL
+				`, claims.UserID); err != nil {
+					log.Printf("Error revoking sessions on logout: %v", err)
+				}
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "Logged out"})
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +659,30 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID i
 		}
 	}
 
+	changingPassword := req.Password != nil && strings.TrimSpace(*req.Password) != ""
+	if changingPassword {
+		if req.CurrentPassword == nil || strings.TrimSpace(*req.CurrentPassword) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "current_password is required to change password"})
+			return
+		}
+		if err := auth.ValidatePasswordStrength(*req.Password); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		var currentHash string
+		if err := h.db.QueryRowContext(r.Context(), `SELECT password_hash FROM app_users WHERE id = $1`, userID).Scan(&currentHash); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if !auth.CheckPassword(currentHash, *req.CurrentPassword) {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Current password is incorrect"})
+			return
+		}
+	}
+
 	tx, err := h.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -362,12 +708,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID i
 		return
 	}
 
-	if req.Password != nil && strings.TrimSpace(*req.Password) != "" {
-		if err := auth.ValidatePasswordStrength(*req.Password); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
+	if changingPassword {
 		hash, err := auth.HashPassword(*req.Password)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -378,6 +719,12 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID i
 			SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $2
 		`, hash, userID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL
+		`, userID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -505,6 +852,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.FullName = strings.TrimSpace(req.FullName)
+	req.Username = strings.TrimSpace(req.Username)
 	if req.Email == "" || req.Password == "" || req.FullName == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "email, password, and full_name are required"})
@@ -539,15 +887,20 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	var username interface{}
+	if req.Username != "" {
+		username = req.Username
+	}
+
 	var userID int
 	err = tx.QueryRowContext(r.Context(), `
-		INSERT INTO app_users (tenant_id, email, password_hash, full_name, role)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id
-	`, *claims.TenantID, req.Email, hash, req.FullName, role).Scan(&userID)
+		INSERT INTO app_users (tenant_id, email, password_hash, full_name, role, username)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+	`, *claims.TenantID, req.Email, hash, req.FullName, role, username).Scan(&userID)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Email already exists in this company"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Email or username already exists in this company"})
 			return
 		}
 		w.WriteHeader(http.StatusInternalServerError)
@@ -759,13 +1112,15 @@ func (h *Handler) GetPermissionsCatalog(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(auth.AllPermissions)
 }
 
-func (h *Handler) issueSession(user *models.AppUserWithPermissions) (string, error) {
+// issueSession mints a new access token plus an opaque refresh token, persisting
+// only the refresh token's SHA-256 hash so it can be revoked/rotated later.
+func (h *Handler) issueSession(r *http.Request, user *models.AppUserWithPermissions) (accessToken, refreshToken string, err error) {
 	var slug, name string
 	if user.Tenant != nil {
 		slug = user.Tenant.Slug
 		name = user.Tenant.Name
 	}
-	return auth.IssueToken(
+	accessToken, err = auth.IssueToken(
 		user.ID,
 		user.TenantID,
 		slug,
@@ -776,6 +1131,23 @@ func (h *Handler) issueSession(user *models.AppUserWithPermissions) (string, err
 		user.Permissions,
 		user.SessionVersion,
 	)
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshToken, refreshHash, err := auth.GenerateOpaqueToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	if _, err := h.db.ExecContext(r.Context(), `
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, user.ID, refreshHash, time.Now().Add(auth.RefreshTokenTTL)); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
 }
 
 func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.AppUserWithPermissions, error) {
@@ -783,16 +1155,17 @@ func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.
 	var tid sql.NullInt64
 	var firstName, lastName sql.NullString
 	var jobTitle, phone, bio sql.NullString
+	var username sql.NullString
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT id, tenant_id, email, full_name,
 		       COALESCE(first_name, ''), COALESCE(last_name, ''),
-		       job_title, phone, bio,
+		       job_title, phone, bio, username,
 		       role, is_active, COALESCE(session_version, 1), created_at, updated_at
 		FROM app_users WHERE id = $1
 	`, userID).Scan(
 		&u.ID, &tid, &u.Email, &u.FullName,
 		&firstName, &lastName,
-		&jobTitle, &phone, &bio,
+		&jobTitle, &phone, &bio, &username,
 		&u.Role, &u.IsActive, &u.SessionVersion, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
@@ -824,6 +1197,10 @@ func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.
 	if bio.Valid {
 		v := bio.String
 		u.Bio = &v
+	}
+	if username.Valid {
+		v := username.String
+		u.Username = &v
 	}
 
 	perms, err := h.loadPermissions(r, userID)
