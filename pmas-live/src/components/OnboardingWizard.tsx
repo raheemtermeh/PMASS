@@ -55,6 +55,7 @@ export function OnboardingWizard() {
   }
 
   function next() {
+    if (!user) return;
     if (isLast) {
       finish();
       router.push(

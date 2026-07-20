@@ -1,0 +1,14 @@
+.git
+.agents
+**/node_modules
+**/.next
+*.exe
+*.log
+.DS_Store
+api-err.log
+api-out.log
+scripts
+.env
+.env.local
+.env.*.local
+*.md

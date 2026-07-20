@@ -49,10 +49,3 @@ In development, API calls go through Next.js rewrites (`/api/*` → backend) so 
 3. Sign in → create users and assign workspace permissions
 4. Add business data to the database; views show empty states until then
 
-## vs `front/`
-
-| | `front/` | `pmas-live/` |
-|---|----------|--------------|
-| Data | Mock + partial API | API only |
-| Auth | None | JWT + RBAC |
-| Port | 3000 | 3001 |

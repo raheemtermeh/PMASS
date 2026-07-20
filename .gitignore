@@ -1,4 +1,3 @@
-
 .env.local
 .env.*.local
 pmas-api.exe
@@ -6,3 +5,6 @@ pmas-api.exe
 api-err.log
 api-out.log
 node_modules
+.DS_Store
+.agents/
+skills-lock.json

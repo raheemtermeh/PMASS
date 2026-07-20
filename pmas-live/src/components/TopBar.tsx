@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useMobileNav } from "@/components/MobileNavContext";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
@@ -23,6 +24,7 @@ export function TopBar() {
   const route = getRouteByPath(pathname);
   const user = useAuthStore((s) => s.user);
   const resetTour = useOnboardingStore((s) => s.resetForUser);
+  const { open: navOpen, toggle: toggleNav } = useMobileNav();
   const hasTenant = Boolean(user?.tenant_id);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -66,16 +68,29 @@ export function TopBar() {
 
   return (
     <header className="top-bar">
-      <div className="flex-col">
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-          {route?.title ?? "PMAS Live"}
-        </h1>
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
-          {route?.subtitle ?? "Value stream workspace"}
-        </p>
+      <div className="top-bar-leading">
+        <button
+          type="button"
+          className="mobile-nav-toggle"
+          aria-label={navOpen ? "Close menu" : "Open menu"}
+          aria-expanded={navOpen}
+          onClick={toggleNav}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <div className="flex-col">
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
+            {route?.title ?? "PMAS Live"}
+          </h1>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
+            {route?.subtitle ?? "Value stream workspace"}
+          </p>
+        </div>
       </div>
 
-      <div className="flex" style={{ alignItems: "center", gap: "1rem", position: "relative" }}>
+      <div className="top-bar-trailing flex" style={{ alignItems: "center", gap: "1rem", position: "relative" }}>
         {hasTenant ? (
           <form onSubmit={onSearch} style={{ position: "relative" }}>
             <input
@@ -86,6 +101,7 @@ export function TopBar() {
               }}
               onFocus={() => setOpen(true)}
               placeholder="Search products, tasks…"
+              className="top-bar-search"
               style={{
                 minWidth: 200,
                 padding: "0.4rem 0.65rem",
@@ -137,7 +153,7 @@ export function TopBar() {
         ) : null}
 
         {user?.tenant?.name && (
-          <div className="top-bar-badge">
+          <div className="top-bar-badge top-bar-badge-optional">
             <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
               {user.tenant.name}
             </span>
@@ -146,20 +162,20 @@ export function TopBar() {
         <NotificationBell />
         <button
           type="button"
-          className="btn btn-sm"
+          className="btn btn-sm top-bar-help-btn"
           onClick={() => user && resetTour(String(user.id))}
           title="Replay first-run setup wizard"
         >
           Help tour
         </button>
-        <div className="top-bar-badge">
+        <div className="top-bar-badge top-bar-badge-optional">
           <div className="pulse-indicator pulse-active" />
           <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
             Live Mode
           </span>
         </div>
         {activeProducts > 0 && (
-          <div className="top-bar-badge">
+          <div className="top-bar-badge top-bar-badge-optional">
             <span className="font-mono" style={{ fontSize: "0.75rem", fontWeight: 700 }}>
               {activeProducts} Active Product{activeProducts !== 1 ? "s" : ""}
             </span>

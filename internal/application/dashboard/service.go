@@ -2,6 +2,7 @@ package dashboardapp
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +16,9 @@ type Summary struct {
 	DraftReadyProducts int64 `json:"draft_ready_products"`
 	OpenTasks          int64 `json:"open_tasks"`
 	UnreadNotifs       int64 `json:"unread_notifications"`
+	Employees          int64 `json:"employees"`
+	Departments        int64 `json:"departments"`
+	Projects           int64 `json:"projects"`
 }
 
 type MyTask struct {
@@ -38,11 +42,64 @@ type DeptProduct struct {
 	ProductCount   int64     `json:"product_count"`
 }
 
+// NamedCount is a generic label/value pair for charts (company-scoped aggregates).
+type NamedCount struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+// DayCount is a date-bucketed series point for activity trend charts.
+type DayCount struct {
+	Day   string `json:"day"`
+	Count int64  `json:"count"`
+}
+
+// Charts holds live aggregates derived from the authenticated company database.
+type Charts struct {
+	ProductsByStatus []NamedCount `json:"products_by_status"`
+	TasksByStatus    []NamedCount `json:"tasks_by_status"`
+	TasksByPriority  []NamedCount `json:"tasks_by_priority"`
+	ActivityByDay    []DayCount   `json:"activity_by_day"`
+	StagesByStatus   []NamedCount `json:"stages_by_status"`
+}
+
+// FlowStage is one pipeline stage with live instance status for a product.
+type FlowStage struct {
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Order  int       `json:"order"`
+	Status string    `json:"status"`
+}
+
+// FlowProject is a project hanging under a product in the lifecycle graph.
+type FlowProject struct {
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Status string    `json:"status"`
+}
+
+// FlowProduct is a company product with its stage chain and projects.
+type FlowProduct struct {
+	ID       uuid.UUID     `json:"id"`
+	Name     string        `json:"name"`
+	Status   string        `json:"status"`
+	Stages   []FlowStage   `json:"stages"`
+	Projects []FlowProject `json:"projects"`
+}
+
+// FlowGraph is the Command Center lifecycle graph (company-scoped, live DB).
+type FlowGraph struct {
+	CompanyName string        `json:"company_name"`
+	Products    []FlowProduct `json:"products"`
+}
+
 type Dashboard struct {
-	Summary          Summary         `json:"summary"`
-	MyTasks          []MyTask        `json:"my_tasks"`
+	Summary          Summary          `json:"summary"`
+	Charts           Charts           `json:"charts"`
+	Flow             FlowGraph        `json:"flow"`
+	MyTasks          []MyTask         `json:"my_tasks"`
 	PipelineStatuses []PipelineStatus `json:"pipeline_statuses"`
-	DeptProducts     []DeptProduct   `json:"department_products"`
+	DeptProducts     []DeptProduct    `json:"department_products"`
 	RecentActivities []map[string]any `json:"recent_activities"`
 	Notifications    []map[string]any `json:"notifications"`
 }
@@ -56,6 +113,16 @@ func NewService(db *postgres.DB) *Service { return &Service{db: db} }
 func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid.UUID) (*Dashboard, error) {
 	q := s.db.Q(ctx)
 	out := &Dashboard{
+		Charts: Charts{
+			ProductsByStatus: []NamedCount{},
+			TasksByStatus:    []NamedCount{},
+			TasksByPriority:  []NamedCount{},
+			ActivityByDay:    []DayCount{},
+			StagesByStatus:   []NamedCount{},
+		},
+		Flow: FlowGraph{
+			Products: []FlowProduct{},
+		},
 		MyTasks:          []MyTask{},
 		PipelineStatuses: []PipelineStatus{},
 		DeptProducts:     []DeptProduct{},
@@ -68,6 +135,24 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status IN ('DRAFT','READY')`, companyID).Scan(&out.Summary.DraftReadyProducts)
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED')`, companyID).Scan(&out.Summary.OpenTasks)
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM notifications WHERE company_id=$1 AND is_read=false AND COALESCE(is_archived,false)=false`, companyID).Scan(&out.Summary.UnreadNotifs)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM employees WHERE company_id=$1`, companyID).Scan(&out.Summary.Employees)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM departments WHERE company_id=$1 AND status='ACTIVE'`, companyID).Scan(&out.Summary.Departments)
+	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1`, companyID).Scan(&out.Summary.Projects)
+
+	out.Charts.ProductsByStatus = scanNamedCounts(ctx, q, `
+		SELECT status, COUNT(*) FROM products WHERE company_id=$1
+		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
+	out.Charts.TasksByStatus = scanNamedCounts(ctx, q, `
+		SELECT status, COUNT(*) FROM tasks WHERE company_id=$1
+		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
+	out.Charts.TasksByPriority = scanNamedCounts(ctx, q, `
+		SELECT priority, COUNT(*) FROM tasks WHERE company_id=$1
+		GROUP BY priority ORDER BY COUNT(*) DESC`, companyID)
+	out.Charts.StagesByStatus = scanNamedCounts(ctx, q, `
+		SELECT status, COUNT(*) FROM stage_instances WHERE company_id=$1
+		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
+	out.Charts.ActivityByDay = scanActivityDays(ctx, q, companyID, 14)
+	out.Flow = loadFlowGraph(ctx, q, companyID)
 
 	if employeeID != nil && *employeeID != uuid.Nil {
 		rows, err := q.QueryContext(ctx, `
@@ -155,4 +240,153 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 	}
 
 	return out, nil
+}
+
+func scanNamedCounts(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, query string, companyID uuid.UUID) []NamedCount {
+	out := []NamedCount{}
+	rows, err := q.QueryContext(ctx, query, companyID)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item NamedCount
+		if err := rows.Scan(&item.Name, &item.Count); err == nil && item.Name != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// scanActivityDays returns a continuous last-N-days series (zeros filled) for this company.
+func scanActivityDays(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, companyID uuid.UUID, days int) []DayCount {
+	if days < 1 {
+		days = 14
+	}
+	counts := make(map[string]int64, days)
+	rows, err := q.QueryContext(ctx, `
+		SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*)
+		FROM activity_logs
+		WHERE company_id=$1 AND created_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - ($2 * INTERVAL '1 day')
+		GROUP BY day
+		ORDER BY day`, companyID, days)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var day string
+			var count int64
+			if err := rows.Scan(&day, &count); err == nil {
+				counts[day] = count
+			}
+		}
+	}
+
+	out := make([]DayCount, 0, days)
+	now := time.Now().UTC()
+	for i := days - 1; i >= 0; i-- {
+		d := now.AddDate(0, 0, -i).Format("2006-01-02")
+		out = append(out, DayCount{Day: d, Count: counts[d]})
+	}
+	return out
+}
+
+type flowQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) FlowGraph {
+	out := FlowGraph{Products: []FlowProduct{}}
+	_ = q.QueryRowContext(ctx, `SELECT COALESCE(name,'') FROM companies WHERE id=$1`, companyID).Scan(&out.CompanyName)
+
+	prows, err := q.QueryContext(ctx, `
+		SELECT id, name, status
+		FROM products
+		WHERE company_id=$1 AND status <> 'ARCHIVED'
+		ORDER BY updated_at DESC
+		LIMIT 10`, companyID)
+	if err != nil {
+		return out
+	}
+	defer prows.Close()
+
+	byID := map[uuid.UUID]*FlowProduct{}
+	order := []uuid.UUID{}
+	for prows.Next() {
+		var p FlowProduct
+		p.Stages = []FlowStage{}
+		p.Projects = []FlowProject{}
+		if err := prows.Scan(&p.ID, &p.Name, &p.Status); err != nil {
+			continue
+		}
+		cp := p
+		byID[p.ID] = &cp
+		order = append(order, p.ID)
+	}
+
+	if len(order) == 0 {
+		return out
+	}
+
+	srows, err := q.QueryContext(ctx, `
+		SELECT p.id, s.id, s.name, s."order",
+			COALESCE((
+				SELECT si.status FROM stage_instances si
+				WHERE si.company_id = p.company_id AND si.product_id = p.id AND si.stage_id = s.id
+				ORDER BY si.updated_at DESC LIMIT 1
+			), 'PENDING')
+		FROM products p
+		INNER JOIN pipelines pl ON pl.id = p.pipeline_id AND pl.company_id = p.company_id
+		INNER JOIN stages s ON s.pipeline_id = pl.id
+		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED'
+		ORDER BY p.updated_at DESC, s."order" ASC`, companyID)
+	if err == nil {
+		defer srows.Close()
+		for srows.Next() {
+			var productID, stageID uuid.UUID
+			var name, status string
+			var ord int
+			if err := srows.Scan(&productID, &stageID, &name, &ord, &status); err != nil {
+				continue
+			}
+			if fp, ok := byID[productID]; ok {
+				fp.Stages = append(fp.Stages, FlowStage{
+					ID: stageID, Name: name, Order: ord, Status: status,
+				})
+			}
+		}
+	}
+
+	jrows, err := q.QueryContext(ctx, `
+		SELECT id, product_id, name, status
+		FROM projects
+		WHERE company_id=$1
+		ORDER BY updated_at DESC
+		LIMIT 40`, companyID)
+	if err == nil {
+		defer jrows.Close()
+		for jrows.Next() {
+			var projectID, productID uuid.UUID
+			var name, status string
+			if err := jrows.Scan(&projectID, &productID, &name, &status); err != nil {
+				continue
+			}
+			if fp, ok := byID[productID]; ok && len(fp.Projects) < 6 {
+				fp.Projects = append(fp.Projects, FlowProject{
+					ID: projectID, Name: name, Status: status,
+				})
+			}
+		}
+	}
+
+	for _, id := range order {
+		if fp, ok := byID[id]; ok {
+			out.Products = append(out.Products, *fp)
+		}
+	}
+	return out
 }

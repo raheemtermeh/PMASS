@@ -3,5 +3,5 @@ export function getApiBaseUrl(): string {
   if (configured) return configured;
   // Same-origin in the browser — Next.js rewrites /api/* to the Go backend (no CORS).
   if (typeof window !== "undefined") return "";
-  return "http://localhost:8080";
+  return process.env.API_INTERNAL_URL || "http://localhost:8080";
 }

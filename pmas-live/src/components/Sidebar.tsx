@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { useMobileNav } from "@/components/MobileNavContext";
 import { NavIcon, navLabels } from "@/lib/navigation";
 import { hasPermission, isPlatformRole } from "@/shared/permissions";
 import {
@@ -42,20 +43,22 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
   const [collapsed, setCollapsed] = useState(false);
+  const { close: closeMobileNav } = useMobileNav();
 
-  if (!user) return null;
+  const platform = Boolean(user && isPlatformRole(user.role));
+  const hasTenant = Boolean(user?.tenant_id);
 
-  const platform = isPlatformRole(user.role);
-  const hasTenant = Boolean(user.tenant_id);
-
+  // Hooks must run unconditionally (no early return above this).
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ["access-requests", "pending", "sidebar"],
     queryFn: () =>
       httpClient.get<AccessRequestRow[]>("/api/v1/access-requests?status=pending"),
-    enabled: platform,
+    enabled: Boolean(user) && platform,
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+
+  if (!user) return null;
 
   const pendingCount = pendingRequests.length;
 
@@ -83,7 +86,7 @@ export function Sidebar() {
 
     return (
       <li key={viewId} className={`nav-item${isActive ? " active" : ""}`}>
-        <Link href={route.path}>
+        <Link href={route.path} onClick={closeMobileNav}>
           <NavIcon viewId={viewId} />
           <span>{navLabels[viewId]}</span>
           {showBadge && !collapsed ? (
@@ -103,9 +106,17 @@ export function Sidebar() {
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
         </svg>
         <span>PMAS Live</span>
+        <button
+          type="button"
+          className="sidebar-mobile-close"
+          aria-label="Close sidebar"
+          onClick={closeMobileNav}
+        >
+          ×
+        </button>
       </div>
 
-      <Link href="/profile" className="user-profile user-profile-link">
+      <Link href="/profile" className="user-profile user-profile-link" onClick={closeMobileNav}>
         <div className="user-avatar">{initials}</div>
         <div className="user-info">
           <span className="user-name">{user.full_name}</span>
@@ -139,15 +150,23 @@ export function Sidebar() {
       <div className="sidebar-footer">
         <button
           type="button"
-          className="sidebar-toggle-footer"
+          className="sidebar-toggle-footer sidebar-toggle-desktop"
           onClick={() => setCollapsed((v) => !v)}
         >
           <span>{collapsed ? "Expand" : "Collapse"} Sidebar</span>
         </button>
         <button
           type="button"
+          className="sidebar-toggle-footer sidebar-toggle-mobile"
+          onClick={closeMobileNav}
+        >
+          <span>Close menu</span>
+        </button>
+        <button
+          type="button"
           className="sidebar-logout-btn"
           onClick={() => {
+            closeMobileNav();
             clearSession();
             router.replace("/welcome");
           }}

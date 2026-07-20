@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+// Browser/public API origin (optional). Server-side proxy target can differ in Docker.
+const publicApiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const apiUrl =
+  process.env.API_INTERNAL_URL || publicApiUrl || "http://localhost:8080";
+
+const connectSrc = ["'self'", publicApiUrl, apiUrl].filter(Boolean).join(" ");
 
 const csp = [
   "default-src 'self'",
@@ -13,10 +18,11 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   // Next.js requires unsafe-eval in development; keep unsafe-inline for runtime bundles.
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  `connect-src 'self' ${apiUrl}`,
+  `connect-src ${connectSrc}`,
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   async headers() {
     return [
