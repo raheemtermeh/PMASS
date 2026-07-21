@@ -1,0 +1,3 @@
+# Keep shell scripts Unix-native so bash on the server does not break.
+*.sh text eol=lf
+deploy/update.sh text eol=lf
