@@ -63,10 +63,19 @@ func NewService(
 // ---------------------------------------------------------------------------
 
 type CreateProjectInput struct {
-	ProductID   uuid.UUID
-	Name        string
-	Description string
-	ActorID     *uuid.UUID
+	ProductID             uuid.UUID
+	Name                  string
+	Description           string
+	Code                  string
+	Goal                  string
+	Priority              string
+	Status                string
+	OwnerID               *uuid.UUID
+	ManagerID             *uuid.UUID
+	StartDate             *time.Time
+	TargetEndDate         *time.Time
+	EstimatedDurationDays *int
+	ActorID               *uuid.UUID
 }
 
 func (s *Service) CreateProject(ctx context.Context, companyID uuid.UUID, in CreateProjectInput) (*planning.Project, error) {
@@ -80,6 +89,35 @@ func (s *Service) CreateProject(ctx context.Context, companyID uuid.UUID, in Cre
 			return err
 		}
 		p.CreatedBy = in.ActorID
+		if c := strings.TrimSpace(in.Code); c != "" {
+			p.Code = c
+		}
+		if g := strings.TrimSpace(in.Goal); g != "" {
+			p.Goal = g
+		}
+		if pr := strings.TrimSpace(in.Priority); pr != "" {
+			p.Priority = strings.ToUpper(pr)
+		}
+		if st := strings.TrimSpace(in.Status); st != "" {
+			if err := p.ChangeStatus(st); err != nil {
+				return err
+			}
+		}
+		if in.OwnerID != nil && *in.OwnerID != uuid.Nil {
+			p.OwnerID = in.OwnerID
+		}
+		if in.ManagerID != nil && *in.ManagerID != uuid.Nil {
+			p.ManagerID = in.ManagerID
+		}
+		if in.StartDate != nil {
+			p.StartDate = in.StartDate
+		}
+		if in.TargetEndDate != nil {
+			p.TargetEndDate = in.TargetEndDate
+		}
+		if in.EstimatedDurationDays != nil {
+			p.EstimatedDurationDays = in.EstimatedDurationDays
+		}
 		if err := s.projects.Create(ctx, p); err != nil {
 			return err
 		}

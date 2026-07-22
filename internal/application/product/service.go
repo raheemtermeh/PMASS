@@ -453,12 +453,12 @@ type CreatePipelineInput struct {
 }
 
 type CreateStageInput struct {
-	Name          string
-	Description   string
-	Order         int
-	EntryCriteria string
-	ExitCriteria  string
-	DepartmentID  *uuid.UUID
+	Name          string     `json:"name"`
+	Description   string     `json:"description"`
+	Order         int        `json:"order"`
+	EntryCriteria string     `json:"entry_criteria"`
+	ExitCriteria  string     `json:"exit_criteria"`
+	DepartmentID  *uuid.UUID `json:"department_id"`
 }
 
 func (s *Service) CreatePipeline(ctx context.Context, companyID uuid.UUID, in CreatePipelineInput) (*product.Pipeline, []product.Stage, error) {

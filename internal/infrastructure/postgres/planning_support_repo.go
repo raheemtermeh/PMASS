@@ -35,7 +35,7 @@ type ProjectRepo struct{ db *DB }
 func NewProjectRepo(db *DB) *ProjectRepo { return &ProjectRepo{db: db} }
 
 const projectColumns = `id, company_id, product_id, name, description, status,
-	code, goal, priority, owner_id, manager_id, start_date, target_end_date, estimated_duration_days,
+	COALESCE(code,''), COALESCE(goal,''), COALESCE(priority,''), owner_id, manager_id, start_date, target_end_date, estimated_duration_days,
 	deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at`
 
 func scanProject(row rowScanner) (*planning.Project, error) {
@@ -189,8 +189,8 @@ type FeatureRepo struct{ db *DB }
 func NewFeatureRepo(db *DB) *FeatureRepo { return &FeatureRepo{db: db} }
 
 const featureColumns = `id, company_id, product_id, project_id, title, status, priority,
-	code, description, goal, feature_type, owner_id, team_id, parent_feature_id,
-	start_date, target_end_date, estimated_effort, progress_pct,
+	COALESCE(code,''), COALESCE(description,''), COALESCE(goal,''), COALESCE(feature_type,''), owner_id, team_id, parent_feature_id,
+	start_date, target_end_date, estimated_effort, COALESCE(progress_pct,0),
 	deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at`
 
 func scanFeature(row rowScanner) (*planning.Feature, error) {
@@ -343,7 +343,7 @@ type TaskRepo struct{ db *DB }
 func NewTaskRepo(db *DB) *TaskRepo { return &TaskRepo{db: db} }
 
 const taskColumns = `id, company_id, feature_id, assignee_id, title, status, priority, due_date,
-	description, task_type, start_date, estimated_minutes, actual_minutes, progress_pct,
+	COALESCE(description,''), COALESCE(task_type,''), start_date, estimated_minutes, actual_minutes, COALESCE(progress_pct,0),
 	deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at`
 
 func scanTask(row rowScanner) (*planning.Task, error) {

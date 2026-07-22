@@ -20,7 +20,13 @@ interface ResourceManagerProps<T extends { id: string | number }> {
   title: string;
   description?: string;
   columns: { key: string; label: string; render?: (row: T) => ReactNode }[];
+  /** Fields shown when editing an existing row. */
   fields: FieldDef[];
+  /**
+   * Fields shown in the create modal. Defaults to `fields`.
+   * Pass a short list (e.g. title + priority) to keep creation light.
+   */
+  createFields?: FieldDef[];
   items: T[];
   isLoading?: boolean;
   emptyTitle: string;
@@ -28,6 +34,14 @@ interface ResourceManagerProps<T extends { id: string | number }> {
   createLabel?: string;
   hideEdit?: boolean;
   hideDelete?: boolean;
+  /** Inline one-line composer above the table (Enter to create). */
+  quickCreate?: {
+    placeholder: string;
+    fieldName?: string;
+    disabled?: boolean;
+    disabledHint?: string;
+    defaults?: Record<string, string>;
+  };
   onCreate: (values: Record<string, string>) => Promise<void> | void;
   onUpdate?: (id: string | number, values: Record<string, string>) => Promise<void> | void;
   onDelete?: (id: string | number) => Promise<void> | void;
@@ -44,6 +58,7 @@ export function ResourceManager<T extends { id: string | number }>({
   description,
   columns,
   fields,
+  createFields,
   items,
   isLoading,
   emptyTitle,
@@ -51,6 +66,7 @@ export function ResourceManager<T extends { id: string | number }>({
   createLabel = "Add",
   hideEdit,
   hideDelete,
+  quickCreate,
   onCreate,
   onUpdate,
   onDelete,
@@ -63,12 +79,17 @@ export function ResourceManager<T extends { id: string | number }>({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState("");
 
   const safeItems = Array.isArray(items) ? items : [];
+  const activeFields = editing ? fields : createFields ?? fields;
+  const quickField = quickCreate?.fieldName ?? "title";
 
   function openCreate() {
     setEditing(null);
-    setValues(blankValues(fields));
+    setValues(blankValues(createFields ?? fields));
     setError("");
     setOpen(true);
   }
@@ -94,6 +115,26 @@ export function ResourceManager<T extends { id: string | number }>({
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleQuickCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!quickCreate || quickCreate.disabled) return;
+    const title = quickTitle.trim();
+    if (!title) return;
+    setQuickBusy(true);
+    setQuickError("");
+    try {
+      await onCreate({
+        ...(quickCreate.defaults ?? {}),
+        [quickField]: title,
+      });
+      setQuickTitle("");
+    } catch (err) {
+      setQuickError(err instanceof Error ? err.message : "Create failed");
+    } finally {
+      setQuickBusy(false);
     }
   }
 
@@ -125,6 +166,30 @@ export function ResourceManager<T extends { id: string | number }>({
           </button>
         </div>
 
+        {quickCreate ? (
+          <form className="quick-create" onSubmit={(e) => void handleQuickCreate(e)}>
+            <input
+              type="text"
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              placeholder={
+                quickCreate.disabled
+                  ? quickCreate.disabledHint ?? quickCreate.placeholder
+                  : quickCreate.placeholder
+              }
+              disabled={quickCreate.disabled || quickBusy}
+              aria-label={quickCreate.placeholder}
+            />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={quickCreate.disabled || quickBusy || !quickTitle.trim()}
+            >
+              {quickBusy ? "Adding…" : "Add"}
+            </button>
+          </form>
+        ) : null}
+        {quickError ? <p className="auth-error" style={{ marginBottom: "0.75rem" }}>{quickError}</p> : null}
         {deleteError ? <p className="auth-error" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
 
         {isLoading ? (
@@ -197,8 +262,13 @@ export function ResourceManager<T extends { id: string | number }>({
               </button>
             </div>
             <form onSubmit={handleSubmit} className="modal-body auth-form">
+              {!editing && createFields && createFields.length < fields.length ? (
+                <p className="text-dim" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem" }}>
+                  Quick create — you can fill more details after with Edit.
+                </p>
+              ) : null}
               <div className="grid grid-cols-2">
-                {fields.map((field) => (
+                {activeFields.map((field) => (
                   <div
                     key={field.name}
                     className="form-group"

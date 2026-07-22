@@ -9,6 +9,18 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
         <path d="M5 10v10h14V10" />
       </svg>
     ),
+    status: (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M8 15v-3" />
+        <path d="M12 15V8" />
+        <path d="M16 15v-6" />
+        <circle cx="8" cy="10" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="16" cy="7" r="1.2" fill="currentColor" stroke="none" />
+      </svg>
+    ),
     organization: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <path d="M3 21h18" />
@@ -73,6 +85,7 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
 
 export const navLabels: Record<ViewId, string> = {
   home: "Command Center",
+  status: "Status Board",
   organization: "Organization",
   products: "Products",
   planning: "Planning",

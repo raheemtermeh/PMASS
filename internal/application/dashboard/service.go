@@ -86,13 +86,28 @@ type FlowProject struct {
 	Status string    `json:"status"`
 }
 
-// FlowProduct is a company product with its stage chain and projects.
+// FlowFeature is a feature under a product (optionally tied to a project).
+type FlowFeature struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	Title     string    `json:"title"`
+	Status    string    `json:"status"`
+	Priority  string    `json:"priority"`
+}
+
+// FlowProduct is a company product with its stage chain, projects, and features.
 type FlowProduct struct {
-	ID       uuid.UUID     `json:"id"`
-	Name     string        `json:"name"`
-	Status   string        `json:"status"`
-	Stages   []FlowStage   `json:"stages"`
-	Projects []FlowProject `json:"projects"`
+	ID             uuid.UUID      `json:"id"`
+	Name           string         `json:"name"`
+	Status         string         `json:"status"`
+	PipelineID     *uuid.UUID     `json:"pipeline_id,omitempty"`
+	PipelineName   string         `json:"pipeline_name,omitempty"`
+	PipelineStatus string         `json:"pipeline_status,omitempty"`
+	ActiveStage    string         `json:"active_stage,omitempty"`
+	NextStage      string         `json:"next_stage,omitempty"`
+	Stages         []FlowStage    `json:"stages"`
+	Projects       []FlowProject  `json:"projects"`
+	Features       []FlowFeature  `json:"features"`
 }
 
 // FlowGraph is the Command Center lifecycle graph (company-scoped, live DB).
@@ -401,11 +416,13 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 	_ = q.QueryRowContext(ctx, `SELECT COALESCE(name,'') FROM companies WHERE id=$1`, companyID).Scan(&out.CompanyName)
 
 	prows, err := q.QueryContext(ctx, `
-		SELECT id, name, status
-		FROM products
-		WHERE company_id=$1 AND status <> 'ARCHIVED'
-		ORDER BY updated_at DESC
-		LIMIT 10`, companyID)
+		SELECT p.id, p.name, p.status, p.pipeline_id,
+			COALESCE(pl.name, ''), COALESCE(pl.status, '')
+		FROM products p
+		LEFT JOIN pipelines pl ON pl.id = p.pipeline_id AND pl.company_id = p.company_id
+		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED' AND p.deleted_at IS NULL
+		ORDER BY p.updated_at DESC
+		LIMIT 50`, companyID)
 	if err != nil {
 		return out
 	}
@@ -415,10 +432,16 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 	order := []uuid.UUID{}
 	for prows.Next() {
 		var p FlowProduct
+		var pipelineID uuid.NullUUID
 		p.Stages = []FlowStage{}
 		p.Projects = []FlowProject{}
-		if err := prows.Scan(&p.ID, &p.Name, &p.Status); err != nil {
+		p.Features = []FlowFeature{}
+		if err := prows.Scan(&p.ID, &p.Name, &p.Status, &pipelineID, &p.PipelineName, &p.PipelineStatus); err != nil {
 			continue
+		}
+		if pipelineID.Valid {
+			id := pipelineID.UUID
+			p.PipelineID = &id
 		}
 		cp := p
 		byID[p.ID] = &cp
@@ -439,7 +462,7 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 		FROM products p
 		INNER JOIN pipelines pl ON pl.id = p.pipeline_id AND pl.company_id = p.company_id
 		INNER JOIN stages s ON s.pipeline_id = pl.id
-		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED'
+		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED' AND p.deleted_at IS NULL
 		ORDER BY p.updated_at DESC, s."order" ASC`, companyID)
 	if err == nil {
 		defer srows.Close()
@@ -461,9 +484,9 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 	jrows, err := q.QueryContext(ctx, `
 		SELECT id, product_id, name, status
 		FROM projects
-		WHERE company_id=$1
+		WHERE company_id=$1 AND deleted_at IS NULL
 		ORDER BY updated_at DESC
-		LIMIT 40`, companyID)
+		LIMIT 120`, companyID)
 	if err == nil {
 		defer jrows.Close()
 		for jrows.Next() {
@@ -472,7 +495,7 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 			if err := jrows.Scan(&projectID, &productID, &name, &status); err != nil {
 				continue
 			}
-			if fp, ok := byID[productID]; ok && len(fp.Projects) < 6 {
+			if fp, ok := byID[productID]; ok && len(fp.Projects) < 12 {
 				fp.Projects = append(fp.Projects, FlowProject{
 					ID: projectID, Name: name, Status: status,
 				})
@@ -480,10 +503,67 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 		}
 	}
 
+	frows, err := q.QueryContext(ctx, `
+		SELECT id, product_id, project_id, title, status, COALESCE(priority, '')
+		FROM features
+		WHERE company_id=$1 AND deleted_at IS NULL
+		ORDER BY updated_at DESC
+		LIMIT 200`, companyID)
+	if err == nil {
+		defer frows.Close()
+		for frows.Next() {
+			var featureID, productID, projectID uuid.UUID
+			var title, status, priority string
+			if err := frows.Scan(&featureID, &productID, &projectID, &title, &status, &priority); err != nil {
+				continue
+			}
+			if fp, ok := byID[productID]; ok && len(fp.Features) < 20 {
+				fp.Features = append(fp.Features, FlowFeature{
+					ID: featureID, ProjectID: projectID, Title: title, Status: status, Priority: priority,
+				})
+			}
+		}
+	}
+
 	for _, id := range order {
 		if fp, ok := byID[id]; ok {
+			fillStagePointers(fp)
 			out.Products = append(out.Products, *fp)
 		}
 	}
 	return out
+}
+
+func fillStagePointers(fp *FlowProduct) {
+	if len(fp.Stages) == 0 {
+		return
+	}
+	activeIdx := -1
+	for i, st := range fp.Stages {
+		s := st.Status
+		if s == "ACTIVE" || s == "IN_PROGRESS" {
+			activeIdx = i
+			break
+		}
+	}
+	if activeIdx >= 0 {
+		fp.ActiveStage = fp.Stages[activeIdx].Name
+		if activeIdx+1 < len(fp.Stages) {
+			fp.NextStage = fp.Stages[activeIdx+1].Name
+		}
+		return
+	}
+	// No active instance: next pending stage is the upcoming one.
+	for i, st := range fp.Stages {
+		if st.Status == "PENDING" || st.Status == "READY" {
+			fp.NextStage = st.Name
+			if i > 0 {
+				fp.ActiveStage = fp.Stages[i-1].Name
+			}
+			return
+		}
+	}
+	// All completed — show last stage as current.
+	last := fp.Stages[len(fp.Stages)-1]
+	fp.ActiveStage = last.Name
 }

@@ -50,12 +50,26 @@ export interface FlowProject {
   status: string;
 }
 
+export interface FlowFeature {
+  id: string;
+  project_id: string;
+  title: string;
+  status: string;
+  priority: string;
+}
+
 export interface FlowProduct {
   id: string;
   name: string;
   status: string;
+  pipeline_id?: string | null;
+  pipeline_name?: string;
+  pipeline_status?: string;
+  active_stage?: string;
+  next_stage?: string;
   stages: FlowStage[];
   projects: FlowProject[];
+  features?: FlowFeature[];
 }
 
 export interface FlowGraph {

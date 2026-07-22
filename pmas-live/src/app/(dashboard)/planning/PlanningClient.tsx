@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { ResourceManager, optInt } from "@/components/ResourceManager";
 import { httpClient } from "@/core/api/http-client";
 import type {
@@ -298,8 +299,8 @@ export default function PlanningClient() {
           Planning cascade
         </h2>
         <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-          Product → Project → Feature → Task. Assign owners, set due dates, and track status through
-          the MVP execution chain.
+          Product → Project → Feature → Task. Pick a product, then add items with the quick bar (Enter
+          to create). Use Edit only when you need extra details.
         </p>
         <div className="form-group" style={{ maxWidth: 420 }}>
           <label htmlFor="product">Product</label>
@@ -325,14 +326,33 @@ export default function PlanningClient() {
 
       <ResourceManager
         title="Projects"
-        description="Mid-layer between Product and Feature. Search and filter by selecting a product above."
-        createLabel="New project"
+        description="Select a product above, then type a project name and press Enter."
+        createLabel="New project…"
         emptyTitle="No projects"
         emptyDescription={
-          productId ? "Create a project under this product." : "Select a product (required to create)."
+          productId ? "Use the quick bar to create the first project." : "Select a product first (required to create)."
         }
         isLoading={projectsLoading}
         items={projects}
+        quickCreate={{
+          placeholder: productId
+            ? "Type a project name and press Enter…"
+            : "Select a product first…",
+          fieldName: "name",
+          disabled: !productId,
+          disabledHint: "Select a product above, then type a project name…",
+          defaults: productId ? { product_id: productId } : {},
+        }}
+        createFields={[
+          {
+            name: "product_id",
+            label: "Product",
+            type: "select",
+            required: true,
+            options: productOptions,
+          },
+          { name: "name", label: "Name", required: true, placeholder: "e.g. Mobile app v1" },
+        ]}
         columns={[
           {
             key: "name",
@@ -412,15 +432,31 @@ export default function PlanningClient() {
           description: r.description,
         })}
         onCreate={async (v) => {
-          const pid = v.product_id || productId;
+          const pid = (v.product_id || productId || "").trim();
           if (!pid) throw new Error("Select a product");
-          await createProject.mutateAsync({
+          const body: Record<string, unknown> = {
             product_id: pid,
             name: v.name,
-            code: v.code,
-            description: v.description,
-          });
+            description: v.description || "",
+          };
+          if (v.code?.trim()) body.code = v.code.trim();
+          if (v.goal?.trim()) body.goal = v.goal.trim();
+          if (v.priority?.trim()) body.priority = v.priority.trim();
+          if (v.status?.trim()) body.status = v.status.trim();
+          if (v.owner_id?.trim()) body.owner_id = v.owner_id.trim();
+          if (v.manager_id?.trim()) body.manager_id = v.manager_id.trim();
+          const start = fromDateInput(v.start_date);
+          const end = fromDateInput(v.target_end_date);
+          if (start) body.start_date = start;
+          if (end) body.target_end_date = end;
+          const created = await createProject.mutateAsync(body);
           setProductId(pid);
+          const id = (created as Project | undefined)?.id;
+          if (id) {
+            setProjectId(id);
+            setFeatureId("");
+            setSelectedTaskId("");
+          }
         }}
         onUpdate={async (id, v) => {
           await updateProject.mutateAsync({
@@ -464,12 +500,26 @@ export default function PlanningClient() {
       {projectId ? (
         <ResourceManager
           title="Features"
-          description="Capabilities under the selected project. Change status as work progresses."
-          createLabel="New feature"
-          emptyTitle="No features"
-          emptyDescription="Break the project into features."
+          description="Type a name and press Enter — details can be filled later with Edit."
+          createLabel="New feature…"
+          emptyTitle="No features yet"
+          emptyDescription="Use the quick bar above to add the first capability."
           isLoading={featuresLoading}
           items={features}
+          quickCreate={{
+            placeholder: "Type a feature name and press Enter…",
+            fieldName: "title",
+            defaults: { priority: "MEDIUM" },
+          }}
+          createFields={[
+            { name: "title", label: "Title", required: true, placeholder: "e.g. User login" },
+            {
+              name: "priority",
+              label: "Priority",
+              type: "select",
+              options: PRIORITY_OPTIONS,
+            },
+          ]}
           columns={[
             {
               key: "title",
@@ -554,11 +604,16 @@ export default function PlanningClient() {
             description: r.description ?? "",
           })}
           onCreate={async (v) => {
-            await createFeature.mutateAsync({
+            const created = await createFeature.mutateAsync({
               project_id: projectId,
               title: v.title,
               priority: v.priority || "MEDIUM",
             });
+            const id = (created as Feature | undefined)?.id;
+            if (id) {
+              setFeatureId(id);
+              setSelectedTaskId("");
+            }
           }}
           onUpdate={async (id, v) => {
             await updateFeature.mutateAsync({
@@ -648,6 +703,15 @@ export default function PlanningClient() {
         </section>
       ) : null}
 
+      {projectId && !featureId ? (
+        <section className="data-panel">
+          <EmptyState
+            title="Select a feature to add tasks"
+            description="Click a feature name above (or create one with the quick bar), then add tasks in one line."
+          />
+        </section>
+      ) : null}
+
       {featureId ? (
         <>
           <div className="org-tab-row" style={{ marginBottom: "-0.5rem" }}>
@@ -671,12 +735,32 @@ export default function PlanningClient() {
 
           <ResourceManager
             title="Tasks"
-            description="Smallest execution unit. Assign people, set due dates, complete or reopen work."
-            createLabel="New task"
-            emptyTitle="No tasks"
-            emptyDescription="Add execution tasks under this feature."
+            description="Type a task and press Enter. Assign / due date / checklist can come later."
+            createLabel="New task…"
+            emptyTitle="No tasks yet"
+            emptyDescription="Use the quick bar to add work items under this feature."
             isLoading={tasksLoading}
             items={filteredTasks}
+            quickCreate={{
+              placeholder: "Type a task and press Enter…",
+              fieldName: "title",
+              defaults: { priority: "MEDIUM" },
+            }}
+            createFields={[
+              { name: "title", label: "Title", required: true, placeholder: "e.g. Design login screen" },
+              {
+                name: "priority",
+                label: "Priority",
+                type: "select",
+                options: PRIORITY_OPTIONS,
+              },
+              {
+                name: "assignee_id",
+                label: "Assignee (optional)",
+                type: "select",
+                options: empOptions,
+              },
+            ]}
             columns={[
               {
                 key: "title",
@@ -755,13 +839,15 @@ export default function PlanningClient() {
             })}
             onCreate={async (v) => {
               const assignee = v.assignee_id?.trim() ? v.assignee_id : null;
-              await createTask.mutateAsync({
+              const created = await createTask.mutateAsync({
                 feature_id: featureId,
                 title: v.title,
                 priority: v.priority || "MEDIUM",
                 assignee_id: assignee,
-                due_date: fromDateInput(v.due_date),
+                due_date: fromDateInput(v.due_date ?? ""),
               });
+              const id = (created as Task | undefined)?.id;
+              if (id) setSelectedTaskId(id);
             }}
             onUpdate={async (id, v) => {
               await updateTask.mutateAsync({

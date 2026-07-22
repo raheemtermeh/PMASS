@@ -2,6 +2,7 @@ import { isPlatformRole, type Permission } from "./permissions";
 
 export type ViewId =
   | "home"
+  | "status"
   | "organization"
   | "products"
   | "planning"
@@ -38,6 +39,14 @@ export const routes: Record<ViewId, RouteConfig> = {
     title: "Command Center",
     subtitle: "Products, tasks, workflows, and activity at a glance",
     permission: null,
+    tenantOnly: true,
+  },
+  status: {
+    id: "status",
+    path: "/status",
+    title: "Status Board",
+    subtitle: "Live state of products, pipelines, stages, and features",
+    permission: "product.view",
     tenantOnly: true,
   },
   organization: {
@@ -180,6 +189,7 @@ export const routes: Record<ViewId, RouteConfig> = {
 /** Tenant company workspace navigation. */
 export const tenantNavItems: ViewId[] = [
   "home",
+  "status",
   "organization",
   "products",
   "planning",

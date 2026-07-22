@@ -1008,16 +1008,36 @@ func (h *PlanningHandler) HandleProjects(w http.ResponseWriter, r *http.Request)
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			ProductID   uuid.UUID `json:"product_id"`
-			Name        string    `json:"name"`
-			Description string    `json:"description"`
+			ProductID             uuid.UUID  `json:"product_id"`
+			Name                  string     `json:"name"`
+			Description           string     `json:"description"`
+			Code                  string     `json:"code"`
+			Goal                  string     `json:"goal"`
+			Priority              string     `json:"priority"`
+			Status                string     `json:"status"`
+			OwnerID               *uuid.UUID `json:"owner_id"`
+			ManagerID             *uuid.UUID `json:"manager_id"`
+			StartDate             *time.Time `json:"start_date"`
+			TargetEndDate         *time.Time `json:"target_end_date"`
+			EstimatedDurationDays *int       `json:"estimated_duration_days"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
 		p, err := h.Svc.CreateProject(r.Context(), companyID, planningapp.CreateProjectInput{
-			ProductID: body.ProductID, Name: body.Name, Description: body.Description,
+			ProductID:             body.ProductID,
+			Name:                  body.Name,
+			Description:           body.Description,
+			Code:                  body.Code,
+			Goal:                  body.Goal,
+			Priority:              body.Priority,
+			Status:                body.Status,
+			OwnerID:               body.OwnerID,
+			ManagerID:             body.ManagerID,
+			StartDate:             body.StartDate,
+			TargetEndDate:         body.TargetEndDate,
+			EstimatedDurationDays: body.EstimatedDurationDays,
 		})
 		if err != nil {
 			WriteErr(w, err)

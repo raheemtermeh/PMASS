@@ -31,6 +31,7 @@ export default function ProductDetailPage() {
   const [exitMet, setExitMet] = useState(true);
   const [pipeName, setPipeName] = useState("Default pipeline");
   const [stageDraft, setStageDraft] = useState("Discovery, Delivery, Launch");
+  const [newStageName, setNewStageName] = useState("");
   const [error, setError] = useState("");
 
   // Editable detail fields
@@ -128,6 +129,27 @@ export default function ProductDetailPage() {
       });
     },
     onSuccess: invalidate,
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const addStage = useMutation({
+    mutationFn: async (name: string) => {
+      if (!pipelineId) throw new Error("No pipeline");
+      const currentStages = pipelineBundle?.stages ?? [];
+      return httpClient.post(`/api/v1/pipelines/${pipelineId}/stages`, {
+        name,
+        order: currentStages.length,
+        description: "",
+        entry_criteria: "",
+        exit_criteria: "manual_confirm",
+        department_id:
+          departments[currentStages.length % Math.max(departments.length, 1)]?.id ?? null,
+      });
+    },
+    onSuccess: () => {
+      setNewStageName("");
+      invalidate();
+    },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -402,12 +424,49 @@ export default function ProductDetailPage() {
 
       {!pipelineId ? (
         <section className="data-panel">
-          <h3 className="panel-title">Assign dedicated pipeline</h3>
+          <h3 className="panel-title">Create pipeline</h3>
           <p className="text-dim" style={{ marginBottom: "1rem", fontSize: "0.875rem" }}>
-            Each Product has its own Pipeline (never shared). Stages are immutable definitions;
-            runtime lives in Stage Instances.
+            Pick a ready-made flow or edit the stages. One click creates the pipeline for this product.
           </p>
-          <form className="auth-form" onSubmit={onCreatePipeline}>
+
+          <div className="pipeline-templates">
+            {(
+              [
+                {
+                  id: "standard",
+                  label: "Standard",
+                  stages: ["Discovery", "Delivery", "Launch"],
+                },
+                {
+                  id: "agile",
+                  label: "Agile",
+                  stages: ["Backlog", "Development", "QA", "Done"],
+                },
+                {
+                  id: "simple",
+                  label: "Simple",
+                  stages: ["Plan", "Build", "Ship"],
+                },
+              ] as const
+            ).map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                className="btn btn-sm pipeline-template-btn"
+                onClick={() => {
+                  setPipeName(`${product.name} · ${tpl.label}`);
+                  setStageDraft(tpl.stages.join(", "));
+                }}
+              >
+                {tpl.label}
+                <span className="text-dim" style={{ display: "block", fontSize: "0.75rem", fontWeight: 400 }}>
+                  {tpl.stages.join(" → ")}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <form className="auth-form" onSubmit={onCreatePipeline} style={{ marginTop: "1rem" }}>
             <div className="form-group">
               <label htmlFor="pipeName">Pipeline name</label>
               <input id="pipeName" value={pipeName} onChange={(e) => setPipeName(e.target.value)} required />
@@ -419,8 +478,24 @@ export default function ProductDetailPage() {
                 value={stageDraft}
                 onChange={(e) => setStageDraft(e.target.value)}
                 required
+                placeholder="Discovery, Delivery, Launch"
               />
             </div>
+            {stageDraft.trim() ? (
+              <div className="pipeline-stage-preview" aria-label="Stage preview">
+                {stageDraft
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+                  .map((name, i, arr) => (
+                    <span key={`${name}-${i}`} className="pipeline-stage-chip">
+                      <span className="font-mono text-dim">{i + 1}</span> {name}
+                      {i < arr.length - 1 ? <span className="pipeline-stage-arrow">→</span> : null}
+                    </span>
+                  ))}
+              </div>
+            ) : null}
+            {error ? <p className="auth-error">{error}</p> : null}
             <button type="submit" className="btn btn-primary" disabled={createPipeline.isPending}>
               {createPipeline.isPending ? "Creating…" : "Create pipeline"}
             </button>
@@ -432,6 +507,32 @@ export default function ProductDetailPage() {
             <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
               Stage definitions
             </h3>
+            <form
+              className="quick-create"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newStageName.trim();
+                if (!name) return;
+                setError("");
+                addStage.mutate(name);
+              }}
+            >
+              <input
+                type="text"
+                value={newStageName}
+                onChange={(e) => setNewStageName(e.target.value)}
+                placeholder="Add a stage name and press Enter…"
+                disabled={addStage.isPending}
+                aria-label="New stage name"
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={addStage.isPending || !newStageName.trim()}
+              >
+                {addStage.isPending ? "Adding…" : "Add stage"}
+              </button>
+            </form>
             <div className="table-scroll">
               <table className="data-table">
                 <thead>
