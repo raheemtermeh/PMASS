@@ -37,15 +37,16 @@ func (h *OrgHandler) HandleDepartments(w http.ResponseWriter, r *http.Request) {
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			Name      string    `json:"name"`
-			ManagerID uuid.UUID `json:"manager_id"`
+			Name        string    `json:"name"`
+			Description string    `json:"description"`
+			ManagerID   uuid.UUID `json:"manager_id"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
 		d, err := h.Svc.CreateDepartment(r.Context(), companyID, organizationapp.CreateDepartmentInput{
-			Name: body.Name, ManagerID: body.ManagerID,
+			Name: body.Name, Description: body.Description, ManagerID: body.ManagerID,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -83,14 +84,15 @@ func (h *OrgHandler) HandleDepartments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Name      string    `json:"name"`
-			ManagerID uuid.UUID `json:"manager_id"`
+			Name        string    `json:"name"`
+			Description string    `json:"description"`
+			ManagerID   uuid.UUID `json:"manager_id"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		d, err := h.Svc.UpdateDepartment(r.Context(), companyID, id, body.Name, body.ManagerID)
+		d, err := h.Svc.UpdateDepartment(r.Context(), companyID, id, body.Name, body.Description, body.ManagerID)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -142,12 +144,16 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			LeadID       uuid.UUID `json:"lead_id"`
 			Name         string    `json:"name"`
 			Description  string    `json:"description"`
+			Capacity     int       `json:"capacity"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		t, err := h.Svc.CreateTeam(r.Context(), companyID, organizationapp.CreateTeamInput(body))
+		t, err := h.Svc.CreateTeam(r.Context(), companyID, organizationapp.CreateTeamInput{
+			DepartmentID: body.DepartmentID, LeadID: body.LeadID, Name: body.Name,
+			Description: body.Description, Capacity: body.Capacity,
+		})
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -186,13 +192,15 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name        string    `json:"name"`
 			Description string    `json:"description"`
+			Capacity    int       `json:"capacity"`
 			LeadID      uuid.UUID `json:"lead_id"`
+			Status      string    `json:"status"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		t, err := h.Svc.UpdateTeam(r.Context(), companyID, id, body.Name, body.Description, body.LeadID)
+		t, err := h.Svc.UpdateTeam(r.Context(), companyID, id, body.Name, body.Description, body.Capacity, body.LeadID, body.Status)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -275,13 +283,14 @@ func (h *OrgHandler) HandleEmployees(w http.ResponseWriter, r *http.Request) {
 			LastName  string `json:"last_name"`
 			Email     string `json:"email"`
 			Phone     string `json:"phone"`
+			JobTitle  string `json:"job_title"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
 		e, err := h.Svc.CreateEmployee(r.Context(), companyID, organizationapp.CreateEmployeeInput{
-			FirstName: body.FirstName, LastName: body.LastName, Email: body.Email, Phone: body.Phone,
+			FirstName: body.FirstName, LastName: body.LastName, Email: body.Email, Phone: body.Phone, JobTitle: body.JobTitle,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -306,7 +315,19 @@ func (h *OrgHandler) HandleEmployees(w http.ResponseWriter, r *http.Request) {
 			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
 			return
 		}
-		e, err := h.Svc.ArchiveEmployee(r.Context(), companyID, id)
+		e, err := h.Svc.DeactivateEmployee(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, e, nil)
+	case len(parts) == 2 && parts[1] == "activate" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		e, err := h.Svc.ActivateEmployee(r.Context(), companyID, id)
 		if err != nil {
 			WriteErr(w, err)
 			return
@@ -323,13 +344,14 @@ func (h *OrgHandler) HandleEmployees(w http.ResponseWriter, r *http.Request) {
 			LastName  string `json:"last_name"`
 			Email     string `json:"email"`
 			Phone     string `json:"phone"`
+			JobTitle  string `json:"job_title"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
 		e, err := h.Svc.UpdateEmployee(r.Context(), companyID, id, organizationapp.CreateEmployeeInput{
-			FirstName: body.FirstName, LastName: body.LastName, Email: body.Email, Phone: body.Phone,
+			FirstName: body.FirstName, LastName: body.LastName, Email: body.Email, Phone: body.Phone, JobTitle: body.JobTitle,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -343,7 +365,12 @@ func (h *OrgHandler) HandleEmployees(w http.ResponseWriter, r *http.Request) {
 			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
 			return
 		}
-		if err := h.Svc.AssignEmployeeToTeam(r.Context(), companyID, empID, teamID); err != nil {
+		var assignedBy *int
+		if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
+			uid := claims.UserID
+			assignedBy = &uid
+		}
+		if err := h.Svc.AssignEmployeeToTeam(r.Context(), companyID, empID, teamID, assignedBy); err != nil {
 			WriteErr(w, err)
 			return
 		}

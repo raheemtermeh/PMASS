@@ -18,4 +18,7 @@ var (
 	ErrEmployeeNameRequired    = shared.New("EMPLOYEE_NAME_REQUIRED", "Employee first and last name are required", 400)
 	ErrEmployeeEmailRequired   = shared.New("EMPLOYEE_EMAIL_REQUIRED", "Employee email is required", 400)
 	ErrEmployeeNotFound        = shared.New("EMPLOYEE_NOT_FOUND", "Employee not found", 404)
+	ErrInvalidStatus           = shared.New("INVALID_STATUS", "Invalid status value", 400)
+	ErrEmployeeAlreadyOnTeam   = shared.New("EMPLOYEE_ALREADY_ON_TEAM", "Employee can only belong to one team", 409)
+	ErrTeamHasDependencies     = shared.New("TEAM_HAS_DEPENDENCIES", "Team cannot be archived while it has members or open work assignments", 409)
 )

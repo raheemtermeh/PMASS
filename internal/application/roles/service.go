@@ -1,0 +1,242 @@
+package rolesapp
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"PMAS/internal/auth"
+	"PMAS/internal/domain/shared"
+	"PMAS/internal/infrastructure/postgres"
+)
+
+type Role struct {
+	ID          uuid.UUID `json:"id"`
+	CompanyID   uuid.UUID `json:"company_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	IsSystem    bool      `json:"is_system"`
+	Permissions []string  `json:"permissions"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Service struct {
+	db *postgres.DB
+}
+
+func NewService(db *postgres.DB) *Service { return &Service{db: db} }
+
+func (s *Service) EnsureDefaults(ctx context.Context, companyID uuid.UUID) error {
+	for _, name := range auth.SystemRoleNames {
+		var id uuid.UUID
+		err := s.db.Q(ctx).QueryRowContext(ctx, `
+			SELECT id FROM company_roles WHERE company_id=$1 AND name=$2`, companyID, name).Scan(&id)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		id = uuid.New()
+		if _, err := s.db.Q(ctx).ExecContext(ctx, `
+			INSERT INTO company_roles (id, company_id, name, description, is_system, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,true,NOW(),NOW())`,
+			id, companyID, name, "System role: "+name); err != nil {
+			return err
+		}
+		for _, p := range auth.RolePresetPermissions[name] {
+			if _, err := s.db.Q(ctx).ExecContext(ctx, `
+				INSERT INTO company_role_permissions (role_id, permission) VALUES ($1,$2)
+				ON CONFLICT DO NOTHING`, id, p); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) List(ctx context.Context, companyID uuid.UUID) ([]Role, error) {
+	if err := s.EnsureDefaults(ctx, companyID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Q(ctx).QueryContext(ctx, `
+		SELECT id, company_id, name, description, is_system, created_at, updated_at
+		FROM company_roles WHERE company_id=$1 ORDER BY is_system DESC, name ASC`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Role, 0)
+	for rows.Next() {
+		var r Role
+		if err := rows.Scan(&r.ID, &r.CompanyID, &r.Name, &r.Description, &r.IsSystem, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		perms, err := s.loadPerms(ctx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		r.Permissions = perms
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (s *Service) Get(ctx context.Context, companyID, id uuid.UUID) (*Role, error) {
+	if err := s.EnsureDefaults(ctx, companyID); err != nil {
+		return nil, err
+	}
+	var r Role
+	err := s.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT id, company_id, name, description, is_system, created_at, updated_at
+		FROM company_roles WHERE company_id=$1 AND id=$2`, companyID, id).
+		Scan(&r.ID, &r.CompanyID, &r.Name, &r.Description, &r.IsSystem, &r.CreatedAt, &r.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, shared.New("ROLE_NOT_FOUND", "Role not found", 404)
+	}
+	if err != nil {
+		return nil, err
+	}
+	perms, err := s.loadPerms(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	r.Permissions = perms
+	return &r, nil
+}
+
+type UpsertInput struct {
+	Name        string
+	Description string
+	Permissions []string
+}
+
+func (s *Service) Create(ctx context.Context, companyID uuid.UUID, in UpsertInput) (*Role, error) {
+	if err := s.EnsureDefaults(ctx, companyID); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, shared.New("ROLE_NAME_REQUIRED", "Role name is required", 400)
+	}
+	perms := filterValidPerms(in.Permissions)
+	id := uuid.New()
+	_, err := s.db.Q(ctx).ExecContext(ctx, `
+		INSERT INTO company_roles (id, company_id, name, description, is_system, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,false,NOW(),NOW())`, id, companyID, name, strings.TrimSpace(in.Description))
+	if err != nil {
+		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+			return nil, shared.New("ROLE_EXISTS", "A role with this name already exists", 409)
+		}
+		return nil, err
+	}
+	if err := s.replacePerms(ctx, id, perms); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, companyID, id)
+}
+
+func (s *Service) Update(ctx context.Context, companyID, id uuid.UUID, in UpsertInput) (*Role, error) {
+	r, err := s.Get(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		name = r.Name
+	}
+	if r.IsSystem {
+		// System roles: permissions + description editable; name locked.
+		name = r.Name
+	}
+	_, err = s.db.Q(ctx).ExecContext(ctx, `
+		UPDATE company_roles SET name=$1, description=$2, updated_at=NOW()
+		WHERE company_id=$3 AND id=$4`, name, strings.TrimSpace(in.Description), companyID, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+			return nil, shared.New("ROLE_EXISTS", "A role with this name already exists", 409)
+		}
+		return nil, err
+	}
+	if err := s.replacePerms(ctx, id, filterValidPerms(in.Permissions)); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, companyID, id)
+}
+
+func (s *Service) Delete(ctx context.Context, companyID, id uuid.UUID) error {
+	r, err := s.Get(ctx, companyID, id)
+	if err != nil {
+		return err
+	}
+	if r.IsSystem {
+		return shared.New("ROLE_SYSTEM_LOCKED", "System roles cannot be deleted", 403)
+	}
+	var n int64
+	if err := s.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM app_users WHERE company_role_id=$1`, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return shared.New("ROLE_IN_USE", "Role is assigned to users and cannot be deleted", 409)
+	}
+	_, err = s.db.Q(ctx).ExecContext(ctx, `DELETE FROM company_roles WHERE company_id=$1 AND id=$2`, companyID, id)
+	return err
+}
+
+func (s *Service) loadPerms(ctx context.Context, roleID uuid.UUID) ([]string, error) {
+	rows, err := s.db.Q(ctx).QueryContext(ctx, `
+		SELECT permission FROM company_role_permissions WHERE role_id=$1 ORDER BY permission`, roleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (s *Service) replacePerms(ctx context.Context, roleID uuid.UUID, perms []string) error {
+	if _, err := s.db.Q(ctx).ExecContext(ctx, `DELETE FROM company_role_permissions WHERE role_id=$1`, roleID); err != nil {
+		return err
+	}
+	for _, p := range perms {
+		if _, err := s.db.Q(ctx).ExecContext(ctx, `
+			INSERT INTO company_role_permissions (role_id, permission) VALUES ($1,$2)`, roleID, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func filterValidPerms(in []string) []string {
+	allowed := map[string]struct{}{}
+	for _, p := range auth.AllPermissions {
+		allowed[p] = struct{}{}
+	}
+	out := make([]string, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, p := range in {
+		p = strings.TrimSpace(p)
+		if _, ok := allowed[p]; !ok {
+			continue
+		}
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}

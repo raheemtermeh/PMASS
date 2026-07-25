@@ -4,7 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
-import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
+import {
+  getRememberMePreference,
+  useAuthStore,
+  type AuthUser,
+} from "@/core/auth/auth-store";
+import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
 
@@ -60,14 +65,16 @@ export default function WelcomePage() {
   const [tenantSlug, setTenantSlug] = useState("");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSlug, setForgotSlug] = useState("");
-  const [forgotMsg, setForgotMsg] = useState("");
-  const [forgotError, setForgotError] = useState("");
-  const [forgotLoading, setForgotLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeysOk, setPasskeysOk] = useState(false);
+
+  useEffect(() => {
+    setRememberMe(getRememberMePreference());
+    setPasskeysOk(isPasskeySupported());
+  }, []);
 
   const [companyName, setCompanyName] = useState("");
   const [preferredSlug, setPreferredSlug] = useState("");
@@ -106,6 +113,15 @@ export default function WelcomePage() {
     void checkState();
   }, [router, token, user]);
 
+  function applySession(res: { token: string; refresh_token?: string; user: AuthUser }) {
+    setSession(res.token, res.user, res.refresh_token ?? null, { remember: rememberMe });
+    router.replace(
+      sanitizeInternalPath(
+        firstAllowedPath(res.user.role, res.user.permissions, Boolean(res.user.tenant_id)),
+      ),
+    );
+  }
+
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setLoginError("");
@@ -120,15 +136,11 @@ export default function WelcomePage() {
             ? { email: identifier.toLowerCase() }
             : { username: identifier }),
           password,
+          remember_me: rememberMe,
         },
         false,
       );
-      setSession(res.token, res.user, res.refresh_token ?? null);
-      router.replace(
-        sanitizeInternalPath(
-          firstAllowedPath(res.user.role, res.user.permissions, Boolean(res.user.tenant_id)),
-        ),
-      );
+      applySession(res);
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -136,28 +148,44 @@ export default function WelcomePage() {
     }
   }
 
-  async function handleForgotPassword(e: FormEvent) {
-    e.preventDefault();
-    setForgotError("");
-    setForgotMsg("");
-    setForgotLoading(true);
+  async function handlePasskeyLogin() {
+    setLoginError("");
+    setPasskeyLoading(true);
     try {
-      const res = await httpClient.post<{ message: string }>(
-        "/api/v1/auth/forgot-password",
+      if (!isPasskeySupported()) {
+        throw new Error("Passkeys are not supported in this browser");
+      }
+      const identifier = loginId.trim();
+      const begin = await httpClient.post<{
+        publicKey: Record<string, unknown>;
+        session_id: string;
+      }>(
+        "/api/v1/auth/passkeys/login/begin",
         {
-          tenant_slug: forgotSlug.trim().toLowerCase() || tenantSlug.trim().toLowerCase(),
-          email: forgotEmail.trim().toLowerCase(),
+          tenant_slug: tenantSlug.trim().toLowerCase(),
+          ...(identifier
+            ? EMAIL_PATTERN.test(identifier)
+              ? { email: identifier.toLowerCase() }
+              : { username: identifier }
+            : {}),
         },
         false,
       );
-      setForgotMsg(
-        res.message ||
-          "If an account exists, a reset token has been generated. Ask your company admin to check the server logs and share the reset link with you.",
+      const credential = await getPasskeyCredential(begin.publicKey);
+      const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
+        "/api/v1/auth/passkeys/login/finish",
+        {
+          session_id: begin.session_id,
+          credential,
+          remember_me: rememberMe,
+        },
+        false,
       );
+      applySession(res);
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Request failed");
+      setLoginError(err instanceof Error ? err.message : "Passkey sign-in failed");
     } finally {
-      setForgotLoading(false);
+      setPasskeyLoading(false);
     }
   }
 
@@ -317,136 +345,123 @@ export default function WelcomePage() {
               <li>Access to dashboard, products, and planning</li>
             </ul>
           </div>
-          <form onSubmit={handleLogin} className="landing-form-card">
-            <h3>Sign in to company panel</h3>
-            <div className="form-group">
-              <label htmlFor="login-slug">Company ID</label>
-              <input
-                id="login-slug"
-                value={tenantSlug}
-                onChange={(e) => setTenantSlug(e.target.value)}
-                placeholder="acme-corp"
-                required
-                autoComplete="organization"
-              />
+          <form onSubmit={handleLogin} className="landing-form-card auth-login-card">
+            <header className="auth-login-head">
+              <p className="auth-login-kicker">Company workspace</p>
+              <h3>Sign in</h3>
+              <p className="auth-login-sub">Use your Company ID and account credentials.</p>
+            </header>
+
+            <div className="auth-login-fields">
+              <div className="form-group">
+                <label htmlFor="login-slug">Company ID</label>
+                <input
+                  id="login-slug"
+                  value={tenantSlug}
+                  onChange={(e) => setTenantSlug(e.target.value)}
+                  placeholder="acme-corp"
+                  required
+                  autoComplete="organization"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="login-email">Email or username</label>
+                <input
+                  id="login-email"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  required
+                  autoComplete="username"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="login-pass">Password</label>
+                <input
+                  id="login-pass"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label htmlFor="login-email">Email or username</label>
-              <input
-                id="login-email"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
-                required
-                autoComplete="username"
-              />
+
+            <div className="auth-login-meta">
+              <label className="auth-remember">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                <span className="auth-remember-text">
+                  <strong>Remember me</strong>
+                  <em>Stay signed in for 30 days</em>
+                </span>
+              </label>
+              <Link
+                href={`/forgot-password?slug=${encodeURIComponent(tenantSlug.trim().toLowerCase())}${
+                  EMAIL_PATTERN.test(loginId.trim())
+                    ? `&email=${encodeURIComponent(loginId.trim().toLowerCase())}`
+                    : ""
+                }`}
+                className="auth-forgot-link"
+              >
+                Forgot password?
+              </Link>
             </div>
-            <div className="form-group">
-              <label htmlFor="login-pass">Password</label>
-              <input
-                id="login-pass"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            {loginError && <p className="auth-error">{loginError}</p>}
-            <button type="submit" className="btn btn-primary auth-submit" disabled={loginLoading}>
+
+            {loginError ? <p className="auth-error">{loginError}</p> : null}
+
+            <button
+              type="submit"
+              className="btn btn-primary auth-submit"
+              disabled={loginLoading || passkeyLoading}
+            >
               {loginLoading ? "Signing in…" : "Sign in"}
             </button>
-            <button
-              type="button"
-              className="landing-forgot-link"
-              onClick={() => {
-                setForgotOpen(true);
-                setForgotSlug(tenantSlug);
-                setForgotEmail(EMAIL_PATTERN.test(loginId.trim()) ? loginId.trim() : "");
-                setForgotMsg("");
-                setForgotError("");
-              }}
-            >
-              Forgot password?
-            </button>
+
+            {passkeysOk ? (
+              <div className="auth-passkey-block">
+                <div className="auth-passkey-divider" aria-hidden>
+                  <span>or</span>
+                </div>
+                <button
+                  type="button"
+                  className="auth-passkey-btn"
+                  disabled={loginLoading || passkeyLoading}
+                  onClick={() => void handlePasskeyLogin()}
+                >
+                  <svg className="auth-passkey-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path
+                      d="M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
+                    <path
+                      d="M12 11v7.5M12 18.5l2.2-1.4M12 16.2l2.2-1.4"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M7.5 10.2a5.2 5.2 0 1 1 9 0"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <span className="auth-passkey-copy">
+                    <strong>{passkeyLoading ? "Waiting for device…" : "Sign in with passkey"}</strong>
+                    <em>Face ID · Touch ID · Windows Hello · security key</em>
+                  </span>
+                </button>
+              </div>
+            ) : null}
           </form>
         </div>
       </section>
-
-      {forgotOpen ? (
-        <div
-          className="modal-backdrop active"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="forgot-password-title"
-          onClick={() => !forgotLoading && setForgotOpen(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 id="forgot-password-title" className="modal-title">
-                Forgot password
-              </h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setForgotOpen(false)}
-                disabled={forgotLoading}
-              >
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleForgotPassword} className="modal-body auth-form">
-              <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-                Enter your Company ID and email. A one-time reset token is generated server-side —
-                your company administrator can find it in the server logs, or reset your password
-                directly from User Management.
-              </p>
-              <div className="form-group">
-                <label htmlFor="forgot-slug">Company ID</label>
-                <input
-                  id="forgot-slug"
-                  value={forgotSlug}
-                  onChange={(e) => setForgotSlug(e.target.value)}
-                  placeholder="acme-corp"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="forgot-email">Email</label>
-                <input
-                  id="forgot-email"
-                  type="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  required
-                />
-              </div>
-              {forgotError ? <p className="auth-error">{forgotError}</p> : null}
-              {forgotMsg ? (
-                <p className="landing-success-inline">
-                  {forgotMsg} Already have a reset token?{" "}
-                  <Link href="/reset-password" onClick={() => setForgotOpen(false)}>
-                    Reset your password
-                  </Link>
-                  .
-                </p>
-              ) : null}
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setForgotOpen(false)}
-                  disabled={forgotLoading}
-                >
-                  Close
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={forgotLoading}>
-                  {forgotLoading ? "Sending…" : "Submit request"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
 
       <section id="request" className="landing-section landing-section-alt">
         <div className="landing-request-wrap">

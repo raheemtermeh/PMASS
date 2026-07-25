@@ -1,10 +1,19 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
 import { httpClient } from "@/core/api/http-client";
+import { createPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { PERMISSION_LABELS, type Permission } from "@/shared/permissions";
 import { sanitizeDisplayText } from "@/shared/security";
+
+interface PasskeyRow {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at?: string | null;
+}
 
 function splitName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/).filter(Boolean);
@@ -47,6 +56,24 @@ export default function ProfilePage() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState("");
+
+  const [pkName, setPkName] = useState("");
+  const [pkBusy, setPkBusy] = useState(false);
+  const [pkError, setPkError] = useState("");
+  const [pkSuccess, setPkSuccess] = useState("");
+  const [passkeysOk, setPasskeysOk] = useState(false);
+  const qc = useQueryClient();
+
+  const { data: passkeys = [], isLoading: pkLoading } = useQuery({
+    queryKey: ["passkeys", user?.id],
+    queryFn: () => httpClient.get<PasskeyRow[]>("/api/v1/auth/passkeys"),
+    enabled: Boolean(token && user),
+    staleTime: 15_000,
+  });
+
+  useEffect(() => {
+    setPasskeysOk(isPasskeySupported());
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -128,6 +155,48 @@ export default function ProfilePage() {
       setPwError(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setPwBusy(false);
+    }
+  }
+
+  async function onAddPasskey(e: FormEvent) {
+    e.preventDefault();
+    setPkError("");
+    setPkSuccess("");
+    if (!passkeysOk) {
+      setPkError("Passkeys are not supported in this browser.");
+      return;
+    }
+    setPkBusy(true);
+    try {
+      const begin = await httpClient.post<{
+        publicKey: Record<string, unknown>;
+        session_id: string;
+      }>("/api/v1/auth/passkeys/register/begin", {});
+      const credential = await createPasskeyCredential(begin.publicKey);
+      await httpClient.post("/api/v1/auth/passkeys/register/finish", {
+        session_id: begin.session_id,
+        credential,
+        name: pkName.trim() || "Passkey",
+      });
+      setPkName("");
+      setPkSuccess("Passkey added. You can use it on the sign-in screen.");
+      void qc.invalidateQueries({ queryKey: ["passkeys"] });
+    } catch (err) {
+      setPkError(err instanceof Error ? err.message : "Failed to add passkey");
+    } finally {
+      setPkBusy(false);
+    }
+  }
+
+  async function onDeletePasskey(id: string, name: string) {
+    if (!window.confirm(`Remove passkey “${name}”?`)) return;
+    setPkError("");
+    try {
+      await httpClient.delete(`/api/v1/auth/passkeys/${id}`);
+      setPkSuccess("Passkey removed.");
+      void qc.invalidateQueries({ queryKey: ["passkeys"] });
+    } catch (err) {
+      setPkError(err instanceof Error ? err.message : "Failed to remove passkey");
     }
   }
 
@@ -285,6 +354,71 @@ export default function ProfilePage() {
             </button>
           </div>
         </form>
+
+        <section className="profile-card">
+          <div className="profile-card-head">
+            <h3>Passkeys</h3>
+            <p className="text-dim">
+              Sign in with Face ID, Touch ID, Windows Hello, or a hardware key — no password needed.
+            </p>
+          </div>
+
+          {!passkeysOk ? (
+            <p className="text-dim">This browser does not support passkeys.</p>
+          ) : (
+            <>
+              {pkLoading ? <p className="text-dim">Loading passkeys…</p> : null}
+              {passkeys.length > 0 ? (
+                <ul className="profile-passkey-list">
+                  {passkeys.map((pk) => (
+                    <li key={pk.id}>
+                      <div>
+                        <strong>{sanitizeDisplayText(pk.name)}</strong>
+                        <span>
+                          Added {new Date(pk.created_at).toLocaleDateString()}
+                          {pk.last_used_at
+                            ? ` · Last used ${new Date(pk.last_used_at).toLocaleDateString()}`
+                            : ""}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() => void onDeletePasskey(pk.id, pk.name)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : !pkLoading ? (
+                <p className="text-dim" style={{ marginBottom: "0.85rem" }}>
+                  No passkeys yet. Add one to enable passwordless sign-in.
+                </p>
+              ) : null}
+
+              <form onSubmit={onAddPasskey} className="profile-passkey-form">
+                <div className="form-group">
+                  <label htmlFor="passkey-name">Label (optional)</label>
+                  <input
+                    id="passkey-name"
+                    value={pkName}
+                    onChange={(e) => setPkName(e.target.value)}
+                    placeholder="e.g. MacBook Touch ID"
+                    maxLength={128}
+                  />
+                </div>
+                {pkError ? <p className="auth-error">{pkError}</p> : null}
+                {pkSuccess ? <p className="profile-success">{pkSuccess}</p> : null}
+                <div className="profile-actions">
+                  <button type="submit" className="btn btn-primary" disabled={pkBusy}>
+                    {pkBusy ? "Waiting for device…" : "Add passkey"}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </section>
         </div>
 
         <aside className="profile-side">

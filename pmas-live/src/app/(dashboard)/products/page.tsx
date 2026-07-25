@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager } from "@/components/ResourceManager";
+import { StatusKanbanBoard } from "@/components/visual/StatusKanbanBoard";
 import { httpClient } from "@/core/api/http-client";
 import type { Employee, Product } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
@@ -24,6 +26,7 @@ const ARCHIVED_STATUSES = new Set(["ARCHIVED"]);
 
 export default function ProductsPage() {
   const qc = useQueryClient();
+  const router = useRouter();
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["vsm-products"],
@@ -72,7 +75,36 @@ export default function ProductsPage() {
     return e ? employeeLabel(e) : id.slice(0, 8);
   };
 
+  const activeProducts = products.filter((p) => !ARCHIVED_STATUSES.has(p.status));
+
   return (
+    <div className="page-stack">
+      {activeProducts.length > 0 ? (
+        <StatusKanbanBoard
+          layoutKey="products-board"
+          title="Products · visual"
+          hint="Drag products across lifecycle lanes · status saved once on drop"
+          columns={[
+            { id: "DRAFT", label: "Draft" },
+            { id: "READY", label: "Ready" },
+            { id: "PLANNING", label: "Planning" },
+            { id: "ACTIVE", label: "Active" },
+            { id: "ON_HOLD", label: "On hold" },
+            { id: "COMPLETED", label: "Completed" },
+          ]}
+          cards={activeProducts.map((p) => ({
+            id: p.id,
+            title: p.name,
+            status: p.status,
+            subtitle: p.code || p.priority || p.status,
+          }))}
+          onStatusChange={async (id, status) => {
+            await updateMut.mutateAsync({ id, body: { status } });
+          }}
+          onOpen={(id) => router.push(`/products/${id}`)}
+        />
+      ) : null}
+
     <ResourceManager
       title="Products"
       description="Product is the aggregate root. Lifecycle: Draft → Ready → Active → Completed → Archived. Execution model is locked after create."
@@ -231,5 +263,6 @@ export default function ProductsPage() {
         </>
       )}
     />
+    </div>
   );
 }

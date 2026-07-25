@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, optStr } from "@/components/ResourceManager";
+import { StatusKanbanBoard } from "@/components/visual/StatusKanbanBoard";
 import { httpClient } from "@/core/api/http-client";
 import type { Permission } from "@/shared/permissions";
 
@@ -119,6 +120,22 @@ export function SectionWorkBoard({
           <strong className="stat-value">{blockedCount}</strong>
         </div>
       </section>
+
+      <StatusKanbanBoard
+        layoutKey={`workboard:${section}`}
+        title={`${title} · visual`}
+        hint="Drag cards across lanes to change status · one save per drop"
+        columns={STATUS_OPTIONS.map((s) => ({ id: s.value, label: s.label }))}
+        cards={items.map((item) => ({
+          id: String(item.id),
+          title: item.title,
+          status: item.status,
+          subtitle: `${item.kind} · ${item.priority}`,
+        }))}
+        onStatusChange={async (id, status) => {
+          await updateMut.mutateAsync({ id: Number(id), body: { status } });
+        }}
+      />
 
       <ResourceManager
         title={title}

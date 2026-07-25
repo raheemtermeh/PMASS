@@ -9,6 +9,7 @@ import (
 	organizationapp "PMAS/internal/application/organization"
 	planningapp "PMAS/internal/application/planning"
 	productapp "PMAS/internal/application/product"
+	rolesapp "PMAS/internal/application/roles"
 	searchapp "PMAS/internal/application/search"
 	"PMAS/internal/auth"
 	"PMAS/internal/infrastructure/postgres"
@@ -23,6 +24,7 @@ type Dependencies struct {
 	Collab    *CollabHandler
 	Dashboard *DashboardHandler
 	Search    *SearchHandler
+	Roles     *RolesHandler
 }
 
 func NewDependencies(sqlDB *sql.DB) *Dependencies {
@@ -56,6 +58,7 @@ func NewDependencies(sqlDB *sql.DB) *Dependencies {
 	collabSvc := collabapp.NewService(db, cmt, att, act, notif)
 	dashSvc := dashboardapp.NewService(db)
 	searchSvc := searchapp.NewService(db)
+	rolesSvc := rolesapp.NewService(db)
 
 	return &Dependencies{
 		Org:       &OrgHandler{Scope: scope, Svc: orgSvc},
@@ -64,6 +67,7 @@ func NewDependencies(sqlDB *sql.DB) *Dependencies {
 		Collab:    &CollabHandler{Scope: scope, Svc: collabSvc},
 		Dashboard: &DashboardHandler{Scope: scope, Svc: dashSvc},
 		Search:    &SearchHandler{Scope: scope, Svc: searchSvc},
+		Roles:     &RolesHandler{Scope: scope, Svc: rolesSvc},
 	}
 }
 
@@ -76,6 +80,9 @@ func (d *Dependencies) Register(mux *http.ServeMux, authz *middleware.Authentica
 	mux.HandleFunc("/api/v1/teams/", authz.RequirePermission(auth.PermTeamManage, d.Org.HandleTeams))
 	mux.HandleFunc("/api/v1/employees", authz.RequirePermission(auth.PermEmployeeManage, d.Org.HandleEmployees))
 	mux.HandleFunc("/api/v1/employees/", authz.RequirePermission(auth.PermEmployeeManage, d.Org.HandleEmployees))
+
+	mux.HandleFunc("/api/v1/roles", authz.RequirePermission(auth.PermUsers, d.Roles.HandleRoles))
+	mux.HandleFunc("/api/v1/roles/", authz.RequirePermission(auth.PermUsers, d.Roles.HandleRoles))
 
 	// Product aggregate
 	mux.HandleFunc("/api/v1/products", authz.RequirePermission(auth.PermProductView, d.Product.HandleProducts))

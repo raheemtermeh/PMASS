@@ -121,7 +121,7 @@ func (h *Handler) Bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.issueSession(r, user)
+	accessToken, refreshToken, err := h.issueSession(r, user, false)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -208,7 +208,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.issueSession(r, user)
+	accessToken, refreshToken, err := h.issueSession(r, user, req.RememberMe)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -218,8 +218,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // ForgotPassword accepts a reset request without revealing whether the account exists.
-// A one-time reset token is generated and stored (hashed); the plaintext token is
-// logged to stdout so operators can hand it to the user until SMTP delivery exists.
+// A one-time reset token is stored hashed. Until SMTP exists, non-production builds may
+// return the plaintext token so the UI can continue to /reset-password.
 func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if !h.setupResponse(w, r) {
 		return
@@ -258,12 +258,22 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		`, req.Email, req.TenantSlug).Scan(&userID)
 	}
 
+	resp := map[string]any{
+		"message": "If an account exists for that email, you can continue to reset your password.",
+	}
+
 	if err == nil {
 		plainToken, hash, genErr := auth.GenerateOpaqueToken()
 		if genErr != nil {
 			log.Printf("Error generating password reset token for user_id=%d: %v", userID, genErr)
 		} else {
 			expiresAt := time.Now().Add(auth.PasswordResetTokenTTL)
+			// Invalidate unused prior tokens for this user.
+			_, _ = h.db.ExecContext(r.Context(), `
+				UPDATE password_reset_tokens
+				SET used_at = CURRENT_TIMESTAMP
+				WHERE user_id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+			`, userID)
 			if _, insErr := h.db.ExecContext(r.Context(), `
 				INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
 				VALUES ($1, $2, $3)
@@ -271,14 +281,17 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Error storing password reset token for user_id=%d: %v", userID, insErr)
 			} else {
 				log.Printf("Password reset token for user_id=%d: %s", userID, plainToken)
+				if h.returnResetToken {
+					resp["reset_token"] = plainToken
+					resp["expires_in_minutes"] = int(auth.PasswordResetTokenTTL.Minutes())
+					resp["message"] = "Reset link ready. Continue to choose a new password."
+				}
 			}
 		}
 	}
 
-	// Deliberately identical response whether or not the account exists.
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "If an account exists for that email, a password reset link has been generated.",
-	})
+	// Same shape always; reset_token only present when allowed and account found.
+	json.NewEncoder(w).Encode(resp)
 }
 
 // ResetPassword consumes a one-time password reset token (issued via ForgotPassword)
@@ -494,10 +507,12 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		userID    int
 		expiresAt time.Time
 		revokedAt sql.NullTime
+		remember  bool
 	)
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = $1
-	`, hash).Scan(&tokenID, &userID, &expiresAt, &revokedAt)
+		SELECT id, user_id, expires_at, revoked_at, COALESCE(remember, false)
+		FROM refresh_tokens WHERE token_hash = $1
+	`, hash).Scan(&tokenID, &userID, &expiresAt, &revokedAt, &remember)
 	if err == sql.ErrNoRows {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid or expired refresh token"})
@@ -529,7 +544,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.issueSession(r, user)
+	accessToken, refreshToken, err := h.issueSession(r, user, remember)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -754,9 +769,9 @@ func (h *Handler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		switch r.Method {
 		case http.MethodGet:
-			h.ListUsers(w, r)
+			h.ListWorkspaceUsers(w, r)
 		case http.MethodPost:
-			h.CreateUser(w, r)
+			h.CreateWorkspaceUser(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -771,10 +786,14 @@ func (h *Handler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
-	case http.MethodPut:
-		h.UpdateUser(w, r, id)
+	case http.MethodPut, http.MethodPatch:
+		h.UpdateWorkspaceUser(w, r, id)
 	case http.MethodDelete:
-		h.DeleteUser(w, r, id)
+		// Soft-deactivate instead of hard delete.
+		active := false
+		payload, _ := json.Marshal(map[string]any{"is_active": active})
+		r.Body = ioNopCloser(string(payload))
+		h.UpdateWorkspaceUser(w, r, id)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -1114,7 +1133,7 @@ func (h *Handler) GetPermissionsCatalog(w http.ResponseWriter, r *http.Request) 
 
 // issueSession mints a new access token plus an opaque refresh token, persisting
 // only the refresh token's SHA-256 hash so it can be revoked/rotated later.
-func (h *Handler) issueSession(r *http.Request, user *models.AppUserWithPermissions) (accessToken, refreshToken string, err error) {
+func (h *Handler) issueSession(r *http.Request, user *models.AppUserWithPermissions, remember bool) (accessToken, refreshToken string, err error) {
 	var slug, name string
 	if user.Tenant != nil {
 		slug = user.Tenant.Slug
@@ -1141,9 +1160,9 @@ func (h *Handler) issueSession(r *http.Request, user *models.AppUserWithPermissi
 	}
 
 	if _, err := h.db.ExecContext(r.Context(), `
-		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-		VALUES ($1, $2, $3)
-	`, user.ID, refreshHash, time.Now().Add(auth.RefreshTokenTTL)); err != nil {
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at, remember)
+		VALUES ($1, $2, $3, $4)
+	`, user.ID, refreshHash, time.Now().Add(auth.RefreshTTL(remember)), remember); err != nil {
 		return "", "", err
 	}
 

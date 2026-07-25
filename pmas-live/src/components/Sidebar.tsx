@@ -81,13 +81,17 @@ export function Sidebar() {
       ? "Company Admin"
       : "User";
 
-  function renderNavItem(viewId: ViewId) {
+  function renderNavItem(viewId: ViewId, staggerIndex = 0) {
     const route = routes[viewId];
     const isActive = pathname === route.path || pathname.startsWith(`${route.path}/`);
     const showBadge = viewId === "platform-access-requests" && pendingCount > 0;
 
     return (
-      <li key={viewId} className={`nav-item${isActive ? " active" : ""}`}>
+      <li
+        key={viewId}
+        className={`nav-item nav-item-stagger${isActive ? " active" : ""}`}
+        style={{ animationDelay: `${0.08 + staggerIndex * 0.035}s` }}
+      >
         <Link href={route.path} onClick={closeMobileNav}>
           <NavIcon viewId={viewId} />
           <span>{navLabels[viewId]}</span>
@@ -102,8 +106,8 @@ export function Sidebar() {
   }
 
   return (
-    <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
-      <div className="brand-container">
+    <aside className={`sidebar sidebar-alive${collapsed ? " collapsed" : ""}`}>
+      <div className="brand-container sidebar-brand-alive">
         <svg className="brand-logo-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
         </svg>
@@ -118,7 +122,7 @@ export function Sidebar() {
         </button>
       </div>
 
-      <Link href="/profile" className="user-profile user-profile-link" onClick={closeMobileNav}>
+      <Link href="/profile" className="user-profile user-profile-link sidebar-profile-alive" onClick={closeMobileNav}>
         <div className="user-avatar">{initials}</div>
         <div className="user-info">
           <span className="user-name">{user.full_name}</span>
@@ -128,24 +132,33 @@ export function Sidebar() {
         </div>
       </Link>
 
-      <nav className="flex-1">
+      <nav className="flex-1 sidebar-nav-alive">
         {platform ? (
-          platformNavGroups.map((group) => {
+          platformNavGroups.map((group, gi) => {
             const items = group.items.filter((id) =>
               isNavVisible(id, platform, hasTenant, user.role, user.permissions),
             );
             if (items.length === 0) return null;
+            let offset = gi * 4;
             return (
-              <div key={group.label} className="sidebar-nav-group">
+              <div
+                key={group.label}
+                className="sidebar-nav-group sidebar-nav-group-alive"
+                style={{ animationDelay: `${0.05 + gi * 0.04}s` }}
+              >
                 {!collapsed ? (
                   <p className="sidebar-nav-group-label">{group.label}</p>
                 ) : null}
-                <ul className="nav-links">{items.map(renderNavItem)}</ul>
+                <ul className="nav-links">
+                  {items.map((id, ii) => renderNavItem(id, offset + ii))}
+                </ul>
               </div>
             );
           })
         ) : (
-          <ul className="nav-links">{tenantNav.map(renderNavItem)}</ul>
+          <ul className="nav-links">
+            {tenantNav.map((id, ii) => renderNavItem(id, ii))}
+          </ul>
         )}
       </nav>
 

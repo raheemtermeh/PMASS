@@ -8,18 +8,22 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-webauthn/webauthn/webauthn"
+
 	"PMAS/internal/auth"
 	"PMAS/internal/models"
 )
 
 // Handler coordinates data access layers and HTTP operations.
 type Handler struct {
-	db *sql.DB
+	db               *sql.DB
+	webAuthn         *webauthn.WebAuthn
+	returnResetToken bool // non-production: include one-time token in forgot-password response
 }
 
 // NewHandler initializes a controller instance.
-func NewHandler(db *sql.DB) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *sql.DB, wa *webauthn.WebAuthn, returnResetToken bool) *Handler {
+	return &Handler{db: db, webAuthn: wa, returnResetToken: returnResetToken}
 }
 
 // setupResponse sets JSON content type. CORS/security headers are applied by middleware.

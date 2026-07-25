@@ -89,19 +89,23 @@ func NewDepartmentRepo(db *DB) *DepartmentRepo { return &DepartmentRepo{db: db} 
 
 func (r *DepartmentRepo) Create(ctx context.Context, d *organization.Department) error {
 	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO departments (id, company_id, manager_id, name, status, version, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		d.ID, d.CompanyID, d.ManagerID, d.Name, d.Status, d.Version, d.CreatedAt, d.UpdatedAt,
+		INSERT INTO departments (id, company_id, manager_id, name, description, status, version, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		d.ID, d.CompanyID, d.ManagerID, d.Name, d.Description, d.Status, d.Version, d.CreatedAt, d.UpdatedAt,
 	)
 	return err
 }
 
 func (r *DepartmentRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*organization.Department, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, company_id, manager_id, name, status, version, created_at, updated_at
+		SELECT id, company_id, manager_id, name, COALESCE(description,''), status, version, created_at, updated_at,
+			(SELECT COUNT(*) FROM teams t WHERE t.department_id = departments.id AND t.status <> 'ARCHIVED'),
+			(SELECT COUNT(DISTINCT tm.employee_id) FROM team_members_vsm tm
+				INNER JOIN teams t ON t.id = tm.team_id
+				WHERE t.department_id = departments.id AND t.status <> 'ARCHIVED')
 		FROM departments WHERE company_id=$1 AND id=$2`, companyID, id)
 	var d organization.Department
-	err := row.Scan(&d.ID, &d.CompanyID, &d.ManagerID, &d.Name, &d.Status, &d.Version, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &d.CompanyID, &d.ManagerID, &d.Name, &d.Description, &d.Status, &d.Version, &d.CreatedAt, &d.UpdatedAt, &d.TeamCount, &d.MemberCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, organization.ErrDepartmentNotFound
 	}
@@ -129,7 +133,11 @@ func (r *DepartmentRepo) List(ctx context.Context, companyID uuid.UUID, q shared
 	}
 	args = append(args, q.PageSize, q.Offset())
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT id, company_id, manager_id, name, status, version, created_at, updated_at
+		SELECT id, company_id, manager_id, name, COALESCE(description,''), status, version, created_at, updated_at,
+			(SELECT COUNT(*) FROM teams t WHERE t.department_id = departments.id AND t.status <> 'ARCHIVED'),
+			(SELECT COUNT(DISTINCT tm.employee_id) FROM team_members_vsm tm
+				INNER JOIN teams t ON t.id = tm.team_id
+				WHERE t.department_id = departments.id AND t.status <> 'ARCHIVED')
 		FROM departments WHERE `+where+`
 		ORDER BY created_at DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -139,7 +147,7 @@ func (r *DepartmentRepo) List(ctx context.Context, companyID uuid.UUID, q shared
 	out := make([]organization.Department, 0)
 	for rows.Next() {
 		var d organization.Department
-		if err := rows.Scan(&d.ID, &d.CompanyID, &d.ManagerID, &d.Name, &d.Status, &d.Version, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CompanyID, &d.ManagerID, &d.Name, &d.Description, &d.Status, &d.Version, &d.CreatedAt, &d.UpdatedAt, &d.TeamCount, &d.MemberCount); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, d)
@@ -149,9 +157,9 @@ func (r *DepartmentRepo) List(ctx context.Context, companyID uuid.UUID, q shared
 
 func (r *DepartmentRepo) Update(ctx context.Context, d *organization.Department) error {
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE departments SET manager_id=$1, name=$2, status=$3, version=version+1, updated_at=$4
-		WHERE company_id=$5 AND id=$6 AND version=$7`,
-		d.ManagerID, d.Name, d.Status, time.Now().UTC(), d.CompanyID, d.ID, d.Version,
+		UPDATE departments SET manager_id=$1, name=$2, description=$3, status=$4, version=version+1, updated_at=$5
+		WHERE company_id=$6 AND id=$7 AND version=$8`,
+		d.ManagerID, d.Name, d.Description, d.Status, time.Now().UTC(), d.CompanyID, d.ID, d.Version,
 	)
 	if err != nil {
 		return err
@@ -170,19 +178,19 @@ func NewTeamRepo(db *DB) *TeamRepo { return &TeamRepo{db: db} }
 
 func (r *TeamRepo) Create(ctx context.Context, t *organization.Team) error {
 	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO teams (id, company_id, department_id, lead_id, name, description, status, version, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		t.ID, t.CompanyID, t.DepartmentID, t.LeadID, t.Name, t.Description, t.Status, t.Version, t.CreatedAt, t.UpdatedAt,
+		INSERT INTO teams (id, company_id, department_id, lead_id, name, description, capacity, status, version, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		t.ID, t.CompanyID, t.DepartmentID, t.LeadID, t.Name, t.Description, t.Capacity, t.Status, t.Version, t.CreatedAt, t.UpdatedAt,
 	)
 	return err
 }
 
 func (r *TeamRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*organization.Team, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, company_id, department_id, lead_id, name, description, status, version, created_at, updated_at
+		SELECT id, company_id, department_id, lead_id, name, description, COALESCE(capacity,0), status, version, created_at, updated_at
 		FROM teams WHERE company_id=$1 AND id=$2`, companyID, id)
 	var t organization.Team
-	err := row.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt)
+	err := row.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Capacity, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, organization.ErrTeamNotFound
 	}
@@ -209,13 +217,17 @@ func (r *TeamRepo) list(ctx context.Context, companyID, departmentID uuid.UUID, 
 		args = append(args, "%"+strings.ToLower(q.Search)+"%")
 		where += fmt.Sprintf(` AND LOWER(name) LIKE $%d`, len(args))
 	}
+	if q.Status != "" {
+		args = append(args, q.Status)
+		where += fmt.Sprintf(` AND status = $%d`, len(args))
+	}
 	var total int64
 	if err := r.db.Q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM teams WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, q.PageSize, q.Offset())
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT id, company_id, department_id, lead_id, name, description, status, version, created_at, updated_at
+		SELECT id, company_id, department_id, lead_id, name, description, COALESCE(capacity,0), status, version, created_at, updated_at
 		FROM teams WHERE `+where+`
 		ORDER BY created_at DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -225,7 +237,7 @@ func (r *TeamRepo) list(ctx context.Context, companyID, departmentID uuid.UUID, 
 	out := make([]organization.Team, 0)
 	for rows.Next() {
 		var t organization.Team
-		if err := rows.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Capacity, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, t)
@@ -235,9 +247,9 @@ func (r *TeamRepo) list(ctx context.Context, companyID, departmentID uuid.UUID, 
 
 func (r *TeamRepo) Update(ctx context.Context, t *organization.Team) error {
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE teams SET department_id=$1, lead_id=$2, name=$3, description=$4, status=$5, version=version+1, updated_at=$6
-		WHERE company_id=$7 AND id=$8 AND version=$9`,
-		t.DepartmentID, t.LeadID, t.Name, t.Description, t.Status, time.Now().UTC(), t.CompanyID, t.ID, t.Version,
+		UPDATE teams SET department_id=$1, lead_id=$2, name=$3, description=$4, capacity=$5, status=$6, version=version+1, updated_at=$7
+		WHERE company_id=$8 AND id=$9 AND version=$10`,
+		t.DepartmentID, t.LeadID, t.Name, t.Description, t.Capacity, t.Status, time.Now().UTC(), t.CompanyID, t.ID, t.Version,
 	)
 	if err != nil {
 		return err
@@ -256,30 +268,30 @@ func NewEmployeeRepo(db *DB) *EmployeeRepo { return &EmployeeRepo{db: db} }
 
 func (r *EmployeeRepo) Create(ctx context.Context, e *organization.Employee) error {
 	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO employees (id, company_id, first_name, last_name, email, phone, status, user_id, version, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		e.ID, e.CompanyID, e.FirstName, e.LastName, e.Email, e.Phone, e.Status, e.UserID, e.Version, e.CreatedAt, e.UpdatedAt,
+		INSERT INTO employees (id, company_id, first_name, last_name, email, phone, job_title, status, user_id, version, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		e.ID, e.CompanyID, e.FirstName, e.LastName, e.Email, e.Phone, e.JobTitle, e.Status, e.UserID, e.Version, e.CreatedAt, e.UpdatedAt,
 	)
 	return err
 }
 
 func (r *EmployeeRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*organization.Employee, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, company_id, first_name, last_name, email, phone, status, user_id, version, created_at, updated_at
+		SELECT id, company_id, first_name, last_name, email, phone, COALESCE(job_title,''), status, user_id, version, created_at, updated_at
 		FROM employees WHERE company_id=$1 AND id=$2`, companyID, id)
 	return scanEmployee(row)
 }
 
 func (r *EmployeeRepo) FindByEmail(ctx context.Context, companyID uuid.UUID, email string) (*organization.Employee, error) {
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT id, company_id, first_name, last_name, email, phone, status, user_id, version, created_at, updated_at
+		SELECT id, company_id, first_name, last_name, email, phone, COALESCE(job_title,''), status, user_id, version, created_at, updated_at
 		FROM employees WHERE company_id=$1 AND email=$2`, companyID, email)
 	return scanEmployee(row)
 }
 
 func scanEmployee(row *sql.Row) (*organization.Employee, error) {
 	var e organization.Employee
-	err := row.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt)
+	err := row.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.JobTitle, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, organization.ErrEmployeeNotFound
 	}
@@ -293,9 +305,13 @@ func (r *EmployeeRepo) List(ctx context.Context, companyID uuid.UUID, q shared.P
 	q = q.Normalize()
 	where := `company_id = $1`
 	args := []any{companyID}
+	if q.Status != "" {
+		args = append(args, q.Status)
+		where += fmt.Sprintf(` AND status = $%d`, len(args))
+	}
 	if q.Search != "" {
 		args = append(args, "%"+strings.ToLower(q.Search)+"%")
-		where += fmt.Sprintf(` AND (LOWER(first_name) LIKE $%d OR LOWER(last_name) LIKE $%d OR LOWER(email) LIKE $%d)`, len(args), len(args), len(args))
+		where += fmt.Sprintf(` AND (LOWER(first_name) LIKE $%d OR LOWER(last_name) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(job_title) LIKE $%d)`, len(args), len(args), len(args), len(args))
 	}
 	var total int64
 	if err := r.db.Q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM employees WHERE `+where, args...).Scan(&total); err != nil {
@@ -303,7 +319,7 @@ func (r *EmployeeRepo) List(ctx context.Context, companyID uuid.UUID, q shared.P
 	}
 	args = append(args, q.PageSize, q.Offset())
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT id, company_id, first_name, last_name, email, phone, status, user_id, version, created_at, updated_at
+		SELECT id, company_id, first_name, last_name, email, phone, COALESCE(job_title,''), status, user_id, version, created_at, updated_at
 		FROM employees WHERE `+where+`
 		ORDER BY created_at DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -313,7 +329,7 @@ func (r *EmployeeRepo) List(ctx context.Context, companyID uuid.UUID, q shared.P
 	out := make([]organization.Employee, 0)
 	for rows.Next() {
 		var e organization.Employee
-		if err := rows.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.JobTitle, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, e)
@@ -323,9 +339,9 @@ func (r *EmployeeRepo) List(ctx context.Context, companyID uuid.UUID, q shared.P
 
 func (r *EmployeeRepo) Update(ctx context.Context, e *organization.Employee) error {
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE employees SET first_name=$1, last_name=$2, email=$3, phone=$4, status=$5, user_id=$6, version=version+1, updated_at=$7
-		WHERE company_id=$8 AND id=$9 AND version=$10`,
-		e.FirstName, e.LastName, e.Email, e.Phone, e.Status, e.UserID, time.Now().UTC(), e.CompanyID, e.ID, e.Version,
+		UPDATE employees SET first_name=$1, last_name=$2, email=$3, phone=$4, job_title=$5, status=$6, user_id=$7, version=version+1, updated_at=$8
+		WHERE company_id=$9 AND id=$10 AND version=$11`,
+		e.FirstName, e.LastName, e.Email, e.Phone, e.JobTitle, e.Status, e.UserID, time.Now().UTC(), e.CompanyID, e.ID, e.Version,
 	)
 	if err != nil {
 		return err
@@ -338,11 +354,42 @@ func (r *EmployeeRepo) Update(ctx context.Context, e *organization.Employee) err
 	return nil
 }
 
-func (r *EmployeeRepo) AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error {
-	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO team_members_vsm (company_id, team_id, employee_id)
-		VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, companyID, teamID, employeeID)
-	return err
+func (r *EmployeeRepo) FindTeamIDForEmployee(ctx context.Context, companyID, employeeID uuid.UUID) (uuid.UUID, error) {
+	var teamID uuid.UUID
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT team_id FROM team_members_vsm WHERE company_id=$1 AND employee_id=$2 LIMIT 1`,
+		companyID, employeeID).Scan(&teamID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, nil
+	}
+	return teamID, err
+}
+
+func (r *EmployeeRepo) AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID, assignedBy *int, teamRole string) error {
+	if teamRole == "" {
+		teamRole = organization.TeamRoleMember
+	}
+	existing, err := r.FindTeamIDForEmployee(ctx, companyID, employeeID)
+	if err != nil {
+		return err
+	}
+	if existing != uuid.Nil && existing != teamID {
+		return organization.ErrEmployeeAlreadyOnTeam
+	}
+	_, err = r.db.Q(ctx).ExecContext(ctx, `
+		INSERT INTO team_members_vsm (company_id, team_id, employee_id, assigned_at, assigned_by, team_role)
+		VALUES ($1,$2,$3,NOW(),$4,$5)
+		ON CONFLICT (team_id, employee_id) DO UPDATE SET
+			assigned_by = COALESCE(EXCLUDED.assigned_by, team_members_vsm.assigned_by),
+			team_role = EXCLUDED.team_role`,
+		companyID, teamID, employeeID, assignedBy, teamRole)
+	if err != nil {
+		if strings.Contains(err.Error(), "idx_team_members_vsm_one_team") || strings.Contains(err.Error(), "unique") {
+			return organization.ErrEmployeeAlreadyOnTeam
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *EmployeeRepo) RemoveFromTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error {
@@ -352,9 +399,10 @@ func (r *EmployeeRepo) RemoveFromTeam(ctx context.Context, companyID, employeeID
 	return err
 }
 
-func (r *EmployeeRepo) ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.Employee, error) {
+func (r *EmployeeRepo) ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.TeamMemberView, error) {
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT e.id, e.company_id, e.first_name, e.last_name, e.email, e.phone, e.status, e.user_id, e.version, e.created_at, e.updated_at
+		SELECT e.id, e.first_name, e.last_name, e.email, COALESCE(e.job_title,''), e.status,
+			COALESCE(tm.team_role,'MEMBER'), tm.assigned_at, tm.assigned_by
 		FROM employees e
 		INNER JOIN team_members_vsm tm ON tm.employee_id = e.id AND tm.company_id = e.company_id
 		WHERE e.company_id=$1 AND tm.team_id=$2 AND e.status <> 'ARCHIVED'
@@ -363,13 +411,35 @@ func (r *EmployeeRepo) ListByTeam(ctx context.Context, companyID, teamID uuid.UU
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]organization.Employee, 0)
+	out := make([]organization.TeamMemberView, 0)
 	for rows.Next() {
-		var e organization.Employee
-		if err := rows.Scan(&e.ID, &e.CompanyID, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &e.Status, &e.UserID, &e.Version, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		var m organization.TeamMemberView
+		var assignedBy sql.NullInt64
+		if err := rows.Scan(&m.EmployeeID, &m.FirstName, &m.LastName, &m.Email, &m.JobTitle, &m.Status, &m.TeamRole, &m.AssignedAt, &assignedBy); err != nil {
 			return nil, err
 		}
-		out = append(out, e)
+		if assignedBy.Valid {
+			id := int(assignedBy.Int64)
+			m.AssignedBy = &id
+		}
+		out = append(out, m)
 	}
 	return out, nil
+}
+
+func (r *EmployeeRepo) CountTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM team_members_vsm WHERE company_id=$1 AND team_id=$2`, companyID, teamID).Scan(&n)
+	return n, err
+}
+
+func (r *EmployeeRepo) CountOpenAssignmentsForTeam(ctx context.Context, companyID, teamID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks t
+		INNER JOIN team_members_vsm tm ON tm.employee_id = t.assignee_id AND tm.company_id = t.company_id
+		WHERE t.company_id=$1 AND tm.team_id=$2 AND t.deleted_at IS NULL
+		  AND t.status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID, teamID).Scan(&n)
+	return n, err
 }

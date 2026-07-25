@@ -37,7 +37,10 @@ type EmployeeRepository interface {
 	FindByEmail(ctx context.Context, companyID uuid.UUID, email string) (*Employee, error)
 	List(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]Employee, int64, error)
 	Update(ctx context.Context, e *Employee) error
-	AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error
+	AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID, assignedBy *int, teamRole string) error
 	RemoveFromTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error
-	ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]Employee, error)
+	ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]TeamMemberView, error)
+	FindTeamIDForEmployee(ctx context.Context, companyID, employeeID uuid.UUID) (uuid.UUID, error)
+	CountTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) (int64, error)
+	CountOpenAssignmentsForTeam(ctx context.Context, companyID, teamID uuid.UUID) (int64, error)
 }

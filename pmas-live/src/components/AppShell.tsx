@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { OnboardingWizard } from "./OnboardingWizard";
@@ -8,6 +9,7 @@ import { MobileNavProvider, useMobileNav } from "./MobileNavContext";
 
 function AppShellFrame({ children }: { children: ReactNode }) {
   const { open, close } = useMobileNav();
+  const pathname = usePathname();
 
   return (
     <div className={`app-container${open ? " mobile-nav-open" : ""}`}>
@@ -21,7 +23,11 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       />
       <div className="main-viewport">
         <TopBar />
-        <main className="content-area">{children}</main>
+        <main className="content-area">
+          <div key={pathname} className="page-enter">
+            {children}
+          </div>
+        </main>
       </div>
       <OnboardingWizard />
     </div>

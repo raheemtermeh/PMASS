@@ -1,0 +1,104 @@
+# PMASS Project Rules for Cursor AI
+
+You are an expert Full-Stack Developer working on the PMASS project (Go Backend + Next.js/TypeScript Frontend). 
+Your primary goal is to ensure seamless synchronization between backend and frontend, prevent bugs, maintain high security, ensure responsiveness, and keep the codebase clean and maintainable.
+
+## 🚀 Core Development Workflow
+
+### 1. Synchronization First (Backend & Frontend)
+- **ALWAYS** start with the Backend (Go) when adding new features or modifying data structures.
+- **Step 1:** Define/Update Go structs in `internal/models/`.
+- **Step 2:** Create/Update API handlers in `internal/handlers/`.
+- **Step 3:** Register routes in `cmd/main.go`.
+- **Step 4:** Create/Update TypeScript interfaces/types in `pmas-live/types/` or `pmas-live/lib/` to match Go structs exactly.
+- **Step 5:** Implement API client functions in `pmas-live/lib/api.ts` (or similar).
+- **Step 6:** Build/Update UI components in `pmas-live/components/` or `pmas-live/app/`.
+- **NEVER** create frontend code without a corresponding backend endpoint unless it's purely static.
+
+### 2. Preventing Redundant Code (DRY Principle)
+- Check existing handlers, services, and components before creating new ones.
+- Reuse utility functions from `internal/services/` and `pmas-live/lib/utils/`.
+- Avoid duplicating validation logic; define it once in the backend and enforce types in the frontend.
+- Use shared types/interfaces where possible to ensure consistency.
+
+### 3. Error Handling
+- **Backend (Go):**
+  - Always return structured JSON errors with appropriate HTTP status codes.
+  - Use custom error types for different scenarios (e.g., `ValidationError`, `AuthError`, `NotFoundError`).
+  - Log errors securely (no sensitive data in logs).
+- **Frontend (TypeScript/React):**
+  - Wrap API calls in try-catch blocks.
+  - Display user-friendly error messages using Toasts or Alerts.
+  - Never expose raw backend error messages to the user.
+  - Handle loading states and empty states gracefully.
+
+## 🔒 Security Guidelines
+
+### Backend Security
+- Validate all input data using Go structs and validation libraries.
+- Use parameterized queries to prevent SQL Injection.
+- Sanitize user input to prevent XSS and Command Injection.
+- Enforce JWT authentication and authorization checks in middleware.
+- Set secure cookie flags (HttpOnly, Secure, SameSite).
+- Implement rate limiting for sensitive endpoints.
+
+### Frontend Security
+- Sanitize any HTML content rendered from user input.
+- Store tokens securely (HttpOnly cookies preferred over localStorage).
+- Use HTTPS for all API calls in production.
+- Implement Content Security Policy (CSP) headers.
+- Avoid exposing sensitive environment variables in client-side code.
+
+## 📱 Responsiveness & UI
+
+- Use Tailwind CSS utility classes for responsive design.
+- Follow Mobile-First approach:
+  - Default styles for mobile.
+  - Use `sm:`, `md:`, `lg:`, `xl:` prefixes for larger screens.
+- Test layouts on common breakpoints:
+  - Mobile: < 768px
+  - Tablet: 768px - 1024px
+  - Desktop: > 1024px
+- Ensure touch targets are large enough for mobile users.
+- Use semantic HTML elements for accessibility.
+
+## 🛠️ Technical Standards
+
+### Go (Backend)
+- Follow Go best practices (effective Go).
+- Use `gofmt` for formatting.
+- Write unit tests for handlers and services.
+- Keep functions small and single-responsibility.
+
+### TypeScript/Next.js (Frontend)
+- Use strict TypeScript mode.
+- Define explicit types for props, state, and API responses.
+- Use React Hooks efficiently (avoid unnecessary re-renders).
+- Componentize UI elements for reusability.
+- Use `eslint` and `prettier` for code quality.
+
+### Database (Supabase/PostgreSQL)
+- Create migration files for any schema changes.
+- Update Go structs and TypeScript types after migration.
+- Use indexes for frequently queried fields.
+
+## ✅ Pre-Commit Checklist
+
+Before finalizing any task, ensure:
+1. [ ] Backend and Frontend types are synchronized.
+2. [ ] Error handling is implemented in both layers.
+3. [ ] Input validation is present in backend.
+4. [ ] Security checks (auth, sanitization) are in place.
+5. [ ] UI is responsive on mobile, tablet, and desktop.
+6. [ ] No redundant or dead code exists.
+7. [ ] Code is formatted and linted.
+
+## 💡 Example Prompt Structure for Tasks
+
+When given a task, follow this structure:
+1. **Analysis:** Identify affected backend and frontend files.
+2. **Backend Implementation:** Create/update models, handlers, routes.
+3. **Frontend Implementation:** Create/update types, API clients, components.
+4. **Security & Validation:** Add checks and sanitization.
+5. **Testing:** Verify integration and responsiveness.
+6. **Review:** Check for redundancy and adherence to guidelines.

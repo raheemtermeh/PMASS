@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useState } from "react";
+import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { sanitizeDisplayText } from "@/shared/security";
 
@@ -34,6 +34,14 @@ interface ResourceManagerProps<T extends { id: string | number }> {
   createLabel?: string;
   hideEdit?: boolean;
   hideDelete?: boolean;
+  /** Label for the destructive row action (default: Delete). */
+  deleteLabel?: string;
+  /** Confirm dialog verb (default: deleteLabel). */
+  deleteConfirmVerb?: string;
+  /** Optional toolbar above the table (search/filters). */
+  toolbar?: ReactNode;
+  /** Client-side page size; 0/undefined = show all. */
+  pageSize?: number;
   /** Inline one-line composer above the table (Enter to create). */
   quickCreate?: {
     placeholder: string;
@@ -66,6 +74,10 @@ export function ResourceManager<T extends { id: string | number }>({
   createLabel = "Add",
   hideEdit,
   hideDelete,
+  deleteLabel = "Delete",
+  deleteConfirmVerb,
+  toolbar,
+  pageSize,
   quickCreate,
   onCreate,
   onUpdate,
@@ -82,10 +94,24 @@ export function ResourceManager<T extends { id: string | number }>({
   const [quickTitle, setQuickTitle] = useState("");
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickError, setQuickError] = useState("");
+  const [page, setPage] = useState(1);
 
   const safeItems = Array.isArray(items) ? items : [];
   const activeFields = editing ? fields : createFields ?? fields;
   const quickField = quickCreate?.fieldName ?? "title";
+  const confirmVerb = deleteConfirmVerb ?? deleteLabel.toLowerCase();
+
+  const paged = useMemo(() => {
+    if (!pageSize || pageSize <= 0) return { rows: safeItems, totalPages: 1 };
+    const totalPages = Math.max(1, Math.ceil(safeItems.length / pageSize));
+    const current = Math.min(page, totalPages);
+    const start = (current - 1) * pageSize;
+    return { rows: safeItems.slice(start, start + pageSize), totalPages, current };
+  }, [safeItems, pageSize, page]);
+
+  const visibleRows = paged.rows;
+  const totalPages = paged.totalPages;
+  const currentPage = "current" in paged && paged.current ? paged.current : page;
 
   function openCreate() {
     setEditing(null);
@@ -140,14 +166,19 @@ export function ResourceManager<T extends { id: string | number }>({
 
   async function handleDelete(row: T) {
     if (!onDelete) return;
-    if (!window.confirm(`Delete “${String((row as { title?: string; name?: string }).title ?? (row as { name?: string }).name ?? `#${row.id}`)}”?`)) {
+    const label = String(
+      (row as { title?: string; name?: string }).title ??
+        (row as { name?: string }).name ??
+        `#${row.id}`,
+    );
+    if (!window.confirm(`${deleteLabel} “${label}”? This will ${confirmVerb} the record.`)) {
       return;
     }
     setDeleteError("");
     try {
       await onDelete(row.id);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+      setDeleteError(err instanceof Error ? err.message : `${deleteLabel} failed`);
     }
   }
 
@@ -165,6 +196,8 @@ export function ResourceManager<T extends { id: string | number }>({
             {createLabel}
           </button>
         </div>
+
+        {toolbar ? <div className="resource-toolbar">{toolbar}</div> : null}
 
         {quickCreate ? (
           <form className="quick-create" onSubmit={(e) => void handleQuickCreate(e)}>
@@ -197,53 +230,78 @@ export function ResourceManager<T extends { id: string | number }>({
         ) : safeItems.length === 0 ? (
           <EmptyState title={emptyTitle} description={emptyDescription} />
         ) : (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {columns.map((c) => (
-                    <th key={c.key}>{c.label}</th>
-                  ))}
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {safeItems.map((row) => (
-                  <tr key={row.id}>
+          <>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
                     {columns.map((c) => (
-                      <td key={c.key}>
-                        {c.render
-                          ? c.render(row)
-                          : sanitizeDisplayText(
-                              String(
-                                (row as unknown as Record<string, unknown>)[c.key] ??
-                                  "—",
-                              ),
-                            )}
-                      </td>
+                      <th key={c.key}>{c.label}</th>
                     ))}
-                    <td className="actions-cell">
-                      {extraActions?.(row)}
-                      {!hideEdit && onUpdate ? (
-                        <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
-                          Edit
-                        </button>
-                      ) : null}
-                      {!hideDelete && onDelete ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-danger"
-                          onClick={() => void handleDelete(row)}
-                        >
-                          Delete
-                        </button>
-                      ) : null}
-                    </td>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => (
+                    <tr key={row.id}>
+                      {columns.map((c) => (
+                        <td key={c.key}>
+                          {c.render
+                            ? c.render(row)
+                            : sanitizeDisplayText(
+                                String(
+                                  (row as unknown as Record<string, unknown>)[c.key] ??
+                                    "—",
+                                ),
+                              )}
+                        </td>
+                      ))}
+                      <td className="actions-cell">
+                        {extraActions?.(row)}
+                        {!hideEdit && onUpdate ? (
+                          <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
+                            Edit
+                          </button>
+                        ) : null}
+                        {!hideDelete && onDelete ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            onClick={() => void handleDelete(row)}
+                          >
+                            {deleteLabel}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pageSize && pageSize > 0 && totalPages > 1 ? (
+              <div className="pager-row">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <span className="text-dim">
+                  Page {currentPage} / {totalPages} · {safeItems.length} items
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 

@@ -26,7 +26,7 @@ func TestDepartment_ManagerRequired(t *testing.T) {
 }
 
 func TestTeam_LeadRequired(t *testing.T) {
-	_, err := organization.NewTeam(uuid.New(), uuid.New(), uuid.Nil, "Alpha", "")
+	_, err := organization.NewTeam(uuid.New(), uuid.New(), uuid.Nil, "Alpha", "", 0)
 	if err != organization.ErrTeamLeadRequired {
 		t.Fatalf("got %v", err)
 	}

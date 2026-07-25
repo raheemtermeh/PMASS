@@ -77,8 +77,9 @@ func (s *Service) DeleteCompany(ctx context.Context, companyID uuid.UUID) error 
 }
 
 type CreateDepartmentInput struct {
-	Name      string
-	ManagerID uuid.UUID
+	Name        string
+	Description string
+	ManagerID   uuid.UUID
 }
 
 func (s *Service) CreateDepartment(ctx context.Context, companyID uuid.UUID, in CreateDepartmentInput) (*organization.Department, error) {
@@ -89,6 +90,7 @@ func (s *Service) CreateDepartment(ctx context.Context, companyID uuid.UUID, in 
 	if err != nil {
 		return nil, err
 	}
+	d.SetDescription(in.Description)
 	if err := s.dept.Create(ctx, d); err != nil {
 		return nil, err
 	}
@@ -125,7 +127,7 @@ func (s *Service) ChangeDepartmentManager(ctx context.Context, companyID, deptID
 	return d, nil
 }
 
-func (s *Service) UpdateDepartment(ctx context.Context, companyID, deptID uuid.UUID, name string, managerID uuid.UUID) (*organization.Department, error) {
+func (s *Service) UpdateDepartment(ctx context.Context, companyID, deptID uuid.UUID, name, description string, managerID uuid.UUID) (*organization.Department, error) {
 	if _, err := s.emp.FindByID(ctx, companyID, managerID); err != nil {
 		return nil, err
 	}
@@ -136,6 +138,7 @@ func (s *Service) UpdateDepartment(ctx context.Context, companyID, deptID uuid.U
 	if err := d.Rename(name); err != nil {
 		return nil, err
 	}
+	d.SetDescription(description)
 	if err := d.ChangeManager(managerID); err != nil {
 		return nil, err
 	}
@@ -162,6 +165,7 @@ type CreateTeamInput struct {
 	LeadID       uuid.UUID
 	Name         string
 	Description  string
+	Capacity     int
 }
 
 func (s *Service) CreateTeam(ctx context.Context, companyID uuid.UUID, in CreateTeamInput) (*organization.Team, error) {
@@ -171,11 +175,18 @@ func (s *Service) CreateTeam(ctx context.Context, companyID uuid.UUID, in Create
 	if _, err := s.emp.FindByID(ctx, companyID, in.LeadID); err != nil {
 		return nil, err
 	}
-	t, err := organization.NewTeam(companyID, in.DepartmentID, in.LeadID, in.Name, in.Description)
+	t, err := organization.NewTeam(companyID, in.DepartmentID, in.LeadID, in.Name, in.Description, in.Capacity)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.team.Create(ctx, t); err != nil {
+		return nil, err
+	}
+	// Ensure lead is a member of the team (move off any previous team).
+	if prev, err := s.emp.FindTeamIDForEmployee(ctx, companyID, in.LeadID); err == nil && prev != uuid.Nil && prev != t.ID {
+		_ = s.emp.RemoveFromTeam(ctx, companyID, in.LeadID, prev)
+	}
+	if err := s.emp.AssignToTeam(ctx, companyID, in.LeadID, t.ID, nil, organization.TeamRoleLead); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -210,7 +221,7 @@ func (s *Service) AssignTeamLead(ctx context.Context, companyID, teamID, leadID 
 	return t, nil
 }
 
-func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, name, description string, leadID uuid.UUID) (*organization.Team, error) {
+func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, name, description string, capacity int, leadID uuid.UUID, status string) (*organization.Team, error) {
 	if _, err := s.emp.FindByID(ctx, companyID, leadID); err != nil {
 		return nil, err
 	}
@@ -218,13 +229,24 @@ func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, n
 	if err != nil {
 		return nil, err
 	}
-	if err := t.UpdateDetails(name, description); err != nil {
+	if err := t.UpdateDetails(name, description, capacity); err != nil {
 		return nil, err
 	}
 	if err := t.AssignLead(leadID); err != nil {
 		return nil, err
 	}
+	if status != "" {
+		if err := t.SetStatus(status); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.team.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	if prev, err := s.emp.FindTeamIDForEmployee(ctx, companyID, leadID); err == nil && prev != uuid.Nil && prev != teamID {
+		_ = s.emp.RemoveFromTeam(ctx, companyID, leadID, prev)
+	}
+	if err := s.emp.AssignToTeam(ctx, companyID, leadID, teamID, nil, organization.TeamRoleLead); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -247,7 +269,7 @@ func (s *Service) MoveTeamBetweenDepartments(ctx context.Context, companyID, tea
 	return t, nil
 }
 
-func (s *Service) ListTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.Employee, error) {
+func (s *Service) ListTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.TeamMemberView, error) {
 	if _, err := s.team.FindByID(ctx, companyID, teamID); err != nil {
 		return nil, err
 	}
@@ -258,6 +280,17 @@ func (s *Service) ArchiveTeam(ctx context.Context, companyID, id uuid.UUID) (*or
 	t, err := s.team.FindByID(ctx, companyID, id)
 	if err != nil {
 		return nil, err
+	}
+	members, err := s.emp.CountTeamMembers(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	openWork, err := s.emp.CountOpenAssignmentsForTeam(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	if members > 0 || openWork > 0 {
+		return nil, organization.ErrTeamHasDependencies
 	}
 	t.Archive()
 	if err := s.team.Update(ctx, t); err != nil {
@@ -271,11 +304,12 @@ type CreateEmployeeInput struct {
 	LastName  string
 	Email     string
 	Phone     string
+	JobTitle  string
 	UserID    *int
 }
 
 func (s *Service) CreateEmployee(ctx context.Context, companyID uuid.UUID, in CreateEmployeeInput) (*organization.Employee, error) {
-	e, err := organization.NewEmployee(companyID, in.FirstName, in.LastName, in.Email, in.Phone)
+	e, err := organization.NewEmployee(companyID, in.FirstName, in.LastName, in.Email, in.Phone, in.JobTitle)
 	if err != nil {
 		return nil, err
 	}
@@ -303,9 +337,34 @@ func (s *Service) UpdateEmployee(ctx context.Context, companyID, id uuid.UUID, i
 	if err != nil {
 		return nil, err
 	}
-	if err := e.UpdateProfile(in.FirstName, in.LastName, in.Email, in.Phone); err != nil {
+	if err := e.UpdateProfile(in.FirstName, in.LastName, in.Email, in.Phone, in.JobTitle); err != nil {
 		return nil, err
 	}
+	if err := s.emp.Update(ctx, e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// DeactivateEmployee sets status INACTIVE (soft offboarding) instead of hard delete.
+func (s *Service) DeactivateEmployee(ctx context.Context, companyID, id uuid.UUID) (*organization.Employee, error) {
+	e, err := s.emp.FindByID(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	e.Deactivate()
+	if err := s.emp.Update(ctx, e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+func (s *Service) ActivateEmployee(ctx context.Context, companyID, id uuid.UUID) (*organization.Employee, error) {
+	e, err := s.emp.FindByID(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	e.Activate()
 	if err := s.emp.Update(ctx, e); err != nil {
 		return nil, err
 	}
@@ -313,25 +372,22 @@ func (s *Service) UpdateEmployee(ctx context.Context, companyID, id uuid.UUID, i
 }
 
 func (s *Service) ArchiveEmployee(ctx context.Context, companyID, id uuid.UUID) (*organization.Employee, error) {
-	e, err := s.emp.FindByID(ctx, companyID, id)
-	if err != nil {
-		return nil, err
-	}
-	e.Archive()
-	if err := s.emp.Update(ctx, e); err != nil {
-		return nil, err
-	}
-	return e, nil
+	return s.DeactivateEmployee(ctx, companyID, id)
 }
 
-func (s *Service) AssignEmployeeToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error {
+func (s *Service) AssignEmployeeToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID, assignedBy *int) error {
 	if _, err := s.emp.FindByID(ctx, companyID, employeeID); err != nil {
 		return err
 	}
-	if _, err := s.team.FindByID(ctx, companyID, teamID); err != nil {
+	t, err := s.team.FindByID(ctx, companyID, teamID)
+	if err != nil {
 		return err
 	}
-	return s.emp.AssignToTeam(ctx, companyID, employeeID, teamID)
+	role := organization.TeamRoleMember
+	if t.LeadID != nil && *t.LeadID == employeeID {
+		role = organization.TeamRoleLead
+	}
+	return s.emp.AssignToTeam(ctx, companyID, employeeID, teamID, assignedBy, role)
 }
 
 func (s *Service) RemoveEmployeeFromTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error {

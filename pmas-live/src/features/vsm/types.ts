@@ -5,7 +5,9 @@ export interface Employee {
   last_name: string;
   email: string;
   phone: string;
+  job_title?: string;
   status: string;
+  user_id?: number | null;
 }
 
 export interface Department {
@@ -13,7 +15,10 @@ export interface Department {
   company_id: string;
   manager_id?: string | null;
   name: string;
+  description?: string;
   status: string;
+  member_count?: number;
+  team_count?: number;
 }
 
 export interface Team {
@@ -23,7 +28,20 @@ export interface Team {
   lead_id?: string | null;
   name: string;
   description: string;
+  capacity?: number;
   status: string;
+}
+
+export interface TeamMemberView {
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  job_title: string;
+  status: string;
+  team_role: string;
+  assigned_at: string;
+  assigned_by?: number | null;
 }
 
 export interface Company {

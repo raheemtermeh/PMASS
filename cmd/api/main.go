@@ -9,6 +9,8 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/go-webauthn/webauthn/webauthn"
+
 	"PMAS/internal/auth"
 	"PMAS/internal/config"
 	"PMAS/internal/database"
@@ -48,7 +50,18 @@ func main() {
 	}
 	defer db.Close()
 
-	h := handlers.NewHandler(db)
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          cfg.WebAuthnRPID,
+		RPDisplayName: cfg.WebAuthnRPDisplay,
+		RPOrigins:     cfg.WebAuthnRPOrigins,
+	})
+	if err != nil {
+		log.Fatalf("[Bootstrap] WebAuthn init failed: %v\n", err)
+	}
+	log.Printf("[Bootstrap] WebAuthn ready (rpID=%s origins=%v)\n", cfg.WebAuthnRPID, cfg.WebAuthnRPOrigins)
+
+	// Until SMTP exists, non-production forgot-password may return the reset token to the UI.
+	h := handlers.NewHandler(db, wa, cfg.AppEnv != "production")
 	authz := middleware.NewAuthenticator(db)
 	mux := http.NewServeMux()
 
@@ -63,6 +76,14 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/me", authz.RequireAuth(h.GetMe))
 	mux.HandleFunc("/api/v1/auth/profile", authz.RequireAuth(h.GetMe))
 	mux.HandleFunc("/api/v1/auth/permissions", authz.RequireAuth(h.GetPermissionsCatalog))
+
+	// Passkeys: login begin/finish are public; register/list/delete require auth.
+	mux.HandleFunc("/api/v1/auth/passkeys/login/begin", h.HandlePasskeys)
+	mux.HandleFunc("/api/v1/auth/passkeys/login/finish", h.HandlePasskeys)
+	mux.HandleFunc("/api/v1/auth/passkeys/register/begin", authz.RequireAuth(h.HandlePasskeys))
+	mux.HandleFunc("/api/v1/auth/passkeys/register/finish", authz.RequireAuth(h.HandlePasskeys))
+	mux.HandleFunc("/api/v1/auth/passkeys", authz.RequireAuth(h.HandlePasskeys))
+	mux.HandleFunc("/api/v1/auth/passkeys/", authz.RequireAuth(h.HandlePasskeys))
 
 	mux.HandleFunc("/api/v1/access-requests", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -115,6 +136,8 @@ func main() {
 
 	mux.HandleFunc("/api/v1/work-items", authz.RequireAuth(h.HandleSectionWorkItems))
 	mux.HandleFunc("/api/v1/work-items/", authz.RequireAuth(h.HandleSectionWorkItems))
+
+	mux.HandleFunc("/api/v1/ui-layouts/", authz.RequireAuth(h.HandleUILayouts))
 
 	// Value Stream Management (Product-domain) — Backend Analysis Document
 	vsm := httpapi.NewDependencies(db)

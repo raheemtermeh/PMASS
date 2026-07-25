@@ -117,6 +117,7 @@ async function refreshAccessToken(): Promise<string | null> {
           clearSession();
           return null;
         }
+        // Preserve existing Remember Me storage preference on silent refresh.
         setSession(data.token, data.user, data.refresh_token ?? null);
         return data.token;
       } catch {

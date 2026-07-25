@@ -63,6 +63,58 @@ var AllPermissions = []string{
 	PermEmployeeManage,
 }
 
+// VSMPermissions are the primary workspace grants (excludes legacy ops pages).
+var VSMPermissions = []string{
+	PermProductView,
+	PermProductCreate,
+	PermProductUpdate,
+	PermProductArchive,
+	PermProjectCreate,
+	PermProjectUpdate,
+	PermFeatureCreate,
+	PermFeatureUpdate,
+	PermTaskCreate,
+	PermTaskAssign,
+	PermTaskComplete,
+	PermDepartmentManage,
+	PermTeamManage,
+	PermEmployeeManage,
+	PermUsers,
+	PermSettings,
+}
+
+// RolePresetPermissions maps seeded company-role names → default permission sets.
+var RolePresetPermissions = map[string][]string{
+	"Company Admin": append([]string{}, VSMPermissions...),
+	"Product Manager": {
+		PermProductView, PermProductCreate, PermProductUpdate,
+		PermProjectCreate, PermProjectUpdate,
+		PermFeatureCreate, PermFeatureUpdate,
+	},
+	"Team Lead": {
+		PermProductView,
+		PermProjectUpdate,
+		PermFeatureCreate, PermFeatureUpdate,
+		PermTaskCreate, PermTaskAssign, PermTaskComplete,
+	},
+	"Employee": {
+		PermProductView,
+		PermTaskCreate, PermTaskComplete,
+	},
+	"Viewer": {
+		PermProductView,
+	},
+}
+
+// SystemRoleNames are seeded once per company and cannot be deleted.
+var SystemRoleNames = []string{
+	"Company Admin",
+	"Product Manager",
+	"Team Lead",
+	"Employee",
+	"Viewer",
+}
+
 func IsPlatformAdmin(role string) bool {
 	return role == RolePlatformAdmin || role == RoleSuperAdmin
 }

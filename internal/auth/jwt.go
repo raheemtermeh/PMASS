@@ -36,8 +36,19 @@ const defaultTokenTTL = 2 * time.Hour
 // RefreshTokenTTL is the lifetime of an opaque refresh token.
 const RefreshTokenTTL = 7 * 24 * time.Hour
 
+// RememberRefreshTokenTTL is used when the client opts into "Remember me".
+const RememberRefreshTokenTTL = 30 * 24 * time.Hour
+
 // PasswordResetTokenTTL is the lifetime of an opaque password reset token.
 const PasswordResetTokenTTL = 1 * time.Hour
+
+// RefreshTTL returns the refresh lifetime for a normal or remembered session.
+func RefreshTTL(remember bool) time.Duration {
+	if remember {
+		return RememberRefreshTokenTTL
+	}
+	return RefreshTokenTTL
+}
 
 // opaqueTokenBytes is the amount of randomness backing generated opaque tokens.
 const opaqueTokenBytes = 32

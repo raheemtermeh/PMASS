@@ -219,6 +219,94 @@ func EnsureMVPExtras(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_comment_mentions_comment ON comment_mentions(comment_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comment_mentions_employee ON comment_mentions(mentioned_employee_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comment_mentions_team ON comment_mentions(mentioned_team_id)`,
+
+		// ---------------------------------------------------------------
+		// Organization + RBAC MVP: job titles, capacity, membership audit,
+		// one-team-per-employee, company roles with permission presets
+		// ---------------------------------------------------------------
+		`ALTER TABLE employees ADD COLUMN IF NOT EXISTS job_title VARCHAR(255) NOT NULL DEFAULT ''`,
+		`ALTER TABLE departments ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE teams ADD COLUMN IF NOT EXISTS capacity INTEGER NOT NULL DEFAULT 0`,
+
+		`ALTER TABLE team_members_vsm ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+		`ALTER TABLE team_members_vsm ADD COLUMN IF NOT EXISTS assigned_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL`,
+		`ALTER TABLE team_members_vsm ADD COLUMN IF NOT EXISTS team_role VARCHAR(32) NOT NULL DEFAULT 'MEMBER'`,
+
+		// Keep one membership per employee before unique index (prefer earliest assigned_at).
+		`DELETE FROM team_members_vsm a
+			USING team_members_vsm b
+			WHERE a.employee_id = b.employee_id
+			  AND a.company_id = b.company_id
+			  AND (
+			    a.assigned_at > b.assigned_at
+			    OR (a.assigned_at = b.assigned_at AND a.team_id::text > b.team_id::text)
+			  )`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_vsm_one_team
+			ON team_members_vsm (company_id, employee_id)`,
+
+		`CREATE TABLE IF NOT EXISTS company_roles (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+			name VARCHAR(128) NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			is_system BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (company_id, name)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_company_roles_company ON company_roles(company_id)`,
+
+		`CREATE TABLE IF NOT EXISTS company_role_permissions (
+			role_id UUID NOT NULL REFERENCES company_roles(id) ON DELETE CASCADE,
+			permission VARCHAR(64) NOT NULL,
+			PRIMARY KEY (role_id, permission)
+		)`,
+
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_role_id UUID REFERENCES company_roles(id) ON DELETE SET NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_app_users_company_role ON app_users(company_role_id)`,
+
+		// Per-user visual board layouts (flow graph / org graph positions).
+		// Debounced client saves keep request volume low.
+		`CREATE TABLE IF NOT EXISTS ui_layouts (
+			user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			layout_key VARCHAR(128) NOT NULL,
+			layout_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, layout_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_layouts_user ON ui_layouts(user_id)`,
+
+		// Remember-me flag on rotating refresh tokens.
+		`ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS remember BOOLEAN NOT NULL DEFAULT false`,
+
+		// WebAuthn / passkeys
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS webauthn_handle BYTEA`,
+		`CREATE TABLE IF NOT EXISTS webauthn_credentials (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			credential_id BYTEA NOT NULL,
+			public_key BYTEA NOT NULL,
+			attestation_type VARCHAR(64) NOT NULL DEFAULT '',
+			transport TEXT NOT NULL DEFAULT '',
+			sign_count BIGINT NOT NULL DEFAULT 0,
+			backup_eligible BOOLEAN NOT NULL DEFAULT false,
+			backup_state BOOLEAN NOT NULL DEFAULT false,
+			name VARCHAR(128) NOT NULL DEFAULT 'Passkey',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_used_at TIMESTAMPTZ,
+			UNIQUE (credential_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_webauthn_creds_user ON webauthn_credentials(user_id)`,
+		`CREATE TABLE IF NOT EXISTS webauthn_challenges (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			challenge TEXT NOT NULL UNIQUE,
+			user_id INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+			session_data JSONB NOT NULL,
+			purpose VARCHAR(32) NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_exp ON webauthn_challenges(expires_at)`,
 	}
 
 	for i, stmt := range statements {

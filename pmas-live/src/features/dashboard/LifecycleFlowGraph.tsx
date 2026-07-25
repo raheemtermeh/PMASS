@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useUILayout } from "@/shared/hooks/useUILayout";
 import type { FlowGraph, FlowProduct } from "./types";
 
 type NodeKind = "company" | "product" | "stage" | "project";
@@ -30,7 +31,13 @@ interface Props {
   companyName?: string;
 }
 
-const STORAGE_PREFIX = "pmas-flow-layout:";
+interface LayoutBlob {
+  positions?: Record<string, { x: number; y: number }>;
+  pan?: { x: number; y: number };
+  scale?: number;
+}
+
+const LEGACY_STORAGE_PREFIX = "pmas-flow-layout:";
 
 function statusColor(status: string): string {
   const s = status.toUpperCase();
@@ -123,21 +130,15 @@ function defaultLayout(products: FlowProduct[], companyLabel: string): { nodes: 
   return { nodes, edges };
 }
 
-function loadSavedPositions(companyKey: string): Record<string, { x: number; y: number }> {
+function loadLegacyPositions(companyKey: string): Record<string, { x: number; y: number }> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + companyKey);
+    const raw = localStorage.getItem(LEGACY_STORAGE_PREFIX + companyKey);
     if (!raw) return {};
     return JSON.parse(raw) as Record<string, { x: number; y: number }>;
   } catch {
     return {};
   }
-}
-
-function savePositions(companyKey: string, nodes: GraphNode[]) {
-  const map: Record<string, { x: number; y: number }> = {};
-  for (const n of nodes) map[n.id] = { x: n.x, y: n.y };
-  localStorage.setItem(STORAGE_PREFIX + companyKey, JSON.stringify(map));
 }
 
 export function LifecycleFlowGraph({ flow, companyName }: Props) {
@@ -160,6 +161,8 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
 
   const companyKey = companyName || flow.company_name || "default";
   const companyLabel = companyName || flow.company_name || "Company";
+  const layoutKey = `lifecycle-flow:${companyKey}`;
+  const { layout, ready, saving, saveLayout, saveLayoutNow } = useUILayout<LayoutBlob>(layoutKey);
 
   const built = useMemo(
     () => defaultLayout(flow.products ?? [], companyLabel),
@@ -170,16 +173,41 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edges = built.edges;
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
-    const saved = loadSavedPositions(companyKey);
+    if (!ready) return;
+    const fromApi = layout?.positions ?? {};
+    const fromLegacy = Object.keys(fromApi).length === 0 ? loadLegacyPositions(companyKey) : {};
+    const saved = Object.keys(fromApi).length > 0 ? fromApi : fromLegacy;
     setNodes(
       built.nodes.map((n) =>
         saved[n.id] ? { ...n, x: saved[n.id].x, y: saved[n.id].y } : n,
       ),
     );
+    if (layout?.pan) setPan(layout.pan);
+    if (typeof layout?.scale === "number") setScale(layout.scale);
     setSelected(null);
-  }, [built.nodes, companyKey]);
+    // One-time migrate legacy localStorage → backend when API was empty.
+    if (Object.keys(fromApi).length === 0 && Object.keys(fromLegacy).length > 0 && !hydratedRef.current) {
+      hydratedRef.current = true;
+      saveLayoutNow({ positions: fromLegacy, pan: layout?.pan, scale: layout?.scale });
+      try {
+        localStorage.removeItem(LEGACY_STORAGE_PREFIX + companyKey);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [ready, layout, built.nodes, companyKey, saveLayoutNow]);
+
+  const persistLayout = useCallback(
+    (list: GraphNode[], nextPan = pan, nextScale = scale) => {
+      const positions: Record<string, { x: number; y: number }> = {};
+      for (const n of list) positions[n.id] = { x: n.x, y: n.y };
+      saveLayout({ positions, pan: nextPan, scale: nextScale });
+    },
+    [pan, scale, saveLayout],
+  );
 
   const fitView = useCallback(() => {
     if (!wrapRef.current || nodes.length === 0) return;
@@ -259,8 +287,8 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
   };
 
   const onPointerUp = () => {
-    if (dragRef.current?.mode === "node") {
-      savePositions(companyKey, nodesRef.current);
+    if (dragRef.current?.mode === "node" || dragRef.current?.mode === "pan") {
+      persistLayout(nodesRef.current, pan, scale);
     }
     dragRef.current = null;
   };
@@ -281,7 +309,10 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
         <div>
           <p className="command-eyebrow">Lifecycle graph</p>
           <h3>Product · Project · Stage</h3>
-          <span className="cc-flow-hint">Live company data · drag to pan · scroll to zoom</span>
+          <span className="cc-flow-hint">
+            Live company data · drag to pan · scroll to zoom · layout syncs to server
+            {saving ? " · Saving…" : ""}
+          </span>
         </div>
         <div className="cc-flow-actions">
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.min(2.2, s + 0.12))}>
@@ -304,8 +335,13 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
             type="button"
             className="btn btn-sm"
             onClick={() => {
-              localStorage.removeItem(STORAGE_PREFIX + companyKey);
               setNodes(built.nodes);
+              saveLayoutNow({ positions: {}, pan: { x: 12, y: 8 }, scale: 0.85 });
+              try {
+                localStorage.removeItem(LEGACY_STORAGE_PREFIX + companyKey);
+              } catch {
+                /* ignore */
+              }
               window.setTimeout(fitView, 20);
             }}
           >
@@ -357,7 +393,7 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
               </filter>
             </defs>
 
-            {edges.map((e) => {
+            {edges.map((e, edgeIndex) => {
               const a = nodeById.get(e.from);
               const b = nodeById.get(e.to);
               if (!a || !b) return null;
@@ -374,22 +410,23 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
                 <path
                   key={e.id}
                   d={path}
-                  className={`cc-flow-edge cc-flow-edge-${e.kind}`}
+                  className={`cc-flow-edge cc-flow-edge-${e.kind} cc-flow-edge-alive`}
                   fill="none"
                   stroke={e.kind === "project" ? "rgba(167,139,250,0.55)" : "url(#ccFlowEdge)"}
                   strokeWidth={e.kind === "spine" ? 2.4 : 1.8}
+                  style={{ animationDelay: `${(edgeIndex % 8) * 0.35}s` }}
                 />
               );
             })}
 
-            {nodes.map((n) => {
+            {nodes.map((n, nodeIndex) => {
               const color = statusColor(n.status);
               const isSel = selected === n.id;
               return (
                 <g
                   key={n.id}
                   data-node="1"
-                  className={`cc-flow-node cc-flow-node-${n.kind}${isSel ? " is-selected" : ""}`}
+                  className={`cc-flow-node cc-flow-node-${n.kind}${isSel ? " is-selected" : ""} cc-flow-node-soft`}
                   transform={`translate(${n.x}, ${n.y})`}
                   filter={n.kind === "company" || n.status === "ACTIVE" ? "url(#ccNodeGlow)" : undefined}
                   onPointerDown={(ev) => {
@@ -400,7 +437,10 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
                     ev.stopPropagation();
                     if (n.href) router.push(n.href);
                   }}
-                  style={{ cursor: editMode ? "grab" : "pointer" }}
+                  style={{
+                    cursor: editMode ? "grab" : "pointer",
+                    animationDelay: `${(nodeIndex % 10) * 0.08}s`,
+                  }}
                 >
                   <rect
                     width={n.w}
@@ -418,7 +458,13 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
                     stroke={isSel ? "#f8fafc" : color}
                     strokeWidth={isSel ? 2.2 : 1.4}
                   />
-                  <circle cx={14} cy={n.h / 2} r={4.5} fill={color} />
+                  <circle
+                    cx={14}
+                    cy={n.h / 2}
+                    r={4.5}
+                    fill={color}
+                    className="cc-flow-dot-soft"
+                  />
                   <text x={26} y={n.h / 2 - 4} className="cc-flow-label">
                     {n.label.length > 16 ? `${n.label.slice(0, 16)}…` : n.label}
                   </text>

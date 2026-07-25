@@ -8,8 +8,9 @@ import { httpClient } from "@/core/api/http-client";
 function ResetPasswordForm() {
   const router = useRouter();
   const search = useSearchParams();
+  const tokenFromUrl = (search.get("token") ?? "").trim();
 
-  const [token, setToken] = useState(search.get("token") ?? "");
+  const [token, setToken] = useState(tokenFromUrl);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -19,23 +20,24 @@ function ResetPasswordForm() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!token.trim()) {
-      setError("Reset token is required.");
+    const t = token.trim();
+    if (!t) {
+      setError("Reset link is missing or expired. Request a new one.");
+      return;
+    }
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
       return;
     }
     if (password !== confirm) {
       setError("Passwords do not match.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
     setLoading(true);
     try {
       await httpClient.post(
         "/api/v1/auth/reset-password",
-        { token: token.trim(), password },
+        { token: t, password },
         false,
       );
       setSuccess(true);
@@ -48,21 +50,21 @@ function ResetPasswordForm() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card auth-card-wide">
+      <div className="auth-card auth-login-card">
         <div className="auth-brand">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Reset Password</h1>
+          <h1>Reset password</h1>
         </div>
         <p className="auth-subtitle">
-          Paste the reset token you received from your administrator and choose a new password.
+          Choose a new password for your account. You will be signed out everywhere.
         </p>
 
         {success ? (
-          <>
-            <p className="landing-success-inline" style={{ marginBottom: "1rem" }}>
-              Your password has been reset. You can now sign in with your new password.
+          <div className="auth-reset-ready">
+            <p className="landing-success-inline">
+              Password updated. You can sign in with your new password.
             </p>
             <button
               type="button"
@@ -71,53 +73,66 @@ function ResetPasswordForm() {
             >
               Go to sign in
             </button>
-          </>
+          </div>
         ) : (
-          <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="token">Reset token</label>
-              <input
-                id="token"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                required
-                autoComplete="off"
-              />
+          <form onSubmit={handleSubmit} className="auth-form auth-login-card">
+            <div className="auth-login-fields">
+              {!tokenFromUrl ? (
+                <div className="form-group">
+                  <label htmlFor="token">Reset token</label>
+                  <input
+                    id="token"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    required
+                    autoComplete="off"
+                    placeholder="Paste token from your reset link"
+                  />
+                </div>
+              ) : (
+                <input type="hidden" value={token} readOnly />
+              )}
+              <div className="form-group">
+                <label htmlFor="new-password">New password</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={12}
+                  autoComplete="new-password"
+                />
+                <p className="auth-field-hint">
+                  At least 12 characters, with upper, lower, number, and symbol.
+                </p>
+              </div>
+              <div className="form-group">
+                <label htmlFor="confirm-password">Confirm password</label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  required
+                  minLength={12}
+                  autoComplete="new-password"
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label htmlFor="new-password">New password</label>
-              <input
-                id="new-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="confirm-password">Confirm new password</label>
-              <input
-                id="confirm-password"
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                autoComplete="new-password"
-              />
-            </div>
-            {error && <p className="auth-error">{error}</p>}
+
+            {error ? <p className="auth-error">{error}</p> : null}
+
             <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
-              {loading ? "Resetting…" : "Reset password"}
+              {loading ? "Saving…" : "Save new password"}
             </button>
           </form>
         )}
 
         <p className="auth-footnote">
-          <Link href="/welcome#login">Company sign in</Link>
+          <Link href="/forgot-password">Request a new reset link</Link>
           {" · "}
-          <Link href="/platform/login">Platform admin sign in</Link>
+          <Link href="/welcome#login">Company sign in</Link>
         </p>
       </div>
     </div>
@@ -126,7 +141,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<div className="auth-page"><p className="text-dim">Loading…</p></div>}>
       <ResetPasswordForm />
     </Suspense>
   );

@@ -30,20 +30,20 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
-  "product.view": "View products",
-  "product.create": "Create products",
-  "product.update": "Update products & pipelines",
-  "product.archive": "Archive products",
-  "project.create": "Create projects",
-  "project.update": "Update projects",
-  "feature.create": "Create features",
-  "feature.update": "Update features",
-  "task.create": "Create tasks",
-  "task.assign": "Assign tasks",
-  "task.complete": "Complete tasks",
-  "department.manage": "Manage departments",
-  "team.manage": "Manage teams",
-  "employee.manage": "Manage employees",
+  "product.view": "View",
+  "product.create": "Create",
+  "product.update": "Update",
+  "product.archive": "Archive",
+  "project.create": "Create",
+  "project.update": "Update",
+  "feature.create": "Create",
+  "feature.update": "Update",
+  "task.create": "Create",
+  "task.assign": "Assign",
+  "task.complete": "Complete",
+  "department.manage": "Manage Departments",
+  "team.manage": "Manage Teams",
+  "employee.manage": "Manage Employees",
   users: "User Management",
   settings: "Settings & Credentials",
   executive: "Legacy · Executive",
@@ -56,24 +56,48 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   legalhr: "Legacy · Legal & HR",
 };
 
-/** Primary permissions shown first in admin UI. */
-export const VSM_PERMISSIONS: Permission[] = [
-  "product.view",
-  "product.create",
-  "product.update",
-  "product.archive",
-  "project.create",
-  "project.update",
-  "feature.create",
-  "feature.update",
-  "task.create",
-  "task.assign",
-  "task.complete",
-  "department.manage",
-  "team.manage",
-  "employee.manage",
-  "users",
+export type PermissionCategory = {
+  id: string;
+  label: string;
+  permissions: Permission[];
+};
+
+/** Grouped permissions for User Management UI. */
+export const PERMISSION_CATEGORIES: PermissionCategory[] = [
+  {
+    id: "products",
+    label: "Products",
+    permissions: ["product.view", "product.create", "product.update", "product.archive"],
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    permissions: ["project.create", "project.update"],
+  },
+  {
+    id: "features",
+    label: "Features",
+    permissions: ["feature.create", "feature.update"],
+  },
+  {
+    id: "tasks",
+    label: "Tasks",
+    permissions: ["task.create", "task.assign", "task.complete"],
+  },
+  {
+    id: "organization",
+    label: "Organization",
+    permissions: ["team.manage", "department.manage", "employee.manage"],
+  },
+  {
+    id: "administration",
+    label: "Administration",
+    permissions: ["users", "settings"],
+  },
 ];
+
+/** Primary permissions shown in admin UI (flat). */
+export const VSM_PERMISSIONS: Permission[] = PERMISSION_CATEGORIES.flatMap((c) => c.permissions);
 
 export function hasPermission(
   role: string,

@@ -9,13 +9,16 @@ import (
 
 // Config holds all service configurations.
 type Config struct {
-	SupabaseDBURL  string
-	ServerPort     string
-	JWTSecret      string
-	EncryptionKey  string
-	CORSOrigins    []string
-	AppEnv         string
-	CookieSecure   bool
+	SupabaseDBURL       string
+	ServerPort          string
+	JWTSecret           string
+	EncryptionKey       string
+	CORSOrigins         []string
+	AppEnv              string
+	CookieSecure        bool
+	WebAuthnRPID        string
+	WebAuthnRPDisplay   string
+	WebAuthnRPOrigins   []string
 }
 
 // Load reads config from environment variables. Fails closed on missing secrets in production.
@@ -59,14 +62,30 @@ func Load() *Config {
 		origins = []string{"*"}
 	}
 
+	waRPID := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ID"))
+	if waRPID == "" {
+		waRPID = "localhost"
+	}
+	waDisplay := strings.TrimSpace(os.Getenv("WEBAUTHN_RP_DISPLAY_NAME"))
+	if waDisplay == "" {
+		waDisplay = "PMAS Live"
+	}
+	waOrigins := parseOrigins(os.Getenv("WEBAUTHN_RP_ORIGINS"))
+	if len(waOrigins) == 0 {
+		waOrigins = []string{"http://localhost:3000"}
+	}
+
 	return &Config{
-		SupabaseDBURL: dbURL,
-		ServerPort:    port,
-		JWTSecret:     jwtSecret,
-		EncryptionKey: encKey,
-		CORSOrigins:   origins,
-		AppEnv:        appEnv,
-		CookieSecure:  appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
+		SupabaseDBURL:     dbURL,
+		ServerPort:        port,
+		JWTSecret:         jwtSecret,
+		EncryptionKey:     encKey,
+		CORSOrigins:       origins,
+		AppEnv:            appEnv,
+		CookieSecure:      appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
+		WebAuthnRPID:      waRPID,
+		WebAuthnRPDisplay: waDisplay,
+		WebAuthnRPOrigins: waOrigins,
 	}
 }
 
