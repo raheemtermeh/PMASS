@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
-import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
+import { useAuthHydrated, useAuthStore, type AuthUser } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
 
 interface AuthGuardProps {
@@ -12,11 +12,16 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
+  const hydrated = useAuthHydrated();
   const token = useAuthStore((s) => s.token);
   const [ready, setReady] = useState(false);
   const verifiedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Reading the persisted session must finish first, otherwise a page refresh
+    // bounces a signed-in user out to the landing page and straight back.
+    if (!hydrated) return;
+
     let cancelled = false;
 
     async function verify() {
@@ -52,10 +57,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       cancelled = true;
     };
-  }, [token, router]);
+  }, [hydrated, token, router]);
 
   if (!ready) {
-    return <PmasLoader message="Verifying session…" />;
+    return <PmasLoader message={hydrated ? "Verifying session…" : "Restoring your session…"} />;
   }
 
   return <>{children}</>;

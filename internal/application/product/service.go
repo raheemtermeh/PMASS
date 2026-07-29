@@ -70,18 +70,25 @@ func (s *Service) CreateProduct(ctx context.Context, companyID uuid.UUID, in Cre
 		if _, err := s.emps.FindByID(ctx, companyID, in.OwnerID); err != nil {
 			return err
 		}
+		if in.ManagerID == nil || *in.ManagerID == uuid.Nil {
+			return product.ErrProductManagerRequired
+		}
 		p, err := product.NewProduct(companyID, in.OwnerID, in.Name, in.Description, in.Category, in.ExecutionModel)
 		if err != nil {
 			return err
 		}
-		p.Code = strings.TrimSpace(in.Code)
-		p.ProductType = strings.TrimSpace(in.ProductType)
-		if in.ManagerID != nil && *in.ManagerID != uuid.Nil {
-			if _, err := s.emps.FindByID(ctx, companyID, *in.ManagerID); err != nil {
-				return err
-			}
-			p.ManagerID = in.ManagerID
+		if err := s.ensureNameFree(ctx, companyID, p.Name, uuid.Nil); err != nil {
+			return err
 		}
+		p.Code = strings.TrimSpace(in.Code)
+		if err := s.ensureCodeFree(ctx, companyID, p.Code, uuid.Nil); err != nil {
+			return err
+		}
+		p.ProductType = strings.TrimSpace(in.ProductType)
+		if _, err := s.emps.FindByID(ctx, companyID, *in.ManagerID); err != nil {
+			return err
+		}
+		p.ManagerID = in.ManagerID
 		p.Priority = strings.TrimSpace(in.Priority)
 		p.Vision = strings.TrimSpace(in.Vision)
 		p.Goal = strings.TrimSpace(in.Goal)
@@ -110,6 +117,37 @@ func (s *Service) CreateProduct(ctx context.Context, companyID uuid.UUID, in Cre
 
 func (s *Service) GetProduct(ctx context.Context, companyID, id uuid.UUID) (*product.Product, error) {
 	return s.products.FindByID(ctx, companyID, id)
+}
+
+// ListProductSummaries returns pipeline position, progress and last activity for
+// the product list view.
+func (s *Service) ListProductSummaries(ctx context.Context, companyID uuid.UUID) ([]product.ProductSummary, error) {
+	return s.products.ListSummaries(ctx, companyID)
+}
+
+func (s *Service) ensureNameFree(ctx context.Context, companyID uuid.UUID, name string, excludeID uuid.UUID) error {
+	taken, err := s.products.NameTaken(ctx, companyID, name, excludeID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return product.ErrProductNameTaken
+	}
+	return nil
+}
+
+func (s *Service) ensureCodeFree(ctx context.Context, companyID uuid.UUID, code string, excludeID uuid.UUID) error {
+	if strings.TrimSpace(code) == "" {
+		return nil
+	}
+	taken, err := s.products.CodeTaken(ctx, companyID, code, excludeID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return product.ErrProductCodeTaken
+	}
+	return nil
 }
 
 func (s *Service) ListProducts(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]product.Product, shared.PageMeta, error) {
@@ -153,6 +191,9 @@ func (s *Service) UpdateProduct(ctx context.Context, companyID, id uuid.UUID, in
 		if name == "" {
 			return nil, product.ErrProductNameRequired
 		}
+		if err := s.ensureNameFree(ctx, companyID, name, p.ID); err != nil {
+			return nil, err
+		}
 		p.Name = name
 	}
 	if in.Description != nil {
@@ -162,7 +203,11 @@ func (s *Service) UpdateProduct(ctx context.Context, companyID, id uuid.UUID, in
 		p.Category = strings.TrimSpace(*in.Category)
 	}
 	if in.Code != nil {
-		p.Code = strings.TrimSpace(*in.Code)
+		code := strings.TrimSpace(*in.Code)
+		if err := s.ensureCodeFree(ctx, companyID, code, p.ID); err != nil {
+			return nil, err
+		}
+		p.Code = code
 	}
 	if in.ProductType != nil {
 		p.ProductType = strings.TrimSpace(*in.ProductType)
@@ -747,6 +792,24 @@ func (s *Service) DeleteStage(ctx context.Context, companyID, stageID uuid.UUID)
 	})
 }
 
+// ensureWorkflowRunnable enforces the pipeline requirement and stops stage movement
+// on products that are on hold, archived or soft-deleted.
+func ensureWorkflowRunnable(p *product.Product) error {
+	if p.DeletedAt != nil {
+		return product.ErrProductDeleted
+	}
+	if p.Status == product.StatusArchived {
+		return product.ErrProductArchived
+	}
+	if p.Status == product.StatusOnHold {
+		return product.ErrProductOnHold
+	}
+	if p.PipelineID == nil {
+		return product.ErrPipelineRequired
+	}
+	return nil
+}
+
 // StartExecution activates product and opens first stage instance (transactional).
 func (s *Service) StartExecution(ctx context.Context, companyID, productID uuid.UUID, actorID *uuid.UUID) (*product.StageInstance, error) {
 	var out *product.StageInstance
@@ -755,8 +818,8 @@ func (s *Service) StartExecution(ctx context.Context, companyID, productID uuid.
 		if err != nil {
 			return err
 		}
-		if p.PipelineID == nil {
-			return product.ErrPipelineRequired
+		if err := ensureWorkflowRunnable(p); err != nil {
+			return err
 		}
 		if _, err := s.instances.FindActiveByProduct(ctx, companyID, productID); err == nil {
 			return product.ErrMultipleActiveStage
@@ -869,8 +932,8 @@ func (s *Service) MoveToNextStage(ctx context.Context, companyID, productID uuid
 		if err != nil {
 			return err
 		}
-		if p.PipelineID == nil {
-			return product.ErrPipelineRequired
+		if err := ensureWorkflowRunnable(p); err != nil {
+			return err
 		}
 		current, err := s.instances.FindActiveByProduct(ctx, companyID, productID)
 		if err != nil {
@@ -934,8 +997,8 @@ func (s *Service) MoveToPreviousStage(ctx context.Context, companyID, productID 
 		if err != nil {
 			return err
 		}
-		if p.PipelineID == nil {
-			return product.ErrPipelineRequired
+		if err := ensureWorkflowRunnable(p); err != nil {
+			return err
 		}
 		current, err := s.instances.FindActiveByProduct(ctx, companyID, productID)
 		if err != nil {

@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import {
   getRememberMePreference,
+  useAuthHydrated,
   useAuthStore,
   type AuthUser,
 } from "@/core/auth/auth-store";
+import { PmasLoader } from "@/components/PmasLoader";
 import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
@@ -57,10 +59,12 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function WelcomePage() {
   const router = useRouter();
+  const hydrated = useAuthHydrated();
   const setSession = useAuthStore((s) => s.setSession);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
 
+  const [showLanding, setShowLanding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [tenantSlug, setTenantSlug] = useState("");
   const [loginId, setLoginId] = useState("");
@@ -89,29 +93,40 @@ export default function WelcomePage() {
   const [requestLoading, setRequestLoading] = useState(false);
 
   useEffect(() => {
+    if (!hydrated) return;
+
+    // Signed-in visitors never see the landing page — redirect before render.
+    if (token && user) {
+      router.replace(
+        sanitizeInternalPath(
+          firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
+        ),
+      );
+      return;
+    }
+
+    let cancelled = false;
     async function checkState() {
       try {
         const status = await httpClient.get<{ needs_bootstrap: boolean }>(
           "/api/v1/auth/status",
           false,
         );
+        if (cancelled) return;
         if (status.needs_bootstrap) {
           router.replace("/setup");
           return;
         }
-        if (token && user) {
-          router.replace(
-            sanitizeInternalPath(
-              firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
-            ),
-          );
-        }
       } catch {
         /* API offline — still show landing */
       }
+      if (!cancelled) setShowLanding(true);
     }
     void checkState();
-  }, [router, token, user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, router, token, user]);
 
   function applySession(res: { token: string; refresh_token?: string; user: AuthUser }) {
     setSession(res.token, res.user, res.refresh_token ?? null, { remember: rememberMe });
@@ -223,6 +238,14 @@ export default function WelcomePage() {
     } finally {
       setRequestLoading(false);
     }
+  }
+
+  if (!showLanding) {
+    return (
+      <PmasLoader
+        message={token && user ? "Restoring your session…" : "Preparing PMAS Live…"}
+      />
+    );
   }
 
   return (

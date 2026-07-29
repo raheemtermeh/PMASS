@@ -1,21 +1,32 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
+import {
+  RESET_TOKEN_SESSION_KEY,
+  consumeOneTimeSecret,
+  stripQueryParamsFromBrowserUrl,
+} from "@/shared/security";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const tokenFromUrl = (search.get("token") ?? "").trim();
-
-  const [token, setToken] = useState(tokenFromUrl);
+  const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fromSession = consumeOneTimeSecret(RESET_TOKEN_SESSION_KEY);
+    const fromUrl = (search.get("token") ?? "").trim();
+    const resolved = fromSession || fromUrl;
+    if (resolved) setToken(resolved);
+    if (fromUrl) stripQueryParamsFromBrowserUrl(["token"]);
+  }, [search]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -77,7 +88,7 @@ function ResetPasswordForm() {
         ) : (
           <form onSubmit={handleSubmit} className="auth-form auth-login-card">
             <div className="auth-login-fields">
-              {!tokenFromUrl ? (
+              {!token ? (
                 <div className="form-group">
                   <label htmlFor="token">Reset token</label>
                   <input

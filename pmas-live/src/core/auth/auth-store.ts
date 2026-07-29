@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { isPlatformRole } from "@/shared/permissions";
@@ -119,3 +120,22 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 );
+
+/**
+ * True once the persisted session has been read from storage. Entry pages must
+ * wait for this before deciding between the landing page and the dashboard,
+ * otherwise a signed-in user briefly lands on /welcome.
+ */
+export function useAuthHydrated(): boolean {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
+  return hydrated;
+}

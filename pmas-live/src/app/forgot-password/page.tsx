@@ -4,6 +4,7 @@ import { FormEvent, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
+import { RESET_TOKEN_SESSION_KEY, storeOneTimeSecret } from "@/shared/security";
 
 type ForgotResponse = {
   message?: string;
@@ -92,9 +93,10 @@ function ForgotPasswordForm() {
             <button
               type="button"
               className="btn btn-primary auth-submit"
-              onClick={() =>
-                router.push(`/reset-password?token=${encodeURIComponent(resetToken)}`)
-              }
+              onClick={() => {
+                storeOneTimeSecret(RESET_TOKEN_SESSION_KEY, resetToken);
+                router.push("/reset-password");
+              }}
             >
               Continue to reset password
             </button>

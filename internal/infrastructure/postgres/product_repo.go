@@ -60,8 +60,18 @@ func (r *ProductRepo) Create(ctx context.Context, p *product.Product) error {
 		p.SuccessMetrics, p.BusinessValue, visibility, p.DeletedAt,
 		p.Version, p.CreatedAt, p.UpdatedAt,
 	)
-	if err != nil && strings.Contains(err.Error(), "idx_products_company_code") {
-		return shared.New("PRODUCT_CODE_TAKEN", "Product code already in use", 409)
+	return translateProductConflict(err)
+}
+
+func translateProductConflict(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case strings.Contains(err.Error(), "idx_products_company_code"):
+		return product.ErrProductCodeTaken
+	case strings.Contains(err.Error(), "idx_products_company_name"):
+		return product.ErrProductNameTaken
 	}
 	return err
 }
@@ -143,10 +153,7 @@ func (r *ProductRepo) Update(ctx context.Context, p *product.Product) error {
 		time.Now().UTC(), p.CompanyID, p.ID, p.Version,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "idx_products_company_code") {
-			return shared.New("PRODUCT_CODE_TAKEN", "Product code already in use", 409)
-		}
-		return err
+		return translateProductConflict(err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -154,6 +161,93 @@ func (r *ProductRepo) Update(ctx context.Context, p *product.Product) error {
 	}
 	p.Version++
 	return nil
+}
+
+func (r *ProductRepo) NameTaken(ctx context.Context, companyID uuid.UUID, name string, excludeID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM products
+			WHERE company_id=$1 AND deleted_at IS NULL
+			  AND LOWER(TRIM(name)) = LOWER(TRIM($2)) AND id <> $3
+		)`, companyID, name, excludeID).Scan(&exists)
+	return exists, err
+}
+
+func (r *ProductRepo) CodeTaken(ctx context.Context, companyID uuid.UUID, code string, excludeID uuid.UUID) (bool, error) {
+	if strings.TrimSpace(code) == "" {
+		return false, nil
+	}
+	var exists bool
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM products
+			WHERE company_id=$1 AND deleted_at IS NULL
+			  AND LOWER(TRIM(COALESCE(code,''))) = LOWER(TRIM($2)) AND id <> $3
+		)`, companyID, code, excludeID).Scan(&exists)
+	return exists, err
+}
+
+// ListSummaries rolls up pipeline position, stage progress and last activity for
+// every live product in one round trip so the list view avoids N+1 queries.
+func (r *ProductRepo) ListSummaries(ctx context.Context, companyID uuid.UUID) ([]product.ProductSummary, error) {
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT p.id,
+		       COALESCE(cur.name, ''),
+		       COALESCE(tot.cnt, 0),
+		       COALESCE(done.cnt, 0),
+		       COALESCE(act.action, ''),
+		       act.created_at
+		FROM products p
+		LEFT JOIN LATERAL (
+			SELECT st.name
+			FROM stage_instances si
+			JOIN stages st ON st.id = si.stage_id
+			WHERE si.company_id = p.company_id AND si.product_id = p.id AND si.status = 'ACTIVE'
+			ORDER BY si.started_at DESC NULLS LAST
+			LIMIT 1
+		) cur ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*)::int AS cnt FROM stages st WHERE st.pipeline_id = p.pipeline_id
+		) tot ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT COUNT(DISTINCT si.stage_id)::int AS cnt
+			FROM stage_instances si
+			WHERE si.company_id = p.company_id AND si.product_id = p.id AND si.status = 'COMPLETED'
+		) done ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT al.action, al.created_at
+			FROM activity_logs al
+			WHERE al.company_id = p.company_id AND al.entity_type = 'product' AND al.entity_id = p.id
+			ORDER BY al.created_at DESC
+			LIMIT 1
+		) act ON TRUE
+		WHERE p.company_id = $1 AND p.deleted_at IS NULL`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]product.ProductSummary, 0)
+	for rows.Next() {
+		var s product.ProductSummary
+		var lastAt sql.NullTime
+		if err := rows.Scan(&s.ProductID, &s.CurrentStage, &s.TotalStages, &s.CompletedStages, &s.LastActivity, &lastAt); err != nil {
+			return nil, err
+		}
+		if lastAt.Valid {
+			t := lastAt.Time.UTC()
+			s.LastActivityAt = &t
+		}
+		if s.TotalStages > 0 {
+			s.Progress = s.CompletedStages * 100 / s.TotalStages
+			if s.Progress > 100 {
+				s.Progress = 100
+			}
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 type PipelineRepo struct{ db *DB }

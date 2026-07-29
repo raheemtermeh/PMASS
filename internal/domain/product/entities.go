@@ -187,9 +187,19 @@ func (p *Product) SoftDelete() error {
 	return nil
 }
 
-// Restore clears a previous soft delete.
+// Restore brings a product back into the working set: it clears a previous soft
+// delete and lifts ARCHIVED. Since archiving is the only removal path, the product
+// returns to READY when a pipeline is already attached, otherwise to DRAFT — never
+// straight to ACTIVE, so the pipeline guard still applies before execution resumes.
 func (p *Product) Restore() error {
 	p.DeletedAt = nil
+	if p.Status == StatusArchived {
+		if p.PipelineID != nil {
+			p.Status = StatusReady
+		} else {
+			p.Status = StatusDraft
+		}
+	}
 	p.touch()
 	return nil
 }
@@ -208,6 +218,18 @@ func (p *Product) ChangeManager(managerID uuid.UUID) error {
 
 func (p *Product) touch() {
 	p.UpdatedAt = time.Now().UTC()
+}
+
+// ProductSummary carries the roll-up shown in the product list: where the product
+// currently sits in its pipeline, how far it has progressed, and when it last moved.
+type ProductSummary struct {
+	ProductID       uuid.UUID  `json:"product_id"`
+	CurrentStage    string     `json:"current_stage,omitempty"`
+	TotalStages     int        `json:"total_stages"`
+	CompletedStages int        `json:"completed_stages"`
+	Progress        int        `json:"progress"`
+	LastActivity    string     `json:"last_activity,omitempty"`
+	LastActivityAt  *time.Time `json:"last_activity_at,omitempty"`
 }
 
 // Pipeline lifecycle (MVP addition; ACTIVE preserves pre-existing behavior).
@@ -387,11 +409,25 @@ func (si *StageInstance) Complete(exitCriteriaMet bool) error {
 	return nil
 }
 
-// Member roles for product_members (MVP addition, additive to owner/manager fields).
+// Product roles for product_members (distinct from workspace roles).
+// Owner/Manager on the product entity are separate fields — these roles apply to collaborators.
 const (
-	MemberRoleContributor = "CONTRIBUTOR"
-	MemberRoleViewer      = "VIEWER"
+	MemberRoleOwner        = "OWNER"
+	MemberRoleManager      = "MANAGER"
+	MemberRoleContributor  = "CONTRIBUTOR"
+	MemberRoleApprover     = "APPROVER"
+	MemberRoleStakeholder  = "STAKEHOLDER"
+	MemberRoleViewer       = "VIEWER"
 )
+
+var ValidProductMemberRoles = map[string]bool{
+	MemberRoleOwner:       true,
+	MemberRoleManager:     true,
+	MemberRoleContributor: true,
+	MemberRoleApprover:    true,
+	MemberRoleStakeholder: true,
+	MemberRoleViewer:      true,
+}
 
 // ProductMember represents an employee granted membership on a product beyond the
 // single owner/manager (MVP Feature Planning gap: collaborative product teams).
@@ -417,6 +453,9 @@ func NewProductMember(companyID, productID, employeeID uuid.UUID, role string) (
 	role = strings.TrimSpace(strings.ToUpper(role))
 	if role == "" {
 		role = MemberRoleContributor
+	}
+	if !ValidProductMemberRoles[role] {
+		return nil, ErrInvalidProductMemberRole
 	}
 	return &ProductMember{
 		ID:         uuid.New(),

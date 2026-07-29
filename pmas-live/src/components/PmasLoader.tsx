@@ -1,18 +1,48 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 interface PmasLoaderProps {
   message?: string;
   /** Compact inline variant for overlays; full-screen by default */
   variant?: "fullscreen" | "inline";
 }
 
+/**
+ * Approaches 100% asymptotically so the bar always advances but never claims to
+ * be finished before the real work is.
+ */
+function useCreepingProgress(enabled: boolean): number {
+  const [progress, setProgress] = useState(8);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(() => {
+      setProgress((current) => current + Math.max(0.6, (96 - current) * 0.08));
+    }, 220);
+    return () => window.clearInterval(timer);
+  }, [enabled]);
+
+  return Math.min(progress, 96);
+}
+
 export function PmasLoader({
   message = "Loading PMAS Live…",
   variant = "fullscreen",
 }: PmasLoaderProps) {
+  const isFullscreen = variant === "fullscreen";
+  const progress = useCreepingProgress(isFullscreen);
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const timer = window.setTimeout(() => setSlow(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, [isFullscreen]);
+
   return (
     <div
-      className={`pmas-loader${variant === "inline" ? " pmas-loader-inline" : ""}`}
+      className={`pmas-loader${isFullscreen ? "" : " pmas-loader-inline"}`}
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -39,6 +69,12 @@ export function PmasLoader({
           </svg>
           <span className="pmas-loader-pulse" />
         </div>
+        {isFullscreen ? (
+          <>
+            <span className="pmas-loader-satellite pmas-loader-satellite-a" />
+            <span className="pmas-loader-satellite pmas-loader-satellite-b" />
+          </>
+        ) : null}
       </div>
 
       <div className="pmas-loader-copy">
@@ -46,10 +82,19 @@ export function PmasLoader({
           <span className="pmas-loader-brand-mark">PMAS</span>
           <span className="pmas-loader-brand-live">Live</span>
         </p>
-        <p className="pmas-loader-message">{message}</p>
+        <p className="pmas-loader-message" key={message}>
+          {message}
+        </p>
         <div className="pmas-loader-bar" aria-hidden="true">
-          <span className="pmas-loader-bar-fill" />
+          {isFullscreen ? (
+            <span className="pmas-loader-bar-progress" style={{ width: `${progress}%` }} />
+          ) : (
+            <span className="pmas-loader-bar-fill" />
+          )}
         </div>
+        {slow ? (
+          <p className="pmas-loader-hint">Still working — the server is taking longer than usual.</p>
+        ) : null}
       </div>
     </div>
   );

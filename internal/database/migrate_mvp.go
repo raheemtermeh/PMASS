@@ -75,6 +75,10 @@ func EnsureMVPExtras(db *sql.DB) error {
 		`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS idx_products_manager ON products(manager_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_products_company_code ON products(company_id, code) WHERE code IS NOT NULL`,
+		// Product name must stay unique per company; archived products keep their
+		// name, only soft-deleted rows are excluded so the name can be reused.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_products_company_name
+			ON products(company_id, LOWER(TRIM(name))) WHERE deleted_at IS NULL`,
 
 		`ALTER TABLE products DROP CONSTRAINT IF EXISTS products_status_chk`,
 		`ALTER TABLE products ADD CONSTRAINT products_status_chk CHECK (

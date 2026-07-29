@@ -64,6 +64,8 @@ export interface Product {
   status: string;
   execution_model: string;
   pipeline_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
 
   // MVP additions — optional/additive.
   code?: string;
@@ -76,6 +78,17 @@ export interface Product {
   business_value?: string;
   visibility?: string;
   deleted_at?: string | null;
+}
+
+/** Roll-up shown in the product list (GET /api/v1/products/summary). */
+export interface ProductSummary {
+  product_id: string;
+  current_stage?: string;
+  total_stages: number;
+  completed_stages: number;
+  progress: number;
+  last_activity?: string;
+  last_activity_at?: string | null;
 }
 
 export interface ProductMember {

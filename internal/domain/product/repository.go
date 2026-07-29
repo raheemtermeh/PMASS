@@ -13,6 +13,11 @@ type ProductRepository interface {
 	FindByID(ctx context.Context, companyID, id uuid.UUID) (*Product, error)
 	List(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]Product, int64, error)
 	Update(ctx context.Context, p *Product) error
+	// NameTaken / CodeTaken report duplicates within a company, ignoring excludeID
+	// so a product can be saved without clashing with itself.
+	NameTaken(ctx context.Context, companyID uuid.UUID, name string, excludeID uuid.UUID) (bool, error)
+	CodeTaken(ctx context.Context, companyID uuid.UUID, code string, excludeID uuid.UUID) (bool, error)
+	ListSummaries(ctx context.Context, companyID uuid.UUID) ([]ProductSummary, error)
 }
 
 type PipelineRepository interface {

@@ -491,6 +491,13 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		WriteOK(w, http.StatusCreated, p, nil)
+	case len(parts) == 1 && parts[0] == "summary" && r.Method == http.MethodGet:
+		items, err := h.Svc.ListProductSummaries(r.Context(), companyID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {

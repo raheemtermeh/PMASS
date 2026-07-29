@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
+import { ModalPortal } from "@/components/ModalPortal";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import {
@@ -679,6 +680,7 @@ export default function AdminUsersPage() {
       </section>
 
       {editingUser ? (
+        <ModalPortal>
         <div className="modal-backdrop active um-modal" role="dialog" aria-modal="true">
           <div className="modal-content um-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header um-modal-header">
@@ -754,9 +756,11 @@ export default function AdminUsersPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       ) : null}
 
       {roleFormOpen ? (
+        <ModalPortal>
         <div className="modal-backdrop active um-modal" role="dialog" aria-modal="true">
           <div className="modal-content um-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header um-modal-header">
@@ -790,6 +794,13 @@ export default function AdminUsersPage() {
                   onToggle={(p) => togglePerm(rolePerms, p, setRolePerms)}
                 />
               </fieldset>
+              {saveRoleMutation.isError ? (
+                <p className="auth-error">
+                  {saveRoleMutation.error instanceof Error
+                    ? saveRoleMutation.error.message
+                    : "Saving the role failed"}
+                </p>
+              ) : null}
               <div className="modal-footer">
                 <button type="button" className="btn" onClick={() => setRoleFormOpen(false)}>
                   Cancel
@@ -806,6 +817,7 @@ export default function AdminUsersPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       ) : null}
     </div>
   );

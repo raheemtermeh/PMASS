@@ -2,6 +2,8 @@
 
 import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
+import { ModalPortal } from "@/components/ModalPortal";
+import { SkeletonTable } from "@/components/Skeleton";
 import { sanitizeDisplayText } from "@/shared/security";
 
 export type FieldType = "text" | "number" | "select" | "textarea" | "password" | "date";
@@ -226,7 +228,7 @@ export function ResourceManager<T extends { id: string | number }>({
         {deleteError ? <p className="auth-error" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
 
         {isLoading ? (
-          <p className="text-dim">Loading…</p>
+          <SkeletonTable columns={columns.length} withActions={!hideEdit || !hideDelete} />
         ) : safeItems.length === 0 ? (
           <EmptyState title={emptyTitle} description={emptyDescription} />
         ) : (
@@ -306,6 +308,7 @@ export function ResourceManager<T extends { id: string | number }>({
       </section>
 
       {open && (
+        <ModalPortal>
         <div
           className="modal-backdrop active"
           role="dialog"
@@ -388,6 +391,7 @@ export function ResourceManager<T extends { id: string | number }>({
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
