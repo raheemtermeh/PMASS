@@ -219,27 +219,44 @@ export default function AdminUsersPage() {
     onSuccess: invalidate,
   });
 
+  const removeLoginMutation = useMutation({
+    mutationFn: (id: number) => httpClient.delete(`/api/v1/users/${id}`),
+    onSuccess: invalidate,
+  });
+
   const setPasswordMutation = useMutation({
     mutationFn: ({ id, password }: { id: number; password: string }) =>
       httpClient.put(`/api/v1/users/${id}`, { password }),
     onSuccess: invalidate,
   });
 
+  // Starts everyone on the baseline Employee role rather than whatever is half-typed
+  // in the create form above; the admin can widen access right after via Edit.
   const enableLoginMutation = useMutation({
-    mutationFn: (row: WorkspaceUser) =>
-      httpClient.post("/api/v1/users", {
+    mutationFn: ({ row, password }: { row: WorkspaceUser; password: string }) => {
+      const baseline = roles.find((r) => r.name === "Employee");
+      return httpClient.post("/api/v1/users", {
         employee_id: row.employee_id,
         email: row.email,
         full_name: row.full_name,
         job_title: row.job_title,
-        password: window.prompt("Set initial password (min 8 chars)") || "",
-        role_id: roleId || roles.find((r) => r.name === "Employee")?.id,
-        permissions: selectedPerms.length
-          ? selectedPerms
-          : roles.find((r) => r.name === "Employee")?.permissions ?? [],
-      }),
+        password,
+        role_id: baseline?.id,
+        permissions: baseline?.permissions ?? [],
+      });
+    },
     onSuccess: invalidate,
   });
+
+  // Row buttons act outside any form, so their failures need a visible home.
+  const rowActionError = [
+    removeLoginMutation,
+    toggleMutation,
+    setPasswordMutation,
+    enableLoginMutation,
+  ]
+    .map((m) => (m.error instanceof Error ? m.error.message : ""))
+    .find(Boolean);
 
   const saveRoleMutation = useMutation({
     mutationFn: async () => {
@@ -261,6 +278,21 @@ export default function AdminUsersPage() {
     mutationFn: (id: string) => httpClient.delete(`/api/v1/roles/${id}`),
     onSuccess: invalidate,
   });
+
+  // How far this person's grants drift from their role — surfaced so an admin knows
+  // the tweak survives future role edits instead of being silently overwritten.
+  const editDiff = useMemo(() => {
+    const role = roles.find((r) => r.id === editRoleId);
+    if (!role) return { added: [] as string[], removed: [] as string[], total: 0 };
+    const added = editPerms.filter((p) => !role.permissions.includes(p));
+    const removed = role.permissions.filter((p) => !editPerms.includes(p as Permission));
+    return { added, removed, total: added.length + removed.length };
+  }, [editPerms, editRoleId, roles]);
+
+  const roleMemberCount = useMemo(() => {
+    if (!editingRole) return 0;
+    return users.filter((u) => u.role_id === editingRole.id).length;
+  }, [users, editingRole]);
 
   const rosterStats = useMemo(() => {
     const withLogin = users.filter((u) => u.has_login).length;
@@ -478,6 +510,8 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
+        {rowActionError ? <p className="auth-error">{rowActionError}</p> : null}
+
         {usersLoading ? (
           <p className="text-dim um-loading">Loading users…</p>
         ) : users.length === 0 ? (
@@ -578,12 +612,40 @@ export default function AdminUsersPage() {
                           >
                             {row.is_active ? "Deactivate" : "Activate"}
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm um-btn-danger"
+                            disabled={row.user_id === currentUser?.id}
+                            title={
+                              row.user_id === currentUser?.id
+                                ? "You cannot remove your own login"
+                                : "Deletes the login. The employee stays in Organization."
+                            }
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `Remove the login for ${row.full_name}?\n\nThey keep their employee record in Organization and can be given a new login later.`,
+                                )
+                              ) {
+                                return;
+                              }
+                              removeLoginMutation.mutate(row.user_id!);
+                            }}
+                          >
+                            Remove login
+                          </button>
                         </>
                       ) : (
                         <button
                           type="button"
                           className="btn btn-sm btn-primary"
-                          onClick={() => enableLoginMutation.mutate(row)}
+                          onClick={() => {
+                            const password = window.prompt(
+                              `Initial password for ${row.full_name}\n(min 12 chars, upper/lower/digit/symbol)`,
+                            );
+                            if (!password) return;
+                            enableLoginMutation.mutate({ row, password });
+                          }}
                         >
                           Enable login
                         </button>
@@ -727,7 +789,38 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <fieldset className="um-perm-fieldset">
-                <legend>Permissions</legend>
+                <legend>
+                  Permissions
+                  {editDiff.total > 0 ? (
+                    <span className="um-diff-badge">
+                      {editDiff.added.length > 0 ? `+${editDiff.added.length}` : ""}
+                      {editDiff.added.length > 0 && editDiff.removed.length > 0 ? " / " : ""}
+                      {editDiff.removed.length > 0 ? `−${editDiff.removed.length}` : ""} vs role
+                    </span>
+                  ) : null}
+                </legend>
+                {editRoleId ? (
+                  <p className="um-perm-hint">
+                    {editDiff.total > 0 ? (
+                      <>
+                        Customized for this person. Their extra grants and removals are kept when
+                        the role itself is edited later.{" "}
+                        <button
+                          type="button"
+                          className="um-linkish"
+                          onClick={() => {
+                            const role = roles.find((r) => r.id === editRoleId);
+                            if (role) setEditPerms(role.permissions as Permission[]);
+                          }}
+                        >
+                          Reset to role defaults
+                        </button>
+                      </>
+                    ) : (
+                      "Exactly matches the role defaults — future role edits apply automatically."
+                    )}
+                  </p>
+                ) : null}
                 <PermCategories
                   selected={editPerms}
                   onToggle={(p) => togglePerm(editPerms, p, setEditPerms)}
@@ -789,6 +882,13 @@ export default function AdminUsersPage() {
               </div>
               <fieldset className="um-perm-fieldset">
                 <legend>Default permissions</legend>
+                {editingRole && roleMemberCount > 0 ? (
+                  <p className="um-perm-hint">
+                    Saving updates {roleMemberCount}{" "}
+                    {roleMemberCount === 1 ? "person" : "people"} on this page who hold this role.
+                    Their individually added or removed permissions stay untouched.
+                  </p>
+                ) : null}
                 <PermCategories
                   selected={rolePerms}
                   onToggle={(p) => togglePerm(rolePerms, p, setRolePerms)}

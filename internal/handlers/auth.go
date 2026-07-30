@@ -789,11 +789,9 @@ func (h *Handler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut, http.MethodPatch:
 		h.UpdateWorkspaceUser(w, r, id)
 	case http.MethodDelete:
-		// Soft-deactivate instead of hard delete.
-		active := false
-		payload, _ := json.Marshal(map[string]any{"is_active": active})
-		r.Body = ioNopCloser(string(payload))
-		h.UpdateWorkspaceUser(w, r, id)
+		// Removes the login only. The employee record survives in Organization,
+		// where people are archived rather than deleted.
+		h.DeleteWorkspaceUserLogin(w, r, id)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}

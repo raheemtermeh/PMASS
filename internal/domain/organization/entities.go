@@ -315,6 +315,17 @@ type TeamMemberView struct {
 	AssignedBy *int       `json:"assigned_by,omitempty"`
 }
 
+// TeamMembership is the raw company-wide membership row. It backs the "one
+// employee, one team" rule in the UI: the assign picker needs to know who is
+// already placed somewhere else, without querying every team separately.
+type TeamMembership struct {
+	EmployeeID uuid.UUID `json:"employee_id"`
+	TeamID     uuid.UUID `json:"team_id"`
+	TeamRole   string    `json:"team_role"`
+	AssignedAt time.Time `json:"assigned_at"`
+	AssignedBy *int      `json:"assigned_by,omitempty"`
+}
+
 func (m TeamMemberView) FullName() string {
 	return strings.TrimSpace(m.FirstName + " " + m.LastName)
 }

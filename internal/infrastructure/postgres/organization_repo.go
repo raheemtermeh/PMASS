@@ -262,6 +262,17 @@ func (r *TeamRepo) Update(ctx context.Context, t *organization.Team) error {
 	return nil
 }
 
+// CountLinkedFeatures counts features still owned by the team. Cancelled and
+// finished work is ignored, so a team that only carries history can be archived.
+func (r *TeamRepo) CountLinkedFeatures(ctx context.Context, companyID, teamID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM features
+		WHERE company_id=$1 AND team_id=$2 AND deleted_at IS NULL
+		  AND status NOT IN ('COMPLETED','CANCELLED','DONE','ARCHIVED')`, companyID, teamID).Scan(&n)
+	return n, err
+}
+
 type EmployeeRepo struct{ db *DB }
 
 func NewEmployeeRepo(db *DB) *EmployeeRepo { return &EmployeeRepo{db: db} }
@@ -425,6 +436,32 @@ func (r *EmployeeRepo) ListByTeam(ctx context.Context, companyID, teamID uuid.UU
 		out = append(out, m)
 	}
 	return out, nil
+}
+
+// ListAllMemberships returns every membership in the company in one round trip,
+// so the UI can show team sizes and hide employees who already belong somewhere.
+func (r *EmployeeRepo) ListAllMemberships(ctx context.Context, companyID uuid.UUID) ([]organization.TeamMembership, error) {
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT employee_id, team_id, COALESCE(team_role,'MEMBER'), assigned_at, assigned_by
+		FROM team_members_vsm WHERE company_id=$1`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]organization.TeamMembership, 0)
+	for rows.Next() {
+		var m organization.TeamMembership
+		var assignedBy sql.NullInt64
+		if err := rows.Scan(&m.EmployeeID, &m.TeamID, &m.TeamRole, &m.AssignedAt, &assignedBy); err != nil {
+			return nil, err
+		}
+		if assignedBy.Valid {
+			id := int(assignedBy.Int64)
+			m.AssignedBy = &id
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 func (r *EmployeeRepo) CountTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) (int64, error) {

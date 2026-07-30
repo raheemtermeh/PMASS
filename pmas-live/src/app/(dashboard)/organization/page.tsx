@@ -5,7 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager } from "@/components/ResourceManager";
 import { OrgStructureGraph } from "@/components/visual/OrgStructureGraph";
 import { httpClient } from "@/core/api/http-client";
-import type { Company, Department, Employee, Team, TeamMemberView } from "@/features/vsm/types";
+import type {
+  Company,
+  Department,
+  Employee,
+  Team,
+  TeamMemberView,
+  TeamMembership,
+} from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
 
 type Tab = "structure" | "employees" | "departments" | "teams" | "membership";
@@ -22,6 +29,7 @@ export default function OrganizationPage() {
   const [memberTeamId, setMemberTeamId] = useState("");
   const [assignEmployeeId, setAssignEmployeeId] = useState("");
   const [memberError, setMemberError] = useState("");
+  const [teamError, setTeamError] = useState("");
 
   const [empSearch, setEmpSearch] = useState("");
   const [empStatus, setEmpStatus] = useState("");
@@ -52,6 +60,12 @@ export default function OrganizationPage() {
     queryKey: ["vsm-teams"],
     queryFn: () => httpClient.get<Team[]>("/api/v1/teams?page_size=100"),
     staleTime: 30_000,
+  });
+
+  const { data: memberships = [] } = useQuery({
+    queryKey: ["vsm-team-memberships"],
+    queryFn: () => httpClient.get<TeamMembership[]>("/api/v1/teams/memberships"),
+    staleTime: 15_000,
   });
 
   const { data: teamMembers = [], isLoading: membersLoading } = useQuery({
@@ -89,33 +103,45 @@ export default function OrganizationPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-departments"] }),
   });
 
+  const refreshTeams = () => {
+    void qc.invalidateQueries({ queryKey: ["vsm-teams"] });
+    void qc.invalidateQueries({ queryKey: ["vsm-team-members"] });
+    void qc.invalidateQueries({ queryKey: ["vsm-team-memberships"] });
+  };
+
   const teamCreate = useMutation({
     mutationFn: (body: Record<string, unknown>) => httpClient.post("/api/v1/teams", body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["vsm-teams"] });
-      void qc.invalidateQueries({ queryKey: ["vsm-team-members"] });
-    },
+    onSuccess: refreshTeams,
   });
   const teamUpdate = useMutation({
     mutationFn: ({ id, body }: { id: string | number; body: Record<string, unknown> }) =>
       httpClient.patch(`/api/v1/teams/${id}`, body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
+    onSuccess: refreshTeams,
   });
   const teamArchive = useMutation({
     mutationFn: (id: string | number) => httpClient.delete(`/api/v1/teams/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
+    onSuccess: refreshTeams,
   });
   const teamMove = useMutation({
     mutationFn: ({ id, departmentId }: { id: string; departmentId: string }) =>
       httpClient.post(`/api/v1/teams/${id}/move`, { department_id: departmentId }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
   });
+  const teamStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      httpClient.post(`/api/v1/teams/${id}/status`, { status }),
+    onSuccess: () => {
+      setTeamError("");
+      refreshTeams();
+    },
+    onError: (e: Error) => setTeamError(e.message),
+  });
 
   const assignMember = useMutation({
     mutationFn: ({ employeeId, teamId }: { employeeId: string; teamId: string }) =>
       httpClient.post(`/api/v1/employees/${employeeId}/teams/${teamId}`),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["vsm-team-members", memberTeamId] });
+      refreshTeams();
       setAssignEmployeeId("");
       setMemberError("");
     },
@@ -123,7 +149,7 @@ export default function OrganizationPage() {
   const removeMember = useMutation({
     mutationFn: ({ employeeId, teamId }: { employeeId: string; teamId: string }) =>
       httpClient.delete(`/api/v1/employees/${employeeId}/teams/${teamId}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-team-members", memberTeamId] }),
+    onSuccess: refreshTeams,
   });
 
   const empOptions = employees
@@ -149,16 +175,23 @@ export default function OrganizationPage() {
       }));
   }, [departments, teams]);
 
-  const memberIds = new Set(teamMembers.map((m) => m.employee_id));
-  // One team per employee: exclude anyone already on any team (except current team's members for display).
-  const assignedElsewhere = useMemo(() => {
-    // We only know current team members from API; for assignable list exclude current team members.
-    // Backend enforces one-team globally.
-    return memberIds;
-  }, [memberIds]);
+  /** employee id → team id they already belong to (one team per employee). */
+  const teamByEmployee = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of memberships) map.set(m.employee_id, m.team_id);
+    return map;
+  }, [memberships]);
 
+  const memberCountByTeam = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of memberships) map.set(m.team_id, (map.get(m.team_id) ?? 0) + 1);
+    return map;
+  }, [memberships]);
+
+  // Anyone already placed on a team is unavailable — the backend rejects a second
+  // membership, so filtering here avoids offering a choice that always fails.
   const assignableEmployees = employees.filter(
-    (e) => e.status === "ACTIVE" && !assignedElsewhere.has(e.id),
+    (e) => e.status === "ACTIVE" && !teamByEmployee.has(e.id),
   );
 
   const filteredEmployees = useMemo(() => {
@@ -550,7 +583,7 @@ export default function OrganizationPage() {
       {tab === "teams" ? (
         <ResourceManager
           title="Teams"
-          description="Execution units under a department. Capacity is used for future reporting. Archive blocked when the team has members or open assignments."
+          description="Execution units under a department. Capacity feeds reporting. A team cannot be archived while it still has members, open features or open task assignments — reassign them first."
           createLabel="Add team"
           emptyTitle="No teams"
           emptyDescription="Create teams after departments and employees exist."
@@ -558,6 +591,13 @@ export default function OrganizationPage() {
           items={teams}
           deleteLabel="Archive"
           pageSize={10}
+          toolbar={
+            teamError ? (
+              <p className="auth-error" style={{ margin: 0, width: "100%" }}>
+                {teamError}
+              </p>
+            ) : null
+          }
           columns={[
             { key: "name", label: "Name" },
             {
@@ -567,14 +607,47 @@ export default function OrganizationPage() {
             },
             { key: "lead", label: "Lead", render: (r) => empName(r.lead_id) },
             {
+              key: "members",
+              label: "Members",
+              render: (r) => {
+                const count = memberCountByTeam.get(r.id) ?? 0;
+                const capacity = r.capacity ?? 0;
+                const over = capacity > 0 && count > capacity;
+                return (
+                  <span
+                    className="font-mono"
+                    style={over ? { color: "#fda4af" } : undefined}
+                    title={over ? `Over planned capacity by ${count - capacity}` : undefined}
+                  >
+                    {count}
+                    {capacity > 0 ? ` / ${capacity}` : ""}
+                  </span>
+                );
+              },
+            },
+            {
               key: "capacity",
               label: "Capacity",
-              render: (r) => String(r.capacity ?? 0),
+              render: (r) => <span className="font-mono">{r.capacity ?? 0}</span>,
             },
             {
               key: "status",
               label: "Status",
-              render: (r) => <span className="status-pill">{r.status}</span>,
+              render: (r) => (
+                <select
+                  className="team-status-select"
+                  aria-label={`Change status of ${r.name}`}
+                  value={r.status}
+                  disabled={teamStatus.isPending}
+                  onChange={(e) => teamStatus.mutate({ id: r.id, status: e.target.value })}
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              ),
             },
           ]}
           fields={[
@@ -593,7 +666,11 @@ export default function OrganizationPage() {
               required: true,
               options: empOptions,
             },
-            { name: "capacity", label: "Capacity", type: "number" },
+            {
+              name: "capacity",
+              label: "Capacity (planned headcount, used by reports)",
+              type: "number",
+            },
             {
               name: "status",
               label: "Status",
@@ -616,6 +693,7 @@ export default function OrganizationPage() {
               department_id: v.department_id,
               lead_id: v.lead_id,
               capacity: Number(v.capacity) || 0,
+              status: v.status,
               description: v.description,
             });
           }}
@@ -688,6 +766,7 @@ export default function OrganizationPage() {
                     {departments.find((d) => d.id === t.department_id)
                       ? ` · ${departments.find((d) => d.id === t.department_id)!.name}`
                       : ""}
+                    {` · ${memberCountByTeam.get(t.id) ?? 0}${t.capacity ? `/${t.capacity}` : ""} members`}
                   </option>
                 ))}
             </select>
@@ -711,6 +790,12 @@ export default function OrganizationPage() {
                       </option>
                     ))}
                   </select>
+                  {assignableEmployees.length === 0 ? (
+                    <p className="text-dim" style={{ fontSize: "0.78rem", marginTop: "0.35rem" }}>
+                      Every active employee already belongs to a team. Remove them from their
+                      current team first.
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="submit"

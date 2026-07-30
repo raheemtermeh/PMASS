@@ -2,6 +2,7 @@ package organizationapp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -166,6 +167,7 @@ type CreateTeamInput struct {
 	Name         string
 	Description  string
 	Capacity     int
+	Status       string
 }
 
 func (s *Service) CreateTeam(ctx context.Context, companyID uuid.UUID, in CreateTeamInput) (*organization.Team, error) {
@@ -178,6 +180,12 @@ func (s *Service) CreateTeam(ctx context.Context, companyID uuid.UUID, in Create
 	t, err := organization.NewTeam(companyID, in.DepartmentID, in.LeadID, in.Name, in.Description, in.Capacity)
 	if err != nil {
 		return nil, err
+	}
+	// A team is never born archived — that would strand the lead membership below.
+	if status := strings.TrimSpace(strings.ToUpper(in.Status)); status == organization.StatusInactive {
+		if err := t.SetStatus(status); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.team.Create(ctx, t); err != nil {
 		return nil, err
@@ -269,6 +277,12 @@ func (s *Service) MoveTeamBetweenDepartments(ctx context.Context, companyID, tea
 	return t, nil
 }
 
+// ListAllTeamMemberships backs the company-wide membership map used by the
+// organization UI.
+func (s *Service) ListAllTeamMemberships(ctx context.Context, companyID uuid.UUID) ([]organization.TeamMembership, error) {
+	return s.emp.ListAllMemberships(ctx, companyID)
+}
+
 func (s *Service) ListTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) ([]organization.TeamMemberView, error) {
 	if _, err := s.team.FindByID(ctx, companyID, teamID); err != nil {
 		return nil, err
@@ -276,23 +290,89 @@ func (s *Service) ListTeamMembers(ctx context.Context, companyID, teamID uuid.UU
 	return s.emp.ListByTeam(ctx, companyID, teamID)
 }
 
+// TeamDependencies is what still points at a team and therefore blocks archiving.
+type TeamDependencies struct {
+	Members   int64 `json:"members"`
+	Features  int64 `json:"features"`
+	OpenTasks int64 `json:"open_tasks"`
+}
+
+func (d TeamDependencies) any() bool {
+	return d.Members > 0 || d.Features > 0 || d.OpenTasks > 0
+}
+
+// describe lists the blockers so the caller can tell the user exactly what to
+// reassign, instead of a bare "team is in use".
+func (d TeamDependencies) describe() string {
+	parts := make([]string, 0, 3)
+	if d.Members > 0 {
+		parts = append(parts, fmt.Sprintf("%d member(s)", d.Members))
+	}
+	if d.Features > 0 {
+		parts = append(parts, fmt.Sprintf("%d open feature(s)", d.Features))
+	}
+	if d.OpenTasks > 0 {
+		parts = append(parts, fmt.Sprintf("%d open task assignment(s)", d.OpenTasks))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// TeamDependencyCounts reports what is attached to a team so the UI can warn
+// before the user attempts to archive it.
+func (s *Service) TeamDependencyCounts(ctx context.Context, companyID, teamID uuid.UUID) (TeamDependencies, error) {
+	var out TeamDependencies
+	if _, err := s.team.FindByID(ctx, companyID, teamID); err != nil {
+		return out, err
+	}
+	var err error
+	if out.Members, err = s.emp.CountTeamMembers(ctx, companyID, teamID); err != nil {
+		return out, err
+	}
+	if out.Features, err = s.team.CountLinkedFeatures(ctx, companyID, teamID); err != nil {
+		return out, err
+	}
+	if out.OpenTasks, err = s.emp.CountOpenAssignmentsForTeam(ctx, companyID, teamID); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
 func (s *Service) ArchiveTeam(ctx context.Context, companyID, id uuid.UUID) (*organization.Team, error) {
 	t, err := s.team.FindByID(ctx, companyID, id)
 	if err != nil {
 		return nil, err
 	}
-	members, err := s.emp.CountTeamMembers(ctx, companyID, id)
+	deps, err := s.TeamDependencyCounts(ctx, companyID, id)
 	if err != nil {
 		return nil, err
 	}
-	openWork, err := s.emp.CountOpenAssignmentsForTeam(ctx, companyID, id)
-	if err != nil {
-		return nil, err
-	}
-	if members > 0 || openWork > 0 {
-		return nil, organization.ErrTeamHasDependencies
+	if deps.any() {
+		return nil, shared.New(
+			organization.ErrTeamHasDependencies.Code,
+			"Team still has "+deps.describe()+" — reassign them before archiving",
+			organization.ErrTeamHasDependencies.HTTPStatus,
+		)
 	}
 	t.Archive()
+	if err := s.team.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// SetTeamStatus changes only the lifecycle status, so the UI can offer it as a
+// one-click row action without resubmitting the whole team form.
+func (s *Service) SetTeamStatus(ctx context.Context, companyID, teamID uuid.UUID, status string) (*organization.Team, error) {
+	if strings.EqualFold(strings.TrimSpace(status), organization.StatusArchived) {
+		return s.ArchiveTeam(ctx, companyID, teamID)
+	}
+	t, err := s.team.FindByID(ctx, companyID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if err := t.SetStatus(status); err != nil {
+		return nil, err
+	}
 	if err := s.team.Update(ctx, t); err != nil {
 		return nil, err
 	}

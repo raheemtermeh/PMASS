@@ -267,6 +267,16 @@ func EnsureMVPExtras(db *sql.DB) error {
 		)`,
 
 		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS company_role_id UUID REFERENCES company_roles(id) ON DELETE SET NULL`,
+
+		// Per-user deltas against their role. user_permissions stays the effective
+		// set read on every request; this table remembers WHY it differs, so editing
+		// a role can be re-applied to its members without losing manual tweaks.
+		`CREATE TABLE IF NOT EXISTS user_permission_overrides (
+			user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			permission VARCHAR(100) NOT NULL,
+			granted BOOLEAN NOT NULL,
+			PRIMARY KEY (user_id, permission)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_app_users_company_role ON app_users(company_role_id)`,
 
 		// Per-user visual board layouts (flow graph / org graph positions).

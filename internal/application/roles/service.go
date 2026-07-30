@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -163,10 +164,101 @@ func (s *Service) Update(ctx context.Context, companyID, id uuid.UUID, in Upsert
 		}
 		return nil, err
 	}
-	if err := s.replacePerms(ctx, id, filterValidPerms(in.Permissions)); err != nil {
+	perms := filterValidPerms(in.Permissions)
+	if err := s.replacePerms(ctx, id, perms); err != nil {
+		return nil, err
+	}
+	// A role is only meaningful if editing it reaches the people who hold it.
+	if err := s.reapplyToMembers(ctx, id, perms); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, companyID, id)
+}
+
+// reapplyToMembers rebuilds the effective permissions of every user holding this
+// role: role defaults, plus each user's own additions, minus their own removals.
+// Middleware re-reads user_permissions on every request, so this takes effect
+// immediately without forcing anyone to sign in again.
+func (s *Service) reapplyToMembers(ctx context.Context, roleID uuid.UUID, rolePerms []string) error {
+	rows, err := s.db.Q(ctx).QueryContext(ctx, `
+		SELECT id FROM app_users WHERE company_role_id=$1`, roleID)
+	if err != nil {
+		return err
+	}
+	userIDs := make([]int, 0)
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		userIDs = append(userIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, userID := range userIDs {
+		effective, err := s.effectiveForUser(ctx, userID, rolePerms)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Q(ctx).ExecContext(ctx,
+			`DELETE FROM user_permissions WHERE user_id=$1`, userID); err != nil {
+			return err
+		}
+		for _, p := range effective {
+			if _, err := s.db.Q(ctx).ExecContext(ctx,
+				`INSERT INTO user_permissions (user_id, permission) VALUES ($1,$2)`, userID, p); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) effectiveForUser(ctx context.Context, userID int, rolePerms []string) ([]string, error) {
+	rows, err := s.db.Q(ctx).QueryContext(ctx, `
+		SELECT permission, granted FROM user_permission_overrides WHERE user_id=$1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	granted := map[string]struct{}{}
+	revoked := map[string]struct{}{}
+	for rows.Next() {
+		var perm string
+		var isGrant bool
+		if err := rows.Scan(&perm, &isGrant); err != nil {
+			return nil, err
+		}
+		if isGrant {
+			granted[perm] = struct{}{}
+		} else {
+			revoked[perm] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	set := map[string]struct{}{}
+	for _, p := range rolePerms {
+		if _, gone := revoked[p]; !gone {
+			set[p] = struct{}{}
+		}
+	}
+	for p := range granted {
+		set[p] = struct{}{}
+	}
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *Service) Delete(ctx context.Context, companyID, id uuid.UUID) error {

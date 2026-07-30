@@ -145,6 +145,7 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			Name         string    `json:"name"`
 			Description  string    `json:"description"`
 			Capacity     int       `json:"capacity"`
+			Status       string    `json:"status"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -152,13 +153,20 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		}
 		t, err := h.Svc.CreateTeam(r.Context(), companyID, organizationapp.CreateTeamInput{
 			DepartmentID: body.DepartmentID, LeadID: body.LeadID, Name: body.Name,
-			Description: body.Description, Capacity: body.Capacity,
+			Description: body.Description, Capacity: body.Capacity, Status: body.Status,
 		})
 		if err != nil {
 			WriteErr(w, err)
 			return
 		}
 		WriteOK(w, http.StatusCreated, t, nil)
+	case len(parts) == 1 && parts[0] == "memberships" && r.Method == http.MethodGet:
+		items, err := h.Svc.ListAllTeamMemberships(r.Context(), companyID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, items, nil)
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
@@ -225,6 +233,37 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "status" && r.Method == http.MethodPost:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := DecodeJSON(r, &body); err != nil {
+			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
+			return
+		}
+		t, err := h.Svc.SetTeamStatus(r.Context(), companyID, id, body.Status)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, t, nil)
+	case len(parts) == 2 && parts[1] == "dependencies" && r.Method == http.MethodGet:
+		id, err := ParseUUIDParam(parts[0])
+		if err != nil {
+			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
+			return
+		}
+		deps, err := h.Svc.TeamDependencyCounts(r.Context(), companyID, id)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, deps, nil)
 	case len(parts) == 2 && parts[1] == "members" && r.Method == http.MethodGet:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {

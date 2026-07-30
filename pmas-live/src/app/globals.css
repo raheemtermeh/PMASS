@@ -5946,6 +5946,55 @@ a .cc-kpi:hover {
   margin-left: 0.35rem;
 }
 
+.um-btn-danger {
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+
+.um-btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.um-btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.um-diff-badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.um-perm-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.um-linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.um-linkish:hover {
+  opacity: 0.85;
+}
+
 .um-perm-categories {
   display: flex;
   flex-direction: column;
@@ -6420,6 +6469,35 @@ a .cc-kpi:hover {
 }
 
 /* ——— Product list: toolbar, health, progress ——— */
+/* Inline status editor inside the teams table — reads as a pill until focused. */
+.team-status-select {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background-color: rgba(99, 102, 241, 0.12);
+  color: var(--text-on-surface);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.team-status-select:hover:not(:disabled) {
+  border-color: rgba(99, 102, 241, 0.6);
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+.team-status-select:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.16);
+}
+
+.team-status-select:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* ——— Skeleton loading ——— */
 .skeleton-table {
   display: flex;

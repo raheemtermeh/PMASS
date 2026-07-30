@@ -32,6 +32,22 @@ export interface Team {
   status: string;
 }
 
+/** Company-wide membership row (GET /api/v1/teams/memberships). */
+export interface TeamMembership {
+  employee_id: string;
+  team_id: string;
+  team_role: string;
+  assigned_at: string;
+  assigned_by?: number | null;
+}
+
+/** What still points at a team and blocks archiving it. */
+export interface TeamDependencies {
+  members: number;
+  features: number;
+  open_tasks: number;
+}
+
 export interface TeamMemberView {
   employee_id: string;
   first_name: string;

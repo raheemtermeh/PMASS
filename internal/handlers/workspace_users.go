@@ -223,6 +223,7 @@ func (h *Handler) CreateWorkspaceUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perms := req.Permissions
+	var rolePerms []string
 	var roleUUID *uuid.UUID
 	if req.RoleID != "" {
 		rid, err := uuid.Parse(req.RoleID)
@@ -238,13 +239,9 @@ func (h *Handler) CreateWorkspaceUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		roleUUID = &rid
+		rolePerms = role.Permissions
 		if len(perms) == 0 {
 			perms = role.Permissions
-		}
-		// Company Admin business role → tenant_admin system role for full access.
-		if role.Name == "Company Admin" {
-			// keep system role as user with all perms OR promote — plan keeps tenant_admin separate.
-			// Grant all VSM perms via permissions table with role=user.
 		}
 	}
 	perms = filterPerms(perms)
@@ -329,12 +326,10 @@ func (h *Handler) CreateWorkspaceUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, p := range perms {
-		if _, err := tx.ExecContext(r.Context(), `
-			INSERT INTO user_permissions (user_id, permission) VALUES ($1,$2)`, userID, p); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+	if err := writeUserPermissions(r.Context(), tx, userID, rolePerms, perms); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	}
 
 	if _, err := tx.ExecContext(r.Context(), `
@@ -451,10 +446,12 @@ func (h *Handler) UpdateWorkspaceUser(w http.ResponseWriter, r *http.Request, us
 			return
 		}
 	}
+	roleChanged := false
 	if req.RoleID != nil {
 		rolesSvc := rolesapp.NewService(postgres.New(h.db))
 		if *req.RoleID == "" {
 			_, _ = tx.ExecContext(r.Context(), `UPDATE app_users SET company_role_id=NULL, updated_at=NOW() WHERE id=$1`, userID)
+			roleChanged = true
 		} else {
 			rid, err := uuid.Parse(*req.RoleID)
 			if err != nil {
@@ -472,6 +469,7 @@ func (h *Handler) UpdateWorkspaceUser(w http.ResponseWriter, r *http.Request, us
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			roleChanged = true
 		}
 	}
 	if req.IsActive != nil {
@@ -495,20 +493,25 @@ func (h *Handler) UpdateWorkspaceUser(w http.ResponseWriter, r *http.Request, us
 			_, _ = tx.ExecContext(r.Context(), `UPDATE employees SET status=$1, updated_at=NOW() WHERE id=$2`, st, empID)
 		}
 	}
-	if req.Permissions != nil {
-		if _, err := tx.ExecContext(r.Context(), `DELETE FROM user_permissions WHERE user_id=$1`, userID); err != nil {
+	if req.Permissions != nil || roleChanged {
+		rolePerms, err := h.rolePermissionsForUser(r.Context(), tx, userID)
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		for _, p := range filterPerms(req.Permissions) {
-			if _, err := tx.ExecContext(r.Context(), `
-				INSERT INTO user_permissions (user_id, permission) VALUES ($1,$2)`, userID, p); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
+		if req.Permissions != nil {
+			err = writeUserPermissions(r.Context(), tx, userID, rolePerms, req.Permissions)
+		} else {
+			// Role swapped without explicit grants — keep the user's own deltas and
+			// rebuild the effective set from the new role.
+			err = reapplyRoleToUser(r.Context(), tx, userID, rolePerms)
 		}
-		_, _ = tx.ExecContext(r.Context(), `
-			UPDATE app_users SET session_version=session_version+1, updated_at=NOW() WHERE id=$1`, userID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -532,6 +535,87 @@ func (h *Handler) UpdateWorkspaceUser(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]any{"success": true, "data": item})
+}
+
+// DeleteWorkspaceUserLogin revokes a person's ability to sign in without touching
+// their Organization employee record. Permissions and overrides cascade away with
+// the app_users row, and employees.user_id is reset so a new login can be issued.
+func (h *Handler) DeleteWorkspaceUserLogin(w http.ResponseWriter, r *http.Request, userID int) {
+	w.Header().Set("Content-Type", "application/json")
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil || claims.TenantID == nil {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Company workspace required"})
+		return
+	}
+	if claims.UserID == userID {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cannot remove your own login"})
+		return
+	}
+	companyID, err := h.resolveCompanyID(r, *claims.TenantID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Company not found for tenant"})
+		return
+	}
+
+	var targetTenant sql.NullInt64
+	var sysRole string
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT tenant_id, role FROM app_users WHERE id=$1`, userID).Scan(&targetTenant, &sysRole); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "User not found"})
+		return
+	}
+	if !targetTenant.Valid || int(targetTenant.Int64) != *claims.TenantID {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "User belongs to another company"})
+		return
+	}
+	if auth.IsTenantAdmin(sysRole) || auth.IsPlatformAdmin(sysRole) {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Company admin logins cannot be removed here — deactivate the account instead",
+		})
+		return
+	}
+
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var empID uuid.UUID
+	_ = tx.QueryRowContext(r.Context(), `
+		SELECT id FROM employees WHERE company_id=$1 AND user_id=$2`, companyID, userID).Scan(&empID)
+
+	if _, err := tx.ExecContext(r.Context(), `
+		UPDATE employees SET user_id=NULL, updated_at=NOW() WHERE company_id=$1 AND user_id=$2`,
+		companyID, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if _, err := tx.ExecContext(r.Context(), `DELETE FROM app_users WHERE id=$1`, userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if empID != uuid.Nil {
+		if item, err := h.loadWorkspaceUser(r, companyID, empID); err == nil {
+			json.NewEncoder(w).Encode(map[string]any{"success": true, "data": item})
+			return
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"status": "login_removed"}})
 }
 
 // helpers

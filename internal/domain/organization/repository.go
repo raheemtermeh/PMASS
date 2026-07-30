@@ -29,6 +29,9 @@ type TeamRepository interface {
 	List(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]Team, int64, error)
 	ListByDepartment(ctx context.Context, companyID, departmentID uuid.UUID, q shared.PageQuery) ([]Team, int64, error)
 	Update(ctx context.Context, t *Team) error
+	// CountLinkedFeatures reports features still routed to the team; archiving
+	// must not orphan planning work.
+	CountLinkedFeatures(ctx context.Context, companyID, teamID uuid.UUID) (int64, error)
 }
 
 type EmployeeRepository interface {
@@ -40,6 +43,7 @@ type EmployeeRepository interface {
 	AssignToTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID, assignedBy *int, teamRole string) error
 	RemoveFromTeam(ctx context.Context, companyID, employeeID, teamID uuid.UUID) error
 	ListByTeam(ctx context.Context, companyID, teamID uuid.UUID) ([]TeamMemberView, error)
+	ListAllMemberships(ctx context.Context, companyID uuid.UUID) ([]TeamMembership, error)
 	FindTeamIDForEmployee(ctx context.Context, companyID, employeeID uuid.UUID) (uuid.UUID, error)
 	CountTeamMembers(ctx context.Context, companyID, teamID uuid.UUID) (int64, error)
 	CountOpenAssignmentsForTeam(ctx context.Context, companyID, teamID uuid.UUID) (int64, error)
