@@ -1,36 +1,41 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import {
   getRememberMePreference,
+  useAuthHydrated,
   useAuthStore,
   type AuthUser,
 } from "@/core/auth/auth-store";
 import { PasswordField } from "@/components/PasswordField";
+import { PmasLoader } from "@/components/PmasLoader";
 import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { setLastAuthPortal } from "@/shared/auth-portals";
-import { isPlatformRole } from "@/shared/permissions";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function PlatformLoginPage() {
+function EmployeeLoginForm() {
   const router = useRouter();
+  const search = useSearchParams();
+  const hydrated = useAuthHydrated();
   const setSession = useAuthStore((s) => s.setSession);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
 
-  const [email, setEmail] = useState("");
+  const [tenantSlug, setTenantSlug] = useState(search.get("slug") ?? search.get("tenant_slug") ?? "");
+  const [loginId, setLoginId] = useState(search.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeysOk, setPasskeysOk] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     setRememberMe(getRememberMePreference());
@@ -38,40 +43,26 @@ export default function PlatformLoginPage() {
   }, []);
 
   useEffect(() => {
-    async function checkBootstrap() {
-      try {
-        const status = await httpClient.get<{ needs_bootstrap: boolean }>(
-          "/api/v1/auth/status",
-          false,
-        );
-        if (status.needs_bootstrap) {
-          router.replace("/setup");
-          return;
-        }
-        if (token && user) {
-          router.replace(
-            sanitizeInternalPath(
-              isPlatformRole(user.role)
-                ? "/platform/tenants"
-                : firstAllowedPath(
-                    user.role,
-                    user.permissions,
-                    Boolean(user.tenant_id),
-                  ),
-            ),
-          );
-        }
-      } catch {
-        setError("Cannot reach API server. Start the backend on port 8080.");
-      }
+    if (!hydrated) return;
+    if (token && user) {
+      router.replace(
+        sanitizeInternalPath(
+          firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
+        ),
+      );
+      return;
     }
-    void checkBootstrap();
-  }, [router, token, user]);
+    setReady(true);
+  }, [hydrated, token, user, router]);
 
   function applySession(res: { token: string; refresh_token?: string; user: AuthUser }) {
-    setLastAuthPortal("platform");
+    setLastAuthPortal("employee");
     setSession(res.token, res.user, res.refresh_token ?? null, { remember: rememberMe });
-    router.replace("/platform/tenants");
+    router.replace(
+      sanitizeInternalPath(
+        firstAllowedPath(res.user.role, res.user.permissions, Boolean(res.user.tenant_id)),
+      ),
+    );
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -79,12 +70,17 @@ export default function PlatformLoginPage() {
     setError("");
     setLoading(true);
     try {
-      const identifier = email.trim();
+      const identifier = loginId.trim();
+      const slug = tenantSlug.trim().toLowerCase();
+      if (!slug) {
+        setError("Company ID is required.");
+        return;
+      }
       const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/login",
         {
-          portal: "platform",
-          tenant_slug: "platform",
+          portal: "employee",
+          tenant_slug: slug,
           ...(EMAIL_PATTERN.test(identifier)
             ? { email: identifier.toLowerCase() }
             : { username: identifier }),
@@ -108,15 +104,16 @@ export default function PlatformLoginPage() {
       if (!isPasskeySupported()) {
         throw new Error("Passkeys are not supported in this browser");
       }
-      const identifier = email.trim();
+      const identifier = loginId.trim();
+      const slug = tenantSlug.trim().toLowerCase();
       const begin = await httpClient.post<{
         publicKey: Record<string, unknown>;
         session_id: string;
       }>(
         "/api/v1/auth/passkeys/login/begin",
         {
-          portal: "platform",
-          tenant_slug: "platform",
+          portal: "employee",
+          tenant_slug: slug,
           ...(identifier
             ? EMAIL_PATTERN.test(identifier)
               ? { email: identifier.toLowerCase() }
@@ -129,7 +126,7 @@ export default function PlatformLoginPage() {
       const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/passkeys/login/finish",
         {
-          portal: "platform",
+          portal: "employee",
           session_id: begin.session_id,
           credential,
           remember_me: rememberMe,
@@ -144,6 +141,12 @@ export default function PlatformLoginPage() {
     }
   }
 
+  if (!ready) {
+    return <PmasLoader message="Loading…" />;
+  }
+
+  const loginReady = Boolean(tenantSlug.trim() && loginId.trim() && password);
+
   return (
     <div className="auth-page">
       <div className="auth-card auth-card-wide">
@@ -151,26 +154,37 @@ export default function PlatformLoginPage() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Platform Admin</h1>
+          <h1>Employee Sign In</h1>
         </div>
         <p className="auth-subtitle">
-          Sign in to review company access requests and provision workspaces.
+          Enter your Company ID and the credentials your company admin provided.
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form auth-login-card">
           <div className="auth-login-fields">
             <div className="form-group">
-              <label htmlFor="email">Email or username</label>
+              <label htmlFor="emp-slug">Company ID</label>
               <input
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="emp-slug"
+                value={tenantSlug}
+                onChange={(e) => setTenantSlug(e.target.value)}
+                placeholder="acme-corp"
+                required
+                autoComplete="organization"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="emp-login">Email or username</label>
+              <input
+                id="emp-login"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
                 required
                 autoComplete="username"
               />
             </div>
             <PasswordField
-              id="password"
+              id="emp-password"
               label="Password"
               value={password}
               onChange={setPassword}
@@ -192,9 +206,13 @@ export default function PlatformLoginPage() {
               </span>
             </label>
             <Link
-              href={`/forgot-password?slug=platform&email=${encodeURIComponent(
-                EMAIL_PATTERN.test(email.trim()) ? email.trim().toLowerCase() : "",
-              )}`}
+              href={`/forgot-password?portal=employee&slug=${encodeURIComponent(
+                tenantSlug.trim().toLowerCase(),
+              )}${
+                EMAIL_PATTERN.test(loginId.trim())
+                  ? `&email=${encodeURIComponent(loginId.trim().toLowerCase())}`
+                  : ""
+              }`}
               className="auth-forgot-link"
             >
               Forgot password?
@@ -206,9 +224,9 @@ export default function PlatformLoginPage() {
           <button
             type="submit"
             className="btn btn-primary auth-submit"
-            disabled={!email.trim() || !password || loading || passkeyLoading}
+            disabled={!loginReady || loading || passkeyLoading}
           >
-            {loading ? "Signing in…" : "Sign in to platform panel"}
+            {loading ? "Signing in…" : "Sign in to workspace"}
           </button>
 
           {passkeysOk ? (
@@ -252,13 +270,19 @@ export default function PlatformLoginPage() {
         </form>
 
         <p className="auth-footnote">
-          Company Admin? <Link href="/welcome#login">Admin sign in</Link>
+          Company Admin? <Link href="/welcome#login">Sign in here</Link>
           {" · "}
-          Employee? <Link href="/employee/login">Employee sign in</Link>
-          {" · "}
-          <Link href="/forgot-password?slug=platform">Forgot password</Link>
+          <Link href="/platform/login">Platform admin</Link>
         </p>
       </div>
     </div>
+  );
+}
+
+export default function EmployeeLoginPage() {
+  return (
+    <Suspense fallback={<PmasLoader message="Loading…" />}>
+      <EmployeeLoginForm />
+    </Suspense>
   );
 }

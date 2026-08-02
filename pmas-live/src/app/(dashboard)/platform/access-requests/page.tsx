@@ -16,6 +16,8 @@ interface AccessRequest {
   contact_phone?: string;
   company_size?: string;
   industry?: string;
+  website?: string;
+  country?: string;
   message?: string;
   status: "pending" | "approved" | "rejected";
   admin_notes?: string;
@@ -214,6 +216,17 @@ export default function PlatformAccessRequestsPage() {
             )}
             {selected.industry && (
               <div><span className="text-dim">Industry:</span> {selected.industry}</div>
+            )}
+            {selected.website && (
+              <div>
+                <span className="text-dim">Website:</span>{" "}
+                <a href={selected.website} target="_blank" rel="noopener noreferrer">
+                  {selected.website}
+                </a>
+              </div>
+            )}
+            {selected.country && (
+              <div><span className="text-dim">Country:</span> {selected.country}</div>
             )}
             {selected.preferred_slug && (
               <div><span className="text-dim">Preferred slug:</span> {selected.preferred_slug}</div>

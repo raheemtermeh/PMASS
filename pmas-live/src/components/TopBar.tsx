@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useMobileNav } from "@/components/MobileNavContext";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
@@ -160,6 +161,7 @@ export function TopBar() {
           </div>
         )}
         <NotificationBell />
+        <ThemeToggle />
         <button
           type="button"
           className="btn btn-sm top-bar-help-btn"

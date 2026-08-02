@@ -1,4 +1,4 @@
-import { isPlatformRole, type Permission } from "./permissions";
+import { hasPermission, isPlatformRole, type Permission } from "./permissions";
 
 export type ViewId =
   | "home"
@@ -30,6 +30,8 @@ export interface RouteConfig {
   permission: Permission | null;
   platformOnly?: boolean;
   tenantOnly?: boolean;
+  /** Company-admin management surfaces — blocked for role=user even if a permission was granted. */
+  adminOnly?: boolean;
 }
 
 export const routes: Record<ViewId, RouteConfig> = {
@@ -56,6 +58,7 @@ export const routes: Record<ViewId, RouteConfig> = {
     subtitle: "Company structure — departments, teams, and employees",
     permission: "employee.manage",
     tenantOnly: true,
+    adminOnly: true,
   },
   products: {
     id: "products",
@@ -87,6 +90,7 @@ export const routes: Record<ViewId, RouteConfig> = {
     subtitle: "Invite users and assign VSM permissions",
     permission: "users",
     tenantOnly: true,
+    adminOnly: true,
   },
   "platform-tenants": {
     id: "platform-tenants",
@@ -111,6 +115,7 @@ export const routes: Record<ViewId, RouteConfig> = {
     subtitle: "Integration credentials vault",
     permission: "settings",
     tenantOnly: true,
+    adminOnly: true,
   },
   // Legacy
   "product-manager": {
@@ -246,22 +251,50 @@ export function firstAllowedPath(
 ): string {
   const normalizedRole = (role ?? "").trim().toLowerCase();
   const perms = Array.isArray(permissions) ? permissions : [];
+  const isEmployee = normalizedRole === "user";
 
   // Platform operators always land on company provisioning — never profile/home.
   if (isPlatformRole(normalizedRole)) {
     return routes["platform-tenants"].path;
   }
-  if (hasTenant || normalizedRole === "tenant_admin") {
+  // Company admins always land on the workspace command center.
+  if (normalizedRole === "tenant_admin") {
+    return routes.home.path;
+  }
+  // Employees share the same shell but never land on admin-only surfaces.
+  if (hasTenant && isEmployee) {
+    return routes.home.path;
+  }
+  if (hasTenant) {
     return routes.home.path;
   }
   for (const id of navItems) {
     const route = routes[id];
     if (route.platformOnly) continue;
+    if (route.adminOnly) continue;
     if (route.tenantOnly && !hasTenant) continue;
     if (!route.permission) continue;
-    if (normalizedRole === "tenant_admin" || perms.includes(route.permission)) {
+    if (perms.includes(route.permission)) {
       return route.path;
     }
   }
   return routes.profile.path;
+}
+
+/** Whether a signed-in user may open a route (role + permission + portal flags). */
+export function canAccessRoute(
+  route: RouteConfig,
+  role: string,
+  permissions: string[],
+  hasTenant: boolean,
+): boolean {
+  const normalizedRole = (role ?? "").trim().toLowerCase();
+  const platform = isPlatformRole(normalizedRole);
+  if (route.platformOnly && !platform) return false;
+  if (route.tenantOnly && !hasTenant && !platform) return false;
+  if (route.adminOnly && normalizedRole === "user") return false;
+  if (route.id === "profile") return true;
+  if (route.id === "home") return hasTenant;
+  if (!route.permission) return false;
+  return hasPermission(role, permissions, route.permission);
 }

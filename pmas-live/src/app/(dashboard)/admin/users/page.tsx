@@ -347,7 +347,8 @@ export default function AdminUsersPage() {
           </h2>
           <p className="um-hero-sub">
             Provision logins, shape permission sets, and keep the company roster in sync with
-            Organization — same power, clearer stage.
+            Organization — same power, clearer stage. Employees sign in at{" "}
+            <code>/employee/login</code> with the Company ID and credentials you set here.
           </p>
         </div>
         <div className="um-hero-stats" aria-label="Roster snapshot">

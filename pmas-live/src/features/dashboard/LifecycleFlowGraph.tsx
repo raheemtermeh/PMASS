@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/core/providers/ThemeProvider";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 import type { FlowGraph, FlowProduct } from "./types";
 
@@ -143,6 +144,8 @@ function loadLegacyPositions(companyKey: string): Record<string, { x: number; y:
 
 export function LifecycleFlowGraph({ flow, companyName }: Props) {
   const router = useRouter();
+  const { theme } = useTheme();
+  const light = theme === "light";
   const wrapRef = useRef<HTMLDivElement>(null);
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -287,10 +290,13 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
   };
 
   const onPointerUp = () => {
-    if (dragRef.current?.mode === "node" || dragRef.current?.mode === "pan") {
+    const d = dragRef.current;
+    dragRef.current = null;
+    // Only persist layout while editing — view-mode pan must not spam the API.
+    if (!editMode || !d) return;
+    if (d.mode === "node" || d.mode === "pan") {
       persistLayout(nodesRef.current, pan, scale);
     }
-    dragRef.current = null;
   };
 
   const selectedNode = nodes.find((n) => n.id === selected) ?? null;
@@ -447,15 +453,23 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
                     height={n.h}
                     rx={n.kind === "company" ? 16 : 12}
                     fill={
-                      n.kind === "company"
-                        ? "rgba(8,145,178,0.22)"
-                        : n.kind === "product"
-                          ? "rgba(15,23,42,0.92)"
-                          : n.kind === "stage"
-                            ? "rgba(17,24,39,0.9)"
-                            : "rgba(30,27,46,0.92)"
+                      light
+                        ? n.kind === "company"
+                          ? "rgba(3,105,161,0.14)"
+                          : n.kind === "product"
+                            ? "#ffffff"
+                            : n.kind === "stage"
+                              ? "#f8fafc"
+                              : "#eef2ff"
+                        : n.kind === "company"
+                          ? "rgba(8,145,178,0.22)"
+                          : n.kind === "product"
+                            ? "rgba(15,23,42,0.92)"
+                            : n.kind === "stage"
+                              ? "rgba(17,24,39,0.9)"
+                              : "rgba(30,27,46,0.92)"
                     }
-                    stroke={isSel ? "#f8fafc" : color}
+                    stroke={isSel ? (light ? "#0369a1" : "#f8fafc") : color}
                     strokeWidth={isSel ? 2.2 : 1.4}
                   />
                   <circle

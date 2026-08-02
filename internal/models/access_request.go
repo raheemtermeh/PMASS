@@ -17,6 +17,8 @@ type CompanyAccessRequest struct {
 	ContactPhone       *string    `json:"contact_phone,omitempty"`
 	CompanySize        *string    `json:"company_size,omitempty"`
 	Industry           *string    `json:"industry,omitempty"`
+	Website            *string    `json:"website,omitempty"`
+	Country            *string    `json:"country,omitempty"`
 	Message            *string    `json:"message,omitempty"`
 	Status             string     `json:"status"`
 	AdminNotes         *string    `json:"admin_notes,omitempty"`
@@ -35,7 +37,22 @@ type SubmitAccessRequestPayload struct {
 	ContactPhone  *string `json:"contact_phone,omitempty"`
 	CompanySize   *string `json:"company_size,omitempty"`
 	Industry      *string `json:"industry,omitempty"`
+	Website       *string `json:"website,omitempty"`
+	Country       *string `json:"country,omitempty"`
 	Message       *string `json:"message,omitempty"`
+}
+
+// CompanySizeBuckets are the only accepted company_size values, so reporting can
+// group requests without normalising free text later.
+var CompanySizeBuckets = []string{"1-10", "11-50", "51-200", "201-500", "500+"}
+
+func IsValidCompanySize(v string) bool {
+	for _, b := range CompanySizeBuckets {
+		if v == b {
+			return true
+		}
+	}
+	return false
 }
 
 type UpdateAccessRequestPayload struct {

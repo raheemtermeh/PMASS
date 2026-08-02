@@ -4,8 +4,8 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
-import { hasPermission, isPlatformRole } from "@/shared/permissions";
-import { firstAllowedPath, getRouteByPath } from "@/shared/routes";
+import { isPlatformRole } from "@/shared/permissions";
+import { canAccessRoute, firstAllowedPath, getRouteByPath } from "@/shared/routes";
 
 export function PermissionGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -19,13 +19,7 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
 
     const platform = isPlatformRole(user.role);
     const hasTenant = Boolean(user.tenant_id);
-
-    let allowed = true;
-    if (route.platformOnly && !platform) allowed = false;
-    if (route.tenantOnly && !hasTenant) allowed = false;
-    if (route.permission && !hasPermission(user.role, user.permissions, route.permission)) {
-      allowed = false;
-    }
+    const allowed = canAccessRoute(route, user.role, user.permissions, hasTenant);
 
     if (!allowed) {
       if (route.platformOnly && !platform) {
@@ -40,11 +34,8 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
 
   const route = getRouteByPath(pathname);
   if (route) {
-    const platform = isPlatformRole(user.role);
     const hasTenant = Boolean(user.tenant_id);
-    if (route.platformOnly && !platform) return <Redirecting />;
-    if (route.tenantOnly && !hasTenant) return <Redirecting />;
-    if (route.permission && !hasPermission(user.role, user.permissions, route.permission)) {
+    if (!canAccessRoute(route, user.role, user.permissions, hasTenant)) {
       return <Redirecting />;
     }
   }

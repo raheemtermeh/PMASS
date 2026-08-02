@@ -17,7 +17,9 @@ function ForgotPasswordForm() {
   const search = useSearchParams();
   const initialSlug = search.get("slug") ?? search.get("tenant_slug") ?? "";
   const initialEmail = search.get("email") ?? "";
+  const portalHint = search.get("portal");
   const isPlatform = initialSlug === "platform" || search.get("platform") === "1";
+  const isEmployeePortal = portalHint === "employee";
 
   const [tenantSlug, setTenantSlug] = useState(isPlatform ? "platform" : initialSlug);
   const [email, setEmail] = useState(initialEmail);
@@ -27,10 +29,14 @@ function ForgotPasswordForm() {
   const [expiresMins, setExpiresMins] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const signInHref = useMemo(
-    () => (tenantSlug === "platform" || isPlatform ? "/platform/login" : "/welcome#login"),
-    [tenantSlug, isPlatform],
-  );
+  const signInHref = useMemo(() => {
+    if (tenantSlug === "platform" || isPlatform) return "/platform/login";
+    if (isEmployeePortal || portalHint === "employee") {
+      const slug = tenantSlug.trim().toLowerCase();
+      return slug ? `/employee/login?slug=${encodeURIComponent(slug)}` : "/employee/login";
+    }
+    return "/welcome#login";
+  }, [tenantSlug, isPlatform, isEmployeePortal, portalHint]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

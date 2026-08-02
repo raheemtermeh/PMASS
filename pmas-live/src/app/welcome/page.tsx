@@ -10,10 +10,21 @@ import {
   useAuthStore,
   type AuthUser,
 } from "@/core/auth/auth-store";
+import { PasswordField } from "@/components/PasswordField";
 import { PmasLoader } from "@/components/PmasLoader";
 import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
+import { setLastAuthPortal } from "@/shared/auth-portals";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
+
+type SlugCheck =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "available" }
+  | { state: "taken"; reason: string };
+
+/** Buckets the backend accepts — keep in sync with models.CompanySizeBuckets. */
+const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"];
 
 const FEATURES = [
   {
@@ -80,6 +91,9 @@ export default function WelcomePage() {
     setPasskeysOk(isPasskeySupported());
   }, []);
 
+  const loginReady =
+    tenantSlug.trim().length > 0 && loginId.trim().length > 0 && password.length > 0;
+
   const [companyName, setCompanyName] = useState("");
   const [preferredSlug, setPreferredSlug] = useState("");
   const [contactName, setContactName] = useState("");
@@ -87,10 +101,40 @@ export default function WelcomePage() {
   const [contactPhone, setContactPhone] = useState("");
   const [companySize, setCompanySize] = useState("");
   const [industry, setIndustry] = useState("");
+  const [website, setWebsite] = useState("");
+  const [country, setCountry] = useState("");
   const [message, setMessage] = useState("");
   const [requestError, setRequestError] = useState("");
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
+  const [slugCheck, setSlugCheck] = useState<SlugCheck>({ state: "idle" });
+
+  // Debounced availability probe so the applicant learns the Company ID is taken
+  // while typing, not after the reviewer rejects the request days later.
+  useEffect(() => {
+    const slug = preferredSlug.trim().toLowerCase();
+    if (!slug) {
+      setSlugCheck({ state: "idle" });
+      return;
+    }
+    setSlugCheck({ state: "checking" });
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await httpClient.get<{ available: boolean; reason?: string }>(
+          `/api/v1/company-id-available?slug=${encodeURIComponent(slug)}`,
+          false,
+        );
+        setSlugCheck(
+          res.available
+            ? { state: "available" }
+            : { state: "taken", reason: res.reason ?? "This Company ID is already taken" },
+        );
+      } catch {
+        setSlugCheck({ state: "idle" });
+      }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [preferredSlug]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -129,6 +173,7 @@ export default function WelcomePage() {
   }, [hydrated, router, token, user]);
 
   function applySession(res: { token: string; refresh_token?: string; user: AuthUser }) {
+    setLastAuthPortal("company_admin");
     setSession(res.token, res.user, res.refresh_token ?? null, { remember: rememberMe });
     router.replace(
       sanitizeInternalPath(
@@ -146,6 +191,7 @@ export default function WelcomePage() {
       const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/login",
         {
+          portal: "company_admin",
           tenant_slug: tenantSlug.trim().toLowerCase(),
           ...(EMAIL_PATTERN.test(identifier)
             ? { email: identifier.toLowerCase() }
@@ -177,6 +223,7 @@ export default function WelcomePage() {
       }>(
         "/api/v1/auth/passkeys/login/begin",
         {
+          portal: "company_admin",
           tenant_slug: tenantSlug.trim().toLowerCase(),
           ...(identifier
             ? EMAIL_PATTERN.test(identifier)
@@ -190,6 +237,7 @@ export default function WelcomePage() {
       const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
         "/api/v1/auth/passkeys/login/finish",
         {
+          portal: "company_admin",
           session_id: begin.session_id,
           credential,
           remember_me: rememberMe,
@@ -220,6 +268,8 @@ export default function WelcomePage() {
           contact_phone: contactPhone.trim() || undefined,
           company_size: companySize || undefined,
           industry: industry.trim() || undefined,
+          website: website.trim() || undefined,
+          country: country.trim() || undefined,
           message: message.trim() || undefined,
         },
         false,
@@ -232,6 +282,8 @@ export default function WelcomePage() {
       setContactPhone("");
       setCompanySize("");
       setIndustry("");
+      setWebsite("");
+      setCountry("");
       setMessage("");
     } catch (err) {
       setRequestError(err instanceof Error ? err.message : "Failed to submit request");
@@ -357,22 +409,26 @@ export default function WelcomePage() {
       <section id="login" className="landing-section">
         <div className="landing-split">
           <div className="landing-split-info">
-            <h2>Company Sign In</h2>
+            <h2>Company Admin Sign In</h2>
             <p>
-              If you already received a Company ID and credentials, sign in here to access
-              your dedicated workspace. Each company has fully isolated data and users.
+              Company administrators sign in here with their Company ID and admin credentials
+              to manage the workspace, users, and permissions.
             </p>
             <ul className="landing-checklist">
               <li>Your unique Company ID</li>
               <li>Company admin email and password</li>
-              <li>Access to dashboard, products, and planning</li>
+              <li>Full access to users, organization, and settings</li>
             </ul>
+            <p className="landing-admin-employee-hint">
+              Employee of a company?{" "}
+              <Link href="/employee/login">Sign in to the employee portal</Link>
+            </p>
           </div>
           <form onSubmit={handleLogin} className="landing-form-card auth-login-card">
             <header className="auth-login-head">
-              <p className="auth-login-kicker">Company workspace</p>
-              <h3>Sign in</h3>
-              <p className="auth-login-sub">Use your Company ID and account credentials.</p>
+              <p className="auth-login-kicker">Company admin</p>
+              <h3>Admin sign in</h3>
+              <p className="auth-login-sub">Use your Company ID and admin credentials.</p>
             </header>
 
             <div className="auth-login-fields">
@@ -397,17 +453,14 @@ export default function WelcomePage() {
                   autoComplete="username"
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="login-pass">Password</label>
-                <input
-                  id="login-pass"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
+              <PasswordField
+                id="login-pass"
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                required
+                autoComplete="current-password"
+              />
             </div>
 
             <div className="auth-login-meta">
@@ -439,7 +492,7 @@ export default function WelcomePage() {
             <button
               type="submit"
               className="btn btn-primary auth-submit"
-              disabled={loginLoading || passkeyLoading}
+              disabled={!loginReady || loginLoading || passkeyLoading}
             >
               {loginLoading ? "Signing in…" : "Sign in"}
             </button>
@@ -482,6 +535,10 @@ export default function WelcomePage() {
                 </button>
               </div>
             ) : null}
+
+            <p className="auth-footnote" style={{ marginTop: "1rem" }}>
+              Employee? <Link href={`/employee/login${tenantSlug.trim() ? `?slug=${encodeURIComponent(tenantSlug.trim().toLowerCase())}` : ""}`}>Sign in here</Link>
+            </p>
           </form>
         </div>
       </section>
@@ -489,7 +546,7 @@ export default function WelcomePage() {
       <section id="request" className="landing-section landing-section-alt">
         <div className="landing-request-wrap">
           <div className="landing-request-header">
-            <h2>Request Access</h2>
+            <h2>Request a Company Workspace</h2>
             <p>
               Submit your company details. After platform admin review, you will receive
               a Company ID and login credentials.
@@ -526,10 +583,20 @@ export default function WelcomePage() {
                   <input
                     id="req-slug"
                     value={preferredSlug}
-                    onChange={(e) => setPreferredSlug(e.target.value)}
+                    onChange={(e) => setPreferredSlug(e.target.value.toLowerCase())}
                     placeholder="acme-corp"
                     pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                    aria-describedby="req-slug-status"
                   />
+                  <p id="req-slug-status" className={`slug-status is-${slugCheck.state}`}>
+                    {slugCheck.state === "checking"
+                      ? "Checking availability…"
+                      : slugCheck.state === "available"
+                        ? "✓ Available"
+                        : slugCheck.state === "taken"
+                          ? slugCheck.reason
+                          : "Your workspace address — lowercase letters, numbers and dashes."}
+                  </p>
                 </div>
                 <div className="form-group">
                   <label htmlFor="req-name">Contact name *</label>
@@ -566,10 +633,11 @@ export default function WelcomePage() {
                     onChange={(e) => setCompanySize(e.target.value)}
                   >
                     <option value="">Select…</option>
-                    <option value="1-10">1–10 people</option>
-                    <option value="11-50">11–50 people</option>
-                    <option value="51-200">51–200 people</option>
-                    <option value="200+">200+ people</option>
+                    {COMPANY_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size} people
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">
@@ -579,6 +647,26 @@ export default function WelcomePage() {
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
                     placeholder="Technology, manufacturing, …"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="req-website">Company website</label>
+                  <input
+                    id="req-website"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="acme.com"
+                    inputMode="url"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="req-country">Country</label>
+                  <input
+                    id="req-country"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="Iran"
+                    autoComplete="country-name"
                   />
                 </div>
               </div>
@@ -593,7 +681,11 @@ export default function WelcomePage() {
                 />
               </div>
               {requestError && <p className="auth-error">{requestError}</p>}
-              <button type="submit" className="btn btn-primary landing-btn-lg" disabled={requestLoading}>
+              <button
+                type="submit"
+                className="btn btn-primary landing-btn-lg"
+                disabled={requestLoading || slugCheck.state === "taken"}
+              >
                 {requestLoading ? "Submitting…" : "Submit request"}
               </button>
             </form>

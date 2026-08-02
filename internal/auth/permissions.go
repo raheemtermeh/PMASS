@@ -115,12 +115,37 @@ var SystemRoleNames = []string{
 	"Viewer",
 }
 
+// Login portal identifiers — keep in sync with frontend login pages.
+const (
+	PortalPlatform     = "platform"
+	PortalCompanyAdmin = "company_admin"
+	PortalEmployee     = "employee"
+)
+
 func IsPlatformAdmin(role string) bool {
 	return role == RolePlatformAdmin || role == RoleSuperAdmin
 }
 
 func IsTenantAdmin(role string) bool {
 	return role == RoleTenantAdmin || IsPlatformAdmin(role)
+}
+
+// PortalAllowsRole reports whether a successfully authenticated account may enter
+// the given login portal. Empty portal allows any role (backward compatible).
+// Unknown portals are rejected.
+func PortalAllowsRole(portal, role string, hasTenant bool) bool {
+	switch portal {
+	case "":
+		return true
+	case PortalPlatform:
+		return !hasTenant && IsPlatformAdmin(role)
+	case PortalCompanyAdmin:
+		return hasTenant && role == RoleTenantAdmin
+	case PortalEmployee:
+		return hasTenant && role == RoleUser
+	default:
+		return false
+	}
 }
 
 func HasPermission(role string, permissions []string, required string) bool {

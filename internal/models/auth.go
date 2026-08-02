@@ -22,6 +22,7 @@ type AppUser struct {
 	JobTitle       *string   `json:"job_title"`
 	Phone          *string   `json:"phone"`
 	Bio            *string   `json:"bio"`
+	AvatarURL      *string   `json:"avatar_url,omitempty"`
 	Role           string    `json:"role"`
 	IsActive       bool      `json:"is_active"`
 	SessionVersion int       `json:"session_version"`
@@ -51,6 +52,9 @@ type LoginRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	RememberMe bool   `json:"remember_me"`
+	// Portal restricts which role may sign in through a given door.
+	// "", "platform", "company_admin", or "employee". Empty keeps legacy behavior.
+	Portal string `json:"portal,omitempty"`
 }
 
 type ForgotPasswordRequest struct {
@@ -105,6 +109,8 @@ type UpdateProfileRequest struct {
 	JobTitle        *string `json:"job_title"`
 	Phone           *string `json:"phone"`
 	Bio             *string `json:"bio"`
+	// Present = change the avatar; empty string clears it. Absent = leave as is.
+	AvatarURL       *string `json:"avatar_url"`
 	Password        *string `json:"password,omitempty"`
 	CurrentPassword *string `json:"current_password,omitempty"`
 }

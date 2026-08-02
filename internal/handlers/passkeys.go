@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
+	"PMAS/internal/auth"
 	"PMAS/internal/middleware"
 	"PMAS/internal/models"
 )
@@ -247,11 +248,13 @@ func (h *Handler) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 		TenantSlug string `json:"tenant_slug"`
 		Email      string `json:"email"`
 		Username   string `json:"username"`
+		Portal     string `json:"portal"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.Username = strings.TrimSpace(req.Username)
 	req.TenantSlug = strings.TrimSpace(strings.ToLower(req.TenantSlug))
+	req.Portal = strings.TrimSpace(strings.ToLower(req.Portal))
 
 	emitDiscoverable := func() {
 		options, session, err := h.webAuthn.BeginDiscoverableLogin(
@@ -279,6 +282,11 @@ func (h *Handler) passkeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := h.resolveLoginUserID(r, req.TenantSlug, req.Email, req.Username)
 	if err != nil {
+		emitDiscoverable()
+		return
+	}
+	if role, hasTenant, err := h.lookupUserPortalHints(r, userID); err != nil || !auth.PortalAllowsRole(req.Portal, role, hasTenant) {
+		// Wrong portal — fall back without revealing the account exists.
 		emitDiscoverable()
 		return
 	}
@@ -312,11 +320,13 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		RememberMe bool            `json:"remember_me"`
 		SessionID  string          `json:"session_id"`
 		Credential json.RawMessage `json:"credential"`
+		Portal     string          `json:"portal"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Credential) == 0 || strings.TrimSpace(body.SessionID) == "" {
 		writeJSONError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
+	body.Portal = strings.TrimSpace(strings.ToLower(body.Portal))
 
 	session, err := h.takeWebAuthnSession(r, body.SessionID, "login", nil)
 	if err != nil {
@@ -387,6 +397,10 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "Account is deactivated")
 		return
 	}
+	if !auth.PortalAllowsRole(body.Portal, appUser.Role, appUser.TenantID != nil) {
+		writeJSONError(w, http.StatusUnauthorized, "Passkey login failed")
+		return
+	}
 
 	accessToken, refreshToken, err := h.issueSession(r, appUser, body.RememberMe)
 	if err != nil {
@@ -398,6 +412,17 @@ func (h *Handler) passkeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		RefreshToken: refreshToken,
 		User:         *appUser,
 	})
+}
+
+func (h *Handler) lookupUserPortalHints(r *http.Request, userID int) (role string, hasTenant bool, err error) {
+	var tenantID sql.NullInt64
+	err = h.db.QueryRowContext(r.Context(), `
+		SELECT role, tenant_id FROM app_users WHERE id = $1
+	`, userID).Scan(&role, &tenantID)
+	if err != nil {
+		return "", false, err
+	}
+	return role, tenantID.Valid, nil
 }
 
 func (h *Handler) saveWebAuthnSession(r *http.Request, session *webauthn.SessionData, userID *int, purpose string) (string, error) {

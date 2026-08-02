@@ -20,6 +20,8 @@ export interface AuthUser {
   job_title?: string | null;
   phone?: string | null;
   bio?: string | null;
+  /** Small square image stored inline as a data URL. */
+  avatar_url?: string | null;
   role: string;
   is_active: boolean;
   permissions: string[];

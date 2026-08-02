@@ -304,6 +304,14 @@ func EnsureSchema(db *sql.DB) error {
 		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`,
 		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS provisioned_tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL`,
 		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+		// Website and country give the reviewer enough context to approve without a
+		// follow-up email, and country feeds localization later.
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS website VARCHAR(255)`,
+		`ALTER TABLE company_access_requests ADD COLUMN IF NOT EXISTS country VARCHAR(100)`,
+
+		// Small profile picture stored inline as a data URL — avoids standing up
+		// object storage for a single 256px avatar.
+		`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
 
 		`CREATE INDEX IF NOT EXISTS idx_access_requests_status ON company_access_requests(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_access_requests_email ON company_access_requests(contact_email)`,

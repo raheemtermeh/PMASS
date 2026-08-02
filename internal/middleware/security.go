@@ -198,6 +198,24 @@ func (a *Authenticator) RequirePermission(permission string, next http.HandlerFu
 	})
 }
 
+// RequirePermissionByMethod allows a lighter permission for GET/HEAD (read)
+// and a stricter one for mutating methods (write).
+func (a *Authenticator) RequirePermissionByMethod(readPerm, writePerm string, next http.HandlerFunc) http.HandlerFunc {
+	return a.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		claims := ClaimsFromContext(r.Context())
+		needed := writePerm
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			needed = readPerm
+		}
+		if claims == nil || !auth.HasPermission(claims.Role, claims.Permissions, needed) {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Insufficient permissions"})
+			return
+		}
+		next(w, r)
+	})
+}
+
 func (a *Authenticator) loadFreshClaims(ctx context.Context, tokenClaims *auth.Claims) (*auth.Claims, error) {
 	var (
 		role     string

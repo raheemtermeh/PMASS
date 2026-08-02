@@ -8,6 +8,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useTheme } from "@/core/providers/ThemeProvider";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 import type { Company, Department, Team } from "@/features/vsm/types";
 
@@ -121,9 +122,11 @@ export function OrgStructureGraph({
   onMoveTeam,
   highlightId,
 }: Props) {
+  const { theme } = useTheme();
+  const light = theme === "light";
   const layoutKey = `org-structure:${company?.id ?? "default"}`;
   const { layout, ready, saving, saveLayout } = useUILayout<PosMap>(layoutKey);
-  const [editMode, setEditMode] = useState(true);
+  const [editMode, setEditMode] = useState(false);
   const [scale, setScale] = useState(0.88);
   const [pan, setPan] = useState({ x: 10, y: 10 });
   const [selected, setSelected] = useState<string | null>(null);
@@ -250,6 +253,9 @@ export function OrgStructureGraph({
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
+
+    // View mode: pan/zoom stay local only — never hit the layout API.
+    if (!editMode) return;
 
     if (d.mode === "pan") {
       persist(nodesRef.current, pan, scale);
@@ -422,13 +428,19 @@ export function OrgStructureGraph({
                     height={n.h}
                     rx={n.kind === "company" ? 16 : 12}
                     fill={
-                      n.kind === "company"
-                        ? "rgba(99,102,241,0.22)"
-                        : n.kind === "department"
-                          ? "rgba(15,23,42,0.94)"
-                          : "rgba(30,27,46,0.94)"
+                      light
+                        ? n.kind === "company"
+                          ? "rgba(3,105,161,0.14)"
+                          : n.kind === "department"
+                            ? "#ffffff"
+                            : "#f1f5f9"
+                        : n.kind === "company"
+                          ? "rgba(99,102,241,0.22)"
+                          : n.kind === "department"
+                            ? "rgba(15,23,42,0.94)"
+                            : "rgba(30,27,46,0.94)"
                     }
-                    stroke={isSel ? "#f8fafc" : color}
+                    stroke={isSel ? (light ? "#0369a1" : "#f8fafc") : color}
                     strokeWidth={isSel ? 2.2 : 1.4}
                   />
                   <circle cx={14} cy={n.h / 2} r={4.5} fill={color} />

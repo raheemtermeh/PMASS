@@ -16,6 +16,79 @@ import (
 
 var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 
+func trimOptional(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	s := strings.TrimSpace(*v)
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// normalizeWebsite accepts what people actually type ("acme.com") and stores a
+// usable link so the reviewer can click straight through.
+func normalizeWebsite(v *string) *string {
+	s := trimOptional(v)
+	if s == nil {
+		return nil
+	}
+	value := *s
+	if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+		value = "https://" + value
+	}
+	return &value
+}
+
+// companyIDTaken reports whether a slug is already used by a live workspace or
+// reserved by another pending request.
+func (h *Handler) companyIDTaken(r *http.Request, slug string) (bool, error) {
+	var n int
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT
+			(SELECT COUNT(*) FROM tenants WHERE slug = $1)
+			+ (SELECT COUNT(*) FROM companies WHERE slug = $1)
+			+ (SELECT COUNT(*) FROM company_access_requests
+			   WHERE preferred_slug = $1 AND status = 'pending')
+	`, slug).Scan(&n)
+	return n > 0, err
+}
+
+// CheckCompanyID powers the live availability hint on the request form. It is
+// public but only ever answers yes/no about a slug the caller already typed.
+func (h *Handler) CheckCompanyID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	slug := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("slug")))
+	if slug == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "slug is required"})
+		return
+	}
+	if !slugPattern.MatchString(slug) || slug == "platform" {
+		json.NewEncoder(w).Encode(map[string]any{
+			"slug":      slug,
+			"available": false,
+			"reason":    "Use 2–64 lowercase letters, numbers and dashes",
+		})
+		return
+	}
+	taken, err := h.companyIDTaken(r, slug)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	body := map[string]any{"slug": slug, "available": !taken}
+	if taken {
+		body["reason"] = "This Company ID is already taken"
+	}
+	json.NewEncoder(w).Encode(body)
+}
+
 func (h *Handler) HandleAccessRequests(w http.ResponseWriter, r *http.Request) {
 	if !h.setupResponse(w, r) {
 		return
@@ -100,6 +173,35 @@ func (h *Handler) SubmitAccessRequest(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid contact email"})
 		return
 	}
+	if req.CompanySize != nil {
+		s := strings.TrimSpace(*req.CompanySize)
+		if s == "" {
+			req.CompanySize = nil
+		} else if !models.IsValidCompanySize(s) {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company size"})
+			return
+		} else {
+			req.CompanySize = &s
+		}
+	}
+	req.Website = normalizeWebsite(req.Website)
+	req.Country = trimOptional(req.Country)
+
+	// Tell applicants early that their preferred ID is gone, instead of letting the
+	// reviewer discover the clash at provisioning time.
+	if req.PreferredSlug != nil {
+		taken, err := h.companyIDTaken(r, *req.PreferredSlug)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if taken {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "This Company ID is already taken"})
+			return
+		}
+	}
 
 	var pending int
 	err := h.db.QueryRowContext(r.Context(), `
@@ -120,18 +222,19 @@ func (h *Handler) SubmitAccessRequest(w http.ResponseWriter, r *http.Request) {
 	err = h.db.QueryRowContext(r.Context(), `
 		INSERT INTO company_access_requests (
 			company_name, preferred_slug, contact_name, contact_email,
-			contact_phone, company_size, industry, message
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			contact_phone, company_size, industry, website, country, message
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, company_name, preferred_slug, contact_name, contact_email,
-			contact_phone, company_size, industry, message, status,
+			contact_phone, company_size, industry, website, country, message, status,
 			admin_notes, reviewed_by, reviewed_at, provisioned_tenant_id,
 			created_at, updated_at
 	`, req.CompanyName, req.PreferredSlug, req.ContactName, req.ContactEmail,
-		req.ContactPhone, req.CompanySize, req.Industry, req.Message,
+		req.ContactPhone, req.CompanySize, req.Industry, req.Website, req.Country, req.Message,
 	).Scan(
 		&created.ID, &created.CompanyName, &created.PreferredSlug, &created.ContactName,
 		&created.ContactEmail, &created.ContactPhone, &created.CompanySize, &created.Industry,
-		&created.Message, &created.Status, &created.AdminNotes, &created.ReviewedBy,
+		&created.Website, &created.Country, &created.Message, &created.Status,
+		&created.AdminNotes, &created.ReviewedBy,
 		&created.ReviewedAt, &created.ProvisionedTenantID, &created.CreatedAt, &created.UpdatedAt,
 	)
 	if err != nil {
@@ -152,7 +255,7 @@ func (h *Handler) ListAccessRequests(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	query := `
 		SELECT id, company_name, preferred_slug, contact_name, contact_email,
-			contact_phone, company_size, industry, message, status,
+			contact_phone, company_size, industry, website, country, message, status,
 			admin_notes, reviewed_by, reviewed_at, provisioned_tenant_id,
 			created_at, updated_at
 		FROM company_access_requests
@@ -441,6 +544,7 @@ func scanAccessRequest(scanner rowScanner) (models.CompanyAccessRequest, error) 
 	err := scanner.Scan(
 		&item.ID, &item.CompanyName, &item.PreferredSlug, &item.ContactName,
 		&item.ContactEmail, &item.ContactPhone, &item.CompanySize, &item.Industry,
+		&item.Website, &item.Country,
 		&item.Message, &item.Status, &item.AdminNotes, &item.ReviewedBy,
 		&item.ReviewedAt, &item.ProvisionedTenantID, &item.CreatedAt, &item.UpdatedAt,
 	)
@@ -450,7 +554,7 @@ func scanAccessRequest(scanner rowScanner) (models.CompanyAccessRequest, error) 
 func (h *Handler) loadAccessRequest(r *http.Request, id int) (models.CompanyAccessRequest, error) {
 	row := h.db.QueryRowContext(r.Context(), `
 		SELECT id, company_name, preferred_slug, contact_name, contact_email,
-			contact_phone, company_size, industry, message, status,
+			contact_phone, company_size, industry, website, country, message, status,
 			admin_notes, reviewed_by, reviewed_at, provisioned_tenant_id,
 			created_at, updated_at
 		FROM company_access_requests WHERE id = $1

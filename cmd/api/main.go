@@ -93,6 +93,9 @@ func main() {
 		authz.RequireAuth(h.HandleAccessRequests)(w, r)
 	})
 	mux.HandleFunc("/api/v1/access-requests/", authz.RequireAuth(h.HandleAccessRequests))
+	// Public so the request form can tell an applicant their Company ID is free
+	// before they submit; it reveals nothing beyond slug availability.
+	mux.HandleFunc("/api/v1/company-id-available", h.CheckCompanyID)
 
 	mux.HandleFunc("/api/v1/tenants", authz.RequireAuth(h.HandleTenants))
 	mux.HandleFunc("/api/v1/tenants/", authz.RequireAuth(h.HandleTenants))

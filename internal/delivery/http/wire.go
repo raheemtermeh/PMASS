@@ -78,8 +78,10 @@ func (d *Dependencies) Register(mux *http.ServeMux, authz *middleware.Authentica
 	mux.HandleFunc("/api/v1/departments/", authz.RequirePermission(auth.PermDepartmentManage, d.Org.HandleDepartments))
 	mux.HandleFunc("/api/v1/teams", authz.RequirePermission(auth.PermTeamManage, d.Org.HandleTeams))
 	mux.HandleFunc("/api/v1/teams/", authz.RequirePermission(auth.PermTeamManage, d.Org.HandleTeams))
-	mux.HandleFunc("/api/v1/employees", authz.RequirePermission(auth.PermEmployeeManage, d.Org.HandleEmployees))
-	mux.HandleFunc("/api/v1/employees/", authz.RequirePermission(auth.PermEmployeeManage, d.Org.HandleEmployees))
+	// Roster is needed for assign/mention pickers on home/planning — GET uses product.view.
+	// Create/update/deactivate stay locked to employee.manage (company admin surfaces).
+	mux.HandleFunc("/api/v1/employees", authz.RequirePermissionByMethod(auth.PermProductView, auth.PermEmployeeManage, d.Org.HandleEmployees))
+	mux.HandleFunc("/api/v1/employees/", authz.RequirePermissionByMethod(auth.PermProductView, auth.PermEmployeeManage, d.Org.HandleEmployees))
 
 	mux.HandleFunc("/api/v1/roles", authz.RequirePermission(auth.PermUsers, d.Roles.HandleRoles))
 	mux.HandleFunc("/api/v1/roles/", authz.RequirePermission(auth.PermUsers, d.Roles.HandleRoles))

@@ -25,11 +25,30 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const themeBootScript = `
+(function(){
+  try {
+    var t = localStorage.getItem("pmas-theme");
+    if (t !== "light" && t !== "dark") {
+      t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body className="flex h-screen overflow-hidden bg-surface-container text-on-surface">
         <AppProviders>{children}</AppProviders>
       </body>

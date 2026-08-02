@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthHydrated, useAuthStore, type AuthUser } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
+import { resolveSignOutPath } from "@/shared/auth-portals";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -28,7 +29,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
       if (!token) {
         verifiedTokenRef.current = null;
         setReady(false);
-        router.replace("/welcome");
+        const role = useAuthStore.getState().user?.role;
+        router.replace(resolveSignOutPath(role));
         return;
       }
 
@@ -47,9 +49,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
       } catch {
         if (cancelled) return;
         verifiedTokenRef.current = null;
+        const role = useAuthStore.getState().user?.role;
         useAuthStore.getState().clearSession();
         setReady(false);
-        router.replace("/welcome");
+        router.replace(resolveSignOutPath(role));
       }
     }
 

@@ -8,6 +8,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useTheme } from "@/core/providers/ThemeProvider";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 
 export interface KanbanColumn {
@@ -75,9 +76,11 @@ export function StatusKanbanBoard({
   onStatusChange,
   onOpen,
 }: Props) {
+  const { theme } = useTheme();
+  const light = theme === "light";
   const { layout, ready, saving, saveLayout } = useUILayout<PosMap>(layoutKey);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [editMode, setEditMode] = useState(true);
+  const [editMode, setEditMode] = useState(false);
   const [scale, setScale] = useState(0.92);
   const [pan, setPan] = useState({ x: 8, y: 8 });
   const [selected, setSelected] = useState<string | null>(null);
@@ -223,8 +226,13 @@ export function StatusKanbanBoard({
   const onPointerUp = async () => {
     const d = dragRef.current;
     dragRef.current = null;
-    if (!d || d.mode !== "card" || !d.cardId) {
-      if (d?.mode === "pan") persist(positionsRef.current, pan, scale);
+    if (!d) return;
+
+    // View mode: allow temporary pan, but never persist or change status.
+    if (!editMode) return;
+
+    if (d.mode !== "card" || !d.cardId) {
+      if (d.mode === "pan") persist(positionsRef.current, pan, scale);
       return;
     }
     const card = cards.find((c) => c.id === d.cardId);
@@ -360,8 +368,8 @@ export function StatusKanbanBoard({
                   width={CARD_W}
                   height={CARD_H}
                   rx={12}
-                  fill="rgba(15,23,42,0.94)"
-                  stroke={isSel ? "#f8fafc" : color}
+                  fill={light ? "#ffffff" : "rgba(15,23,42,0.94)"}
+                  stroke={isSel ? (light ? "#0369a1" : "#f8fafc") : color}
                   strokeWidth={isSel ? 2 : 1.35}
                 />
                 <circle cx={14} cy={CARD_H / 2} r={4.5} fill={color} />

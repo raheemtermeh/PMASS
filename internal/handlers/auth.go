@@ -150,6 +150,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.Username = strings.TrimSpace(req.Username)
 	req.TenantSlug = strings.TrimSpace(strings.ToLower(req.TenantSlug))
+	req.Portal = strings.TrimSpace(strings.ToLower(req.Portal))
 	if (req.Email == "" && req.Username == "") || req.Password == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "email or username, and password, are required"})
@@ -197,6 +198,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.CheckPassword(hash, req.Password) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email/username, or password"})
+		return
+	}
+	if !auth.PortalAllowsRole(req.Portal, role, tenantID.Valid) {
+		// Same message as bad credentials — do not reveal account role.
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid company, email/username, or password"})
 		return
@@ -674,6 +681,26 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID i
 		}
 	}
 
+	// Avatars are stored inline as a small data URL. Cap the size so a huge image
+	// cannot bloat every /auth/me response the client makes.
+	var avatar *string
+	if req.AvatarURL != nil {
+		v := strings.TrimSpace(*req.AvatarURL)
+		if v != "" {
+			if !strings.HasPrefix(v, "data:image/") {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Avatar must be an image"})
+				return
+			}
+			if len(v) > 400_000 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Avatar image is too large"})
+				return
+			}
+			avatar = &v
+		}
+	}
+
 	changingPassword := req.Password != nil && strings.TrimSpace(*req.Password) != ""
 	if changingPassword {
 		if req.CurrentPassword == nil || strings.TrimSpace(*req.CurrentPassword) == "" {
@@ -713,9 +740,11 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request, userID i
 		    job_title = $4,
 		    phone = $5,
 		    bio = $6,
+		    avatar_url = CASE WHEN $7::boolean THEN $8 ELSE avatar_url END,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $7
-	`, req.FirstName, req.LastName, fullName, jobTitle, phone, bio, userID)
+		WHERE id = $9
+	`, req.FirstName, req.LastName, fullName, jobTitle, phone, bio,
+		req.AvatarURL != nil, avatar, userID)
 	if err != nil {
 		log.Printf("Error updating profile: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1172,17 +1201,17 @@ func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.
 	var tid sql.NullInt64
 	var firstName, lastName sql.NullString
 	var jobTitle, phone, bio sql.NullString
-	var username sql.NullString
+	var username, avatarURL sql.NullString
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT id, tenant_id, email, full_name,
 		       COALESCE(first_name, ''), COALESCE(last_name, ''),
-		       job_title, phone, bio, username,
+		       job_title, phone, bio, username, avatar_url,
 		       role, is_active, COALESCE(session_version, 1), created_at, updated_at
 		FROM app_users WHERE id = $1
 	`, userID).Scan(
 		&u.ID, &tid, &u.Email, &u.FullName,
 		&firstName, &lastName,
-		&jobTitle, &phone, &bio, &username,
+		&jobTitle, &phone, &bio, &username, &avatarURL,
 		&u.Role, &u.IsActive, &u.SessionVersion, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
@@ -1218,6 +1247,10 @@ func (h *Handler) loadUserWithPermissions(r *http.Request, userID int) (*models.
 	if username.Valid {
 		v := username.String
 		u.Username = &v
+	}
+	if avatarURL.Valid && avatarURL.String != "" {
+		v := avatarURL.String
+		u.AvatarURL = &v
 	}
 
 	perms, err := h.loadPermissions(r, userID)
