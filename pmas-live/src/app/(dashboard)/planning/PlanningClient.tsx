@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +18,12 @@ import type {
   Team,
 } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
+import {
+  priorityBadgeClass,
+  priorityLabel,
+  statusBadgeClass,
+  statusLabel,
+} from "@/features/planning/badges";
 
 // MVP Feature Planning additions layered on top of the original lifecycle —
 // existing statuses keep working exactly as before.
@@ -358,23 +365,15 @@ export default function PlanningClient() {
 
       <ResourceManager
         title="Projects"
-        description="Select a product above, then type a project name and press Enter."
+        description="Select a product, then create a project with New project…"
         createLabel="New project…"
         emptyTitle="No projects"
         emptyDescription={
-          productId ? "Use the quick bar to create the first project." : "Select a product first (required to create)."
+          productId ? "Create the first project with New project…" : "Select a product first (required to create)."
         }
         isLoading={projectsLoading}
         items={projects}
-        quickCreate={{
-          placeholder: productId
-            ? "Type a project name and press Enter…"
-            : "Select a product first…",
-          fieldName: "name",
-          disabled: !productId,
-          disabledHint: "Select a product above, then type a project name…",
-          defaults: productId ? { product_id: productId } : {},
-        }}
+        createDefaults={productId ? { product_id: productId } : undefined}
         createFields={[
           {
             name: "product_id",
@@ -384,6 +383,7 @@ export default function PlanningClient() {
             options: productOptions,
           },
           { name: "name", label: "Name", required: true, placeholder: "e.g. Mobile app v1" },
+          { name: "description", label: "Description", type: "textarea", placeholder: "Optional" },
         ]}
         columns={[
           {
@@ -407,9 +407,22 @@ export default function PlanningClient() {
           {
             key: "status",
             label: "Status",
-            render: (r) => <span className="status-pill">{r.status}</span>,
+            render: (r) => (
+              <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+            ),
           },
-          { key: "priority", label: "Priority", render: (r) => r.priority || "—" },
+          {
+            key: "priority",
+            label: "Priority",
+            render: (r) =>
+              r.priority ? (
+                <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
+                  {priorityLabel(r.priority)}
+                </span>
+              ) : (
+                "—"
+              ),
+          },
           {
             key: "owner",
             label: "Owner",
@@ -418,7 +431,15 @@ export default function PlanningClient() {
           {
             key: "product",
             label: "Product",
-            render: (r) => products.find((p) => p.id === r.product_id)?.name ?? "—",
+            render: (r) => {
+              const product = products.find((p) => p.id === r.product_id);
+              if (!product) return "—";
+              return (
+                <Link href={`/products/${product.id}`} className="planning-product-link">
+                  {product.name}
+                </Link>
+              );
+            },
           },
         ]}
         fields={[
@@ -600,7 +621,18 @@ export default function PlanningClient() {
                 </button>
               ),
             },
-            { key: "priority", label: "Priority" },
+            {
+              key: "priority",
+              label: "Priority",
+              render: (r) =>
+                r.priority ? (
+                  <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
+                    {priorityLabel(r.priority)}
+                  </span>
+                ) : (
+                  "—"
+                ),
+            },
             {
               key: "owner",
               label: "Owner",
@@ -614,7 +646,9 @@ export default function PlanningClient() {
             {
               key: "status",
               label: "Status",
-              render: (r) => <span className="status-pill">{r.status}</span>,
+              render: (r) => (
+                <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+              ),
             },
           ]}
           fields={[
@@ -859,7 +893,18 @@ export default function PlanningClient() {
                   </button>
                 ),
               },
-              { key: "priority", label: "Priority" },
+              {
+                key: "priority",
+                label: "Priority",
+                render: (r) =>
+                  r.priority ? (
+                    <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
+                      {priorityLabel(r.priority)}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
+              },
               {
                 key: "assignee",
                 label: "Assignee",
@@ -873,7 +918,9 @@ export default function PlanningClient() {
               {
                 key: "status",
                 label: "Status",
-                render: (r) => <span className="status-pill">{r.status}</span>,
+                render: (r) => (
+                  <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+                ),
               },
             ]}
             fields={[

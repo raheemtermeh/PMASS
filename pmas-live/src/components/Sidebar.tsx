@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useMobileNav } from "@/components/MobileNavContext";
+import { useI18n } from "@/core/providers/I18nProvider";
 import { NavIcon, navLabels } from "@/lib/navigation";
 import { isPlatformRole } from "@/shared/permissions";
 import { resolveSignOutPath } from "@/shared/auth-portals";
@@ -72,6 +73,7 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const clearSession = useAuthStore((s) => s.clearSession);
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const { close: closeMobileNav } = useMobileNav();
@@ -125,10 +127,10 @@ export function Sidebar() {
   );
 
   const roleLabel = platform
-    ? "Platform Admin"
+    ? t("role.platformAdmin")
     : user.role === "tenant_admin"
-      ? "Company Admin"
-      : "Employee";
+      ? t("role.companyAdmin")
+      : t("role.employee");
 
   const workspaceLabel = user.tenant?.name ?? "Platform";
   const workspaceId = user.tenant?.slug ?? "platform";
@@ -137,7 +139,7 @@ export function Sidebar() {
     const route = routes[viewId];
     const isActive = pathname === route.path || pathname.startsWith(`${route.path}/`);
     const showBadge = viewId === "platform-access-requests" && pendingCount > 0;
-    const label = navLabels[viewId];
+    const label = t(navLabels[viewId]);
 
     return (
       <li
@@ -185,12 +187,12 @@ export function Sidebar() {
         </div>
         <div className="rail-brand-copy">
           <span className="rail-brand-name">PMAS Live</span>
-          <span className="rail-brand-tag">Control center</span>
+          <span className="rail-brand-tag">{t("nav.workspace")}</span>
         </div>
         <button
           type="button"
           className="sidebar-mobile-close"
-          aria-label="Close sidebar"
+          aria-label={t("common.cancel")}
           onClick={closeMobileNav}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
@@ -202,7 +204,7 @@ export function Sidebar() {
       <div className="rail-workspace" title={`${workspaceLabel} · ${workspaceId}`}>
         <span className="rail-workspace-pulse" aria-hidden />
         <div className="rail-workspace-copy">
-          <span className="rail-workspace-label">Workspace</span>
+          <span className="rail-workspace-label">{t("nav.workspace")}</span>
           <strong>{workspaceLabel}</strong>
         </div>
         <code className="rail-workspace-id">{workspaceId}</code>
@@ -249,7 +251,7 @@ export function Sidebar() {
                 style={{ animationDelay: `${0.04 + gi * 0.035}s` }}
               >
                 <p className="sidebar-nav-group-label rail-group-label">
-                  <span>{group.label}</span>
+                  <span>{t(group.labelKey)}</span>
                 </p>
                 <ul className="nav-links">{items.map((id, ii) => renderNavItem(id, offset + ii))}</ul>
               </div>
@@ -258,7 +260,7 @@ export function Sidebar() {
         ) : (
           <>
             <p className="sidebar-nav-group-label rail-group-label">
-              <span>Navigate</span>
+              <span>{t("nav.navigate")}</span>
             </p>
             <ul className="nav-links">{tenantNav.map((id, ii) => renderNavItem(id, ii))}</ul>
           </>
@@ -271,12 +273,12 @@ export function Sidebar() {
             type="button"
             className="rail-dock-btn rail-dock-collapse"
             onClick={toggleCollapsed}
-            data-tooltip={collapsed ? "Expand" : "Collapse"}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            data-tooltip={collapsed ? t("nav.expand") : t("nav.collapse")}
+            aria-label={collapsed ? t("nav.expand") : t("nav.collapse")}
             aria-pressed={collapsed}
           >
             <CollapseIcon collapsed={collapsed} />
-            <span className="rail-dock-label">{collapsed ? "Expand" : "Collapse"}</span>
+            <span className="rail-dock-label">{collapsed ? t("nav.expand") : t("nav.collapse")}</span>
           </button>
 
           <span className="rail-dock-divider" aria-hidden />
@@ -285,8 +287,8 @@ export function Sidebar() {
             type="button"
             className="rail-dock-btn rail-dock-logout"
             disabled={signingOut}
-            data-tooltip="Sign out"
-            aria-label="Sign out"
+            data-tooltip={t("common.signOut")}
+            aria-label={t("common.signOut")}
             onClick={() => {
               closeMobileNav();
               setSigningOut(true);
@@ -302,7 +304,7 @@ export function Sidebar() {
             }}
           >
             <LogoutIcon />
-            <span className="rail-dock-label">{signingOut ? "Signing out…" : "Sign out"}</span>
+            <span className="rail-dock-label">{signingOut ? t("common.signingOut") : t("common.signOut")}</span>
           </button>
         </div>
       </footer>

@@ -83,6 +83,39 @@ export interface NamedWorkspaceItem {
   status: string;
 }
 
+export interface MyWorkSummary {
+  assigned: number;
+  due_today: number;
+  overdue: number;
+  waiting_review: number;
+  mentions: number;
+  approvals: number;
+}
+
+export interface UpcomingDeadline {
+  id: string;
+  title: string;
+  status: string;
+  due_date?: string | null;
+  product_name?: string;
+}
+
+export interface TeamWorkloadRow {
+  employee_id: string;
+  name: string;
+  open_tasks: number;
+  load_percent: number;
+}
+
+export interface PipelineAlert {
+  kind: string;
+  product_id: string;
+  product_name: string;
+  stage_name?: string;
+  detail: string;
+  days: number;
+}
+
 export interface DashboardData {
   summary: DashboardSummary;
   charts: DashboardCharts;
@@ -98,6 +131,10 @@ export interface DashboardData {
   my_products?: NamedWorkspaceItem[];
   my_projects?: NamedWorkspaceItem[];
   my_features?: NamedWorkspaceItem[];
+  my_work?: MyWorkSummary;
+  upcoming_deadlines?: UpcomingDeadline[];
+  team_workload?: TeamWorkloadRow[];
+  pipeline_alerts?: PipelineAlert[];
   pipeline_statuses: {
     product_id: string;
     product_name: string;

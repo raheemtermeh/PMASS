@@ -212,6 +212,7 @@ export const platformNavItems: ViewId[] = [
 
 export interface PlatformNavGroup {
   label: string;
+  labelKey: string;
   items: ViewId[];
 }
 
@@ -219,10 +220,12 @@ export interface PlatformNavGroup {
 export const platformNavGroups: PlatformNavGroup[] = [
   {
     label: "Company management",
+    labelKey: "nav.companyManagement",
     items: ["platform-tenants", "platform-access-requests"],
   },
   {
     label: "Account",
+    labelKey: "nav.account",
     items: ["profile"],
   },
 ];
@@ -295,6 +298,8 @@ export function canAccessRoute(
   if (route.adminOnly && normalizedRole === "user") return false;
   if (route.id === "profile") return true;
   if (route.id === "home") return hasTenant;
-  if (!route.permission) return false;
+  // No permission key: portal/role flags above are the gate
+  // (e.g. platform-tenants / platform-access-requests).
+  if (!route.permission) return true;
   return hasPermission(role, permissions, route.permission);
 }

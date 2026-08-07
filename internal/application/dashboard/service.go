@@ -50,6 +50,43 @@ type DeptProduct struct {
 	ProductCount   int64     `json:"product_count"`
 }
 
+// MyWork is personal Command Center counts for the scoped employee.
+type MyWork struct {
+	Assigned       int64 `json:"assigned"`
+	DueToday       int64 `json:"due_today"`
+	Overdue        int64 `json:"overdue"`
+	WaitingReview  int64 `json:"waiting_review"`
+	Mentions       int64 `json:"mentions"`
+	Approvals      int64 `json:"approvals"`
+}
+
+// UpcomingDeadline is a company-wide due task for the manager deadlines widget.
+type UpcomingDeadline struct {
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	Status      string     `json:"status"`
+	DueDate     *time.Time `json:"due_date,omitempty"`
+	ProductName string     `json:"product_name,omitempty"`
+}
+
+// TeamWorkloadRow is one employee's open-task load for Team Workload.
+type TeamWorkloadRow struct {
+	EmployeeID  uuid.UUID `json:"employee_id"`
+	Name        string    `json:"name"`
+	OpenTasks   int64     `json:"open_tasks"`
+	LoadPercent int64     `json:"load_percent"`
+}
+
+// PipelineAlert surfaces blocked / stuck / on-hold pipeline signals.
+type PipelineAlert struct {
+	Kind        string    `json:"kind"`
+	ProductID   uuid.UUID `json:"product_id"`
+	ProductName string    `json:"product_name"`
+	StageName   string    `json:"stage_name,omitempty"`
+	Detail      string    `json:"detail"`
+	Days        int64     `json:"days"`
+}
+
 // NamedCount is a generic label/value pair for charts (company-scoped aggregates).
 type NamedCount struct {
 	Name  string `json:"name"`
@@ -117,17 +154,21 @@ type FlowGraph struct {
 }
 
 type Dashboard struct {
-	Summary          Summary          `json:"summary"`
-	Charts           Charts           `json:"charts"`
-	Flow             FlowGraph        `json:"flow"`
-	MyTasks          []MyTask         `json:"my_tasks"`
-	MyProducts       []NamedID        `json:"my_products"`
-	MyProjects       []NamedID        `json:"my_projects"`
-	MyFeatures       []NamedID        `json:"my_features"`
-	PipelineStatuses []PipelineStatus `json:"pipeline_statuses"`
-	DeptProducts     []DeptProduct    `json:"department_products"`
-	RecentActivities []map[string]any `json:"recent_activities"`
-	Notifications    []map[string]any `json:"notifications"`
+	Summary           Summary            `json:"summary"`
+	Charts            Charts             `json:"charts"`
+	Flow              FlowGraph          `json:"flow"`
+	MyTasks           []MyTask           `json:"my_tasks"`
+	MyProducts        []NamedID          `json:"my_products"`
+	MyProjects        []NamedID          `json:"my_projects"`
+	MyFeatures        []NamedID          `json:"my_features"`
+	MyWork            MyWork             `json:"my_work"`
+	UpcomingDeadlines []UpcomingDeadline `json:"upcoming_deadlines"`
+	TeamWorkload      []TeamWorkloadRow  `json:"team_workload"`
+	PipelineAlerts    []PipelineAlert    `json:"pipeline_alerts"`
+	PipelineStatuses  []PipelineStatus   `json:"pipeline_statuses"`
+	DeptProducts      []DeptProduct      `json:"department_products"`
+	RecentActivities  []map[string]any   `json:"recent_activities"`
+	Notifications     []map[string]any   `json:"notifications"`
 }
 
 // NamedID is a lightweight workspace item for "My Products/Projects/Features".
@@ -156,14 +197,17 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 		Flow: FlowGraph{
 			Products: []FlowProduct{},
 		},
-		MyTasks:          []MyTask{},
-		MyProducts:       []NamedID{},
-		MyProjects:       []NamedID{},
-		MyFeatures:       []NamedID{},
-		PipelineStatuses: []PipelineStatus{},
-		DeptProducts:     []DeptProduct{},
-		RecentActivities: []map[string]any{},
-		Notifications:    []map[string]any{},
+		MyTasks:           []MyTask{},
+		MyProducts:        []NamedID{},
+		MyProjects:        []NamedID{},
+		MyFeatures:        []NamedID{},
+		UpcomingDeadlines: []UpcomingDeadline{},
+		TeamWorkload:      []TeamWorkloadRow{},
+		PipelineAlerts:    []PipelineAlert{},
+		PipelineStatuses:  []PipelineStatus{},
+		DeptProducts:      []DeptProduct{},
+		RecentActivities:  []map[string]any{},
+		Notifications:     []map[string]any{},
 	}
 
 	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.ActiveProducts)
@@ -278,7 +322,13 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 				}
 			}
 		}
+
+		loadMyWork(ctx, q, companyID, *employeeID, &out.MyWork)
 	}
+
+	loadUpcomingDeadlines(ctx, q, companyID, &out.UpcomingDeadlines)
+	loadTeamWorkload(ctx, q, companyID, &out.TeamWorkload)
+	loadPipelineAlerts(ctx, q, companyID, &out.PipelineAlerts)
 
 	rows, err := q.QueryContext(ctx, `
 		SELECT p.id, p.name, p.status, COALESCE(s.name,'')
@@ -566,4 +616,214 @@ func fillStagePointers(fp *FlowProduct) {
 	// All completed — show last stage as current.
 	last := fp.Stages[len(fp.Stages)-1]
 	fp.ActiveStage = last.Name
+}
+
+type dashQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+const openTaskSQL = `status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`
+
+func loadMyWork(ctx context.Context, q dashQuerier, companyID, employeeID uuid.UUID, out *MyWork) {
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL,
+		companyID, employeeID).Scan(&out.Assigned)
+
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL+`
+		  AND due_date IS NOT NULL
+		  AND due_date::date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date`,
+		companyID, employeeID).Scan(&out.DueToday)
+
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL+`
+		  AND due_date IS NOT NULL AND due_date < NOW()`,
+		companyID, employeeID).Scan(&out.Overdue)
+
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND status='REVIEW'`,
+		companyID, employeeID).Scan(&out.WaitingReview)
+
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false
+		  AND type='MENTION'`,
+		companyID, employeeID).Scan(&out.Mentions)
+
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false
+		  AND (type ILIKE '%APPROVAL%' OR type ILIKE '%STAGE%' OR type='STAGE_REJECTED')`,
+		companyID, employeeID).Scan(&out.Approvals)
+}
+
+func loadUpcomingDeadlines(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]UpcomingDeadline) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT t.id, t.title, t.status, t.due_date, COALESCE(p.name, '')
+		FROM tasks t
+		LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+		LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
+		WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.due_date IS NOT NULL
+		  AND t.status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')
+		  AND t.due_date < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '14 days'
+		ORDER BY t.due_date ASC
+		LIMIT 12`, companyID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d UpcomingDeadline
+		if err := rows.Scan(&d.ID, &d.Title, &d.Status, &d.DueDate, &d.ProductName); err == nil {
+			*out = append(*out, d)
+		}
+	}
+}
+
+func loadTeamWorkload(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]TeamWorkloadRow) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT e.id, TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))),
+			COUNT(t.id) FILTER (
+				WHERE t.deleted_at IS NULL AND t.status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')
+			)
+		FROM employees e
+		LEFT JOIN tasks t ON t.assignee_id = e.id AND t.company_id = e.company_id
+		WHERE e.company_id=$1 AND e.status='ACTIVE'
+		GROUP BY e.id, e.first_name, e.last_name
+		ORDER BY COUNT(t.id) FILTER (
+			WHERE t.deleted_at IS NULL AND t.status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')
+		) DESC, e.first_name ASC
+		LIMIT 20`, companyID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var rowsBuf []TeamWorkloadRow
+	var maxOpen int64
+	for rows.Next() {
+		var r TeamWorkloadRow
+		if err := rows.Scan(&r.EmployeeID, &r.Name, &r.OpenTasks); err != nil {
+			continue
+		}
+		if r.Name == "" {
+			r.Name = "—"
+		}
+		if r.OpenTasks > maxOpen {
+			maxOpen = r.OpenTasks
+		}
+		rowsBuf = append(rowsBuf, r)
+	}
+	if maxOpen < 1 {
+		maxOpen = 1
+	}
+	for i := range rowsBuf {
+		pct := (rowsBuf[i].OpenTasks * 100) / maxOpen
+		if pct > 100 {
+			pct = 100
+		}
+		rowsBuf[i].LoadPercent = pct
+		*out = append(*out, rowsBuf[i])
+	}
+}
+
+func loadPipelineAlerts(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]PipelineAlert) {
+	// ON_HOLD products
+	prows, err := q.QueryContext(ctx, `
+		SELECT id, name, GREATEST(0, EXTRACT(DAY FROM NOW() - updated_at)::bigint)
+		FROM products
+		WHERE company_id=$1 AND deleted_at IS NULL AND status='ON_HOLD'
+		ORDER BY updated_at ASC LIMIT 8`, companyID)
+	if err == nil {
+		defer prows.Close()
+		for prows.Next() {
+			var a PipelineAlert
+			if err := prows.Scan(&a.ProductID, &a.ProductName, &a.Days); err == nil {
+				a.Kind = "ON_HOLD"
+				a.Detail = "Product on hold"
+				*out = append(*out, a)
+			}
+		}
+	}
+
+	// Active stages stuck ≥ 3 days
+	srows, err := q.QueryContext(ctx, `
+		SELECT p.id, p.name, COALESCE(s.name,''),
+			GREATEST(0, EXTRACT(DAY FROM NOW() - si.updated_at)::bigint)
+		FROM stage_instances si
+		INNER JOIN products p ON p.id = si.product_id AND p.company_id = si.company_id
+		LEFT JOIN stages s ON s.id = si.stage_id
+		WHERE si.company_id=$1 AND si.status='ACTIVE'
+		  AND si.updated_at < NOW() - INTERVAL '3 days'
+		  AND p.deleted_at IS NULL
+		ORDER BY si.updated_at ASC LIMIT 8`, companyID)
+	if err == nil {
+		defer srows.Close()
+		for srows.Next() {
+			var a PipelineAlert
+			if err := srows.Scan(&a.ProductID, &a.ProductName, &a.StageName, &a.Days); err == nil {
+				a.Kind = "STAGE_BLOCKED"
+				a.Detail = "Stage idle"
+				*out = append(*out, a)
+			}
+		}
+	}
+
+	// BLOCKED tasks with product context
+	brows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid),
+			COALESCE(p.name, t.title), COALESCE(t.title,''),
+			GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint)
+		FROM tasks t
+		LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+		LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
+		WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='BLOCKED'
+		ORDER BY t.updated_at ASC LIMIT 8`, companyID)
+	if err == nil {
+		defer brows.Close()
+		for brows.Next() {
+			var a PipelineAlert
+			var taskTitle string
+			if err := brows.Scan(&a.ProductID, &a.ProductName, &taskTitle, &a.Days); err == nil {
+				a.Kind = "STAGE_BLOCKED"
+				a.Detail = "Blocked: " + taskTitle
+				a.StageName = taskTitle
+				*out = append(*out, a)
+			}
+		}
+	}
+
+	// Tasks waiting review
+	rrows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid),
+			COALESCE(p.name, t.title), COALESCE(t.title,''),
+			GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint)
+		FROM tasks t
+		LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+		LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
+		WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='REVIEW'
+		ORDER BY t.updated_at ASC LIMIT 8`, companyID)
+	if err == nil {
+		defer rrows.Close()
+		for rrows.Next() {
+			var a PipelineAlert
+			var taskTitle string
+			if err := rrows.Scan(&a.ProductID, &a.ProductName, &taskTitle, &a.Days); err == nil {
+				a.Kind = "WAITING_APPROVAL"
+				a.Detail = "Waiting review"
+				a.StageName = taskTitle
+				*out = append(*out, a)
+			}
+		}
+	}
+
+	// Cap total alerts shown
+	if len(*out) > 12 {
+		*out = (*out)[:12]
+	}
 }

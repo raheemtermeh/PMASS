@@ -29,6 +29,8 @@ interface ResourceManagerProps<T extends { id: string | number }> {
    * Pass a short list (e.g. title + priority) to keep creation light.
    */
   createFields?: FieldDef[];
+  /** Initial values merged into the create form when opening the modal. */
+  createDefaults?: Record<string, string>;
   items: T[];
   isLoading?: boolean;
   emptyTitle: string;
@@ -69,6 +71,7 @@ export function ResourceManager<T extends { id: string | number }>({
   columns,
   fields,
   createFields,
+  createDefaults,
   items,
   isLoading,
   emptyTitle,
@@ -117,7 +120,7 @@ export function ResourceManager<T extends { id: string | number }>({
 
   function openCreate() {
     setEditing(null);
-    setValues(blankValues(createFields ?? fields));
+    setValues({ ...blankValues(createFields ?? fields), ...(createDefaults ?? {}) });
     setError("");
     setOpen(true);
   }

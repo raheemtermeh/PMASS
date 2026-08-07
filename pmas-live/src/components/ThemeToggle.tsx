@@ -1,17 +1,20 @@
 "use client";
 
 import { useTheme } from "@/core/providers/ThemeProvider";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const { t } = useI18n();
+  const label = theme === "light" ? t("theme.switchToDark") : t("theme.switchToLight");
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
       className="theme-toggle"
-      aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-      title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+      aria-label={label}
+      title={label}
     >
       {theme === "light" ? (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -4,10 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 export default function SetupPage() {
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
+  const { t } = useI18n();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,21 +26,21 @@ export default function SetupPage() {
         );
         if (!status.needs_bootstrap) router.replace("/login");
       } catch {
-        setError("Cannot reach API server. Start the backend on port 8080.");
+        setError(t("setup.cannotReachApi"));
       }
     }
     void check();
-  }, [router]);
+  }, [router, t]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (password !== confirm) {
-      setError("Passwords do not match");
+      setError(t("setup.passwordsMismatch"));
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("setup.passwordTooShort"));
       return;
     }
     setLoading(true);
@@ -51,7 +53,7 @@ export default function SetupPage() {
       setSession(res.token, res.user, res.refresh_token ?? null);
       router.replace("/platform/tenants");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed");
+      setError(err instanceof Error ? err.message : t("setup.setupFailed"));
     } finally {
       setLoading(false);
     }
@@ -64,15 +66,15 @@ export default function SetupPage() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Platform Setup</h1>
+          <h1>{t("setup.title")}</h1>
         </div>
         <p className="auth-subtitle">
-          Create the platform administrator who provisions company accounts. Each company later gets its own empty workspace.
+          {t("setup.subtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="fullName">Full name</label>
+            <label htmlFor="fullName">{t("setup.fullName")}</label>
             <input
               id="fullName"
               value={fullName}
@@ -81,7 +83,7 @@ export default function SetupPage() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">{t("setup.email")}</label>
             <input
               id="email"
               type="email"
@@ -91,7 +93,7 @@ export default function SetupPage() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("setup.password")}</label>
             <input
               id="password"
               type="password"
@@ -102,7 +104,7 @@ export default function SetupPage() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="confirm">Confirm password</label>
+            <label htmlFor="confirm">{t("setup.confirmPassword")}</label>
             <input
               id="confirm"
               type="password"
@@ -113,7 +115,7 @@ export default function SetupPage() {
           </div>
           {error && <p className="auth-error">{error}</p>}
           <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
-            {loading ? "Creating account…" : "Create platform admin"}
+            {loading ? t("setup.creatingAccount") : t("setup.createPlatformAdmin")}
           </button>
         </form>
       </div>

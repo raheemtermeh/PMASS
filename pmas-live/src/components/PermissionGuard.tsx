@@ -19,14 +19,18 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
 
     const platform = isPlatformRole(user.role);
     const hasTenant = Boolean(user.tenant_id);
-    const allowed = canAccessRoute(route, user.role, user.permissions, hasTenant);
+    const allowed = canAccessRoute(route, user.role, user.permissions ?? [], hasTenant);
 
     if (!allowed) {
       if (route.platformOnly && !platform) {
         router.replace("/platform/login");
         return;
       }
-      router.replace(firstAllowedPath(user.role, user.permissions, hasTenant));
+      const fallback = firstAllowedPath(user.role, user.permissions ?? [], hasTenant);
+      // Avoid a Redirecting… loop when the fallback is the same forbidden path.
+      if (fallback !== pathname) {
+        router.replace(fallback);
+      }
     }
   }, [pathname, user, router]);
 
@@ -35,7 +39,7 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
   const route = getRouteByPath(pathname);
   if (route) {
     const hasTenant = Boolean(user.tenant_id);
-    if (!canAccessRoute(route, user.role, user.permissions, hasTenant)) {
+    if (!canAccessRoute(route, user.role, user.permissions ?? [], hasTenant)) {
       return <Redirecting />;
     }
   }

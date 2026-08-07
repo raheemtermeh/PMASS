@@ -4,9 +4,71 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
-import { buildWizardSteps } from "@/shared/product-guidance";
+import { buildWizardSteps, type WizardStep } from "@/shared/product-guidance";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
+
+const STEP_TRANSLATIONS: Record<
+  string,
+  { title: string; body: string; bullets: string[]; cta?: string }
+> = {
+  welcome: {
+    title: "onboarding.welcomeTitle",
+    body: "onboarding.welcomeBody",
+    bullets: ["onboarding.bullet1", "onboarding.bullet2", "onboarding.bullet3"],
+  },
+  addCompany: {
+    title: "onboarding.addCompany",
+    body: "onboarding.addCompanyBody",
+    bullets: [
+      "onboarding.addCompanyBullet1",
+      "onboarding.addCompanyBullet2",
+      "onboarding.addCompanyBullet3",
+    ],
+    cta: "onboarding.addCompanyCta",
+  },
+  reviewRequests: {
+    title: "onboarding.reviewRequests",
+    body: "onboarding.reviewRequestsBody",
+    bullets: [
+      "onboarding.reviewRequestsBullet1",
+      "onboarding.reviewRequestsBullet2",
+      "onboarding.reviewRequestsBullet3",
+    ],
+    cta: "onboarding.accessRequestsCta",
+  },
+  buildOrg: {
+    title: "onboarding.buildOrg",
+    body: "onboarding.buildOrgBody",
+    bullets: [
+      "onboarding.buildOrgBullet1",
+      "onboarding.buildOrgBullet2",
+      "onboarding.buildOrgBullet3",
+    ],
+    cta: "onboarding.openOrganization",
+  },
+  firstProduct: {
+    title: "onboarding.firstProduct",
+    body: "onboarding.firstProductBody",
+    bullets: [
+      "onboarding.firstProductBullet1",
+      "onboarding.firstProductBullet2",
+      "onboarding.firstProductBullet3",
+    ],
+    cta: "onboarding.openProducts",
+  },
+  planWork: {
+    title: "onboarding.planWork",
+    body: "onboarding.planWorkBody",
+    bullets: [
+      "onboarding.planWorkBullet1",
+      "onboarding.planWorkBullet2",
+      "onboarding.planWorkBullet3",
+    ],
+    cta: "onboarding.openPlanning",
+  },
+};
 
 export function OnboardingWizard() {
   const router = useRouter();
@@ -15,6 +77,7 @@ export function OnboardingWizard() {
   const completedByUser = useOnboardingStore((s) => s.completedByUser);
   const markCompleted = useOnboardingStore((s) => s.markCompleted);
   const setForceOpen = useOnboardingStore((s) => s.setForceOpen);
+  const { t } = useI18n();
 
   const [stepIndex, setStepIndex] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -43,6 +106,24 @@ export function OnboardingWizard() {
   const step = steps[Math.min(stepIndex, steps.length - 1)];
   const isLast = stepIndex >= steps.length - 1;
   const progress = ((stepIndex + 1) / steps.length) * 100;
+
+  const firstName = user?.full_name.split(" ")[0] || "";
+  const localizeStep = (raw: WizardStep) => {
+    const map = STEP_TRANSLATIONS[raw.key];
+    if (!map) return raw;
+    const title =
+      raw.key === "welcome"
+        ? t(map.title, { name: firstName })
+        : t(map.title);
+    return {
+      ...raw,
+      title,
+      body: t(map.body),
+      bullets: map.bullets.map((b) => t(b)),
+      ctaLabel: map.cta ? t(map.cta) : raw.ctaLabel,
+    };
+  };
+  const localized = localizeStep(step);
 
   function finish() {
     markCompleted(userKey);
@@ -92,19 +173,19 @@ export function OnboardingWizard() {
         <div className="modal-header">
           <div>
             <p className="wizard-kicker">
-              Guided setup · Step {stepIndex + 1} of {steps.length}
+              {t("onboarding.guidedSetup", { a: stepIndex + 1, b: steps.length })}
             </p>
-            <h3 id="onboarding-wizard-title" className="modal-title">{step.title}</h3>
+            <h3 id="onboarding-wizard-title" className="modal-title">{localized.title}</h3>
           </div>
-          <button type="button" className="modal-close wizard-close" onClick={skip} aria-label="Close tour">
+          <button type="button" className="modal-close wizard-close" onClick={skip} aria-label={t("onboarding.skipTour")}>
             <span aria-hidden>×</span>
           </button>
         </div>
 
         <div className="modal-body">
-          <p className="wizard-body">{step.body}</p>
+          <p className="wizard-body">{localized.body}</p>
           <ul className="wizard-bullets">
-            {step.bullets.map((b) => (
+            {localized.bullets.map((b) => (
               <li key={b}>{b}</li>
             ))}
           </ul>
@@ -112,21 +193,21 @@ export function OnboardingWizard() {
 
         <div className="modal-footer wizard-footer">
           <button type="button" className="btn" onClick={skip}>
-            Skip for now
+            {t("onboarding.skipForNow")}
           </button>
           <div className="wizard-footer-actions">
             {stepIndex > 0 && (
               <button type="button" className="btn" onClick={() => setStepIndex((i) => i - 1)}>
-                Back
+                {t("common.back")}
               </button>
             )}
-            {step.ctaLabel && step.href ? (
+            {localized.ctaLabel && localized.href ? (
               <button type="button" className="btn btn-primary" onClick={goCta}>
-                {step.ctaLabel}
+                {localized.ctaLabel}
               </button>
             ) : (
               <button type="button" className="btn btn-primary" onClick={next}>
-                {isLast ? "Open Product Manager" : "Continue"}
+                {isLast ? t("onboarding.openProductManager") : t("common.continue")}
               </button>
             )}
           </div>

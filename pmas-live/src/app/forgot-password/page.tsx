@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { httpClient } from "@/core/api/http-client";
 import { RESET_TOKEN_SESSION_KEY, storeOneTimeSecret } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 type ForgotResponse = {
   message?: string;
@@ -15,6 +16,7 @@ type ForgotResponse = {
 function ForgotPasswordForm() {
   const router = useRouter();
   const search = useSearchParams();
+  const { t } = useI18n();
   const initialSlug = search.get("slug") ?? search.get("tenant_slug") ?? "";
   const initialEmail = search.get("email") ?? "";
   const portalHint = search.get("portal");
@@ -48,11 +50,11 @@ function ForgotPasswordForm() {
     const slug = tenantSlug.trim().toLowerCase();
     const mail = email.trim().toLowerCase();
     if (!mail) {
-      setError("Email is required.");
+      setError(t("forgot.emailRequired"));
       return;
     }
     if (!slug) {
-      setError("Company ID is required.");
+      setError(t("forgot.companyIdRequired"));
       return;
     }
 
@@ -63,7 +65,7 @@ function ForgotPasswordForm() {
         { tenant_slug: slug, email: mail },
         false,
       );
-      setMessage(res.message || "If an account exists, you can continue.");
+      setMessage(res.message || t("common.continue"));
       if (res.reset_token) {
         setResetToken(res.reset_token);
         setExpiresMins(res.expires_in_minutes ?? 60);
@@ -82,10 +84,10 @@ function ForgotPasswordForm() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Forgot password</h1>
+          <h1>{t("forgot.title")}</h1>
         </div>
         <p className="auth-subtitle">
-          Enter your company and email. We will prepare a one-time reset link.
+          {t("forgot.subtitle")}
         </p>
 
         {resetToken ? (
@@ -93,7 +95,7 @@ function ForgotPasswordForm() {
             <p className="landing-success-inline">{message}</p>
             {expiresMins ? (
               <p className="text-dim" style={{ fontSize: "0.8rem" }}>
-                Link expires in about {expiresMins} minutes.
+                {t("forgot.linkExpires", { minutes: expiresMins })}
               </p>
             ) : null}
             <button
@@ -104,7 +106,7 @@ function ForgotPasswordForm() {
                 router.push("/reset-password");
               }}
             >
-              Continue to reset password
+              {t("forgot.continueReset")}
             </button>
             <button
               type="button"
@@ -115,7 +117,7 @@ function ForgotPasswordForm() {
                 setMessage("");
               }}
             >
-              Use a different email
+              {t("forgot.differentEmail")}
             </button>
           </div>
         ) : (
@@ -125,7 +127,7 @@ function ForgotPasswordForm() {
                 <input type="hidden" value="platform" readOnly />
               ) : (
                 <div className="form-group">
-                  <label htmlFor="forgot-slug">Company ID</label>
+                  <label htmlFor="forgot-slug">{t("forgot.companyId")}</label>
                   <input
                     id="forgot-slug"
                     value={tenantSlug}
@@ -137,7 +139,7 @@ function ForgotPasswordForm() {
                 </div>
               )}
               <div className="form-group">
-                <label htmlFor="forgot-email">Email</label>
+                <label htmlFor="forgot-email">{t("forgot.email")}</label>
                 <input
                   id="forgot-email"
                   type="email"
@@ -151,21 +153,19 @@ function ForgotPasswordForm() {
 
             {error ? <p className="auth-error">{error}</p> : null}
             {message && !resetToken ? (
-              <p className="landing-success-inline">
-                {message} Contact your company admin if you do not see a continue step.
-              </p>
+              <p className="landing-success-inline">{message}</p>
             ) : null}
 
             <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
-              {loading ? "Checking…" : "Continue"}
+              {loading ? t("forgot.checking") : t("forgot.continue")}
             </button>
           </form>
         )}
 
         <p className="auth-footnote">
-          <Link href={signInHref}>Back to sign in</Link>
+          <Link href={signInHref}>{t("forgot.backToSignIn")}</Link>
           {" · "}
-          <Link href="/reset-password">I already have a reset link</Link>
+          <Link href="/reset-password">{t("forgot.alreadyHaveLink")}</Link>
         </p>
       </div>
     </div>
@@ -174,7 +174,7 @@ function ForgotPasswordForm() {
 
 export default function ForgotPasswordPage() {
   return (
-    <Suspense fallback={<div className="auth-page"><p className="text-dim">Loading…</p></div>}>
+    <Suspense fallback={<div className="auth-page"><p className="text-dim">{/* loading */}…</p></div>}>
       <ForgotPasswordForm />
     </Suspense>
   );

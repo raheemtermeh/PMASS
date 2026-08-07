@@ -13,6 +13,7 @@ export type ProductCapability = {
 };
 
 export type WizardStep = {
+  key: string;
   title: string;
   body: string;
   bullets: string[];
@@ -110,6 +111,7 @@ export function buildWizardSteps(input: {
   const first = input.fullName.split(" ")[0] || "there";
   const steps: WizardStep[] = [
     {
+      key: "welcome",
       title: `Welcome, ${first}`,
       body: "PMAS is a Value Stream platform. Everything orbits Product — not tickets or departments.",
       bullets: [
@@ -123,6 +125,7 @@ export function buildWizardSteps(input: {
   if (isPlatformRole(input.role)) {
     steps.push(
       {
+        key: "addCompany",
         title: "Add a company",
         body: "Create a company workspace with Company ID and admin credentials.",
         bullets: [
@@ -134,6 +137,7 @@ export function buildWizardSteps(input: {
         ctaLabel: "Add Company",
       },
       {
+        key: "reviewRequests",
         title: "Review access requests",
         body: "Companies can also apply from the public landing page.",
         bullets: [
@@ -151,6 +155,7 @@ export function buildWizardSteps(input: {
   if (input.hasTenant) {
     steps.push(
       {
+        key: "buildOrg",
         title: "Build organization",
         body: "Create employees before products — owners and managers are employees.",
         bullets: ["Add Employees", "Add Departments with managers", "Add Teams with leads"],
@@ -158,6 +163,7 @@ export function buildWizardSteps(input: {
         ctaLabel: "Open Organization",
       },
       {
+        key: "firstProduct",
         title: "Create your first Product",
         body: "Product is the aggregate root. Execution model cannot change after create.",
         bullets: ["New Product + Owner", "Attach Pipeline + Stages", "Start execution"],
@@ -165,6 +171,7 @@ export function buildWizardSteps(input: {
         ctaLabel: "Open Products",
       },
       {
+        key: "planWork",
         title: "Plan the work",
         body: "Under the Product, create Projects, Features, and Tasks.",
         bullets: ["Select Product", "Create Project", "Add Features and Tasks"],

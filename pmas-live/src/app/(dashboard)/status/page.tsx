@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
 import type {
   DashboardData,
-  FlowFeature,
   FlowProduct,
   FlowStage,
 } from "@/features/dashboard/types";
@@ -30,10 +29,6 @@ function statusClass(status: string): string {
   if (["REJECTED", "BLOCKED", "CANCELLED", "ON_HOLD"].includes(s)) return "badge-danger";
   if (["DRAFT", "PENDING", "BACKLOG", "PLANNING"].includes(s)) return "badge-warning";
   return "badge-info";
-}
-
-function openFeatures(features: FlowFeature[] = []): FlowFeature[] {
-  return features.filter((f) => !["COMPLETED", "DONE", "ARCHIVED", "CANCELLED"].includes(f.status.toUpperCase()));
 }
 
 function matchesFilter(p: FlowProduct, filter: FilterKey): boolean {
@@ -256,7 +251,6 @@ export default function StatusBoardPage() {
         <div className="sb-product-list">
           {filtered.map((product) => {
             const features = product.features ?? [];
-            const open = openFeatures(features);
             const pipeHint =
               pipelineStatuses.find((p) => p.product_id === product.id)?.active_stage ??
               product.active_stage;
@@ -303,7 +297,7 @@ export default function StatusBoardPage() {
                 <div className="sb-split">
                   <div>
                     <h4 className="sb-section-title">
-                      Projects <span>{product.projects.length}</span>
+                      {product.projects.length} Projects
                     </h4>
                     {product.projects.length === 0 ? (
                       <p className="text-dim sb-muted">No projects yet.</p>
@@ -320,7 +314,7 @@ export default function StatusBoardPage() {
                   </div>
                   <div>
                     <h4 className="sb-section-title">
-                      Features <span>{open.length} open / {features.length}</span>
+                      {features.length} Features
                     </h4>
                     {features.length === 0 ? (
                       <p className="text-dim sb-muted">No features yet.</p>

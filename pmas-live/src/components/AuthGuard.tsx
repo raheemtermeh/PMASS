@@ -6,6 +6,7 @@ import { httpClient } from "@/core/api/http-client";
 import { useAuthHydrated, useAuthStore, type AuthUser } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
 import { resolveSignOutPath } from "@/shared/auth-portals";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -17,6 +18,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const token = useAuthStore((s) => s.token);
   const [ready, setReady] = useState(false);
   const verifiedTokenRef = useRef<string | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     // Reading the persisted session must finish first, otherwise a page refresh
@@ -63,7 +65,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [hydrated, token, router]);
 
   if (!ready) {
-    return <PmasLoader message={hydrated ? "Verifying session…" : "Restoring your session…"} />;
+    return <PmasLoader message={hydrated ? t("auth.verifying") : t("auth.restoring")} />;
   }
 
   return <>{children}</>;

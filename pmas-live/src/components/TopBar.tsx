@@ -5,7 +5,9 @@ import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useMobileNav } from "@/components/MobileNavContext";
+import { useI18n } from "@/core/providers/I18nProvider";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
@@ -25,6 +27,7 @@ export function TopBar() {
   const route = getRouteByPath(pathname);
   const user = useAuthStore((s) => s.user);
   const resetTour = useOnboardingStore((s) => s.resetForUser);
+  const { t } = useI18n();
   const { open: navOpen, toggle: toggleNav } = useMobileNav();
   const hasTenant = Boolean(user?.tenant_id);
   const [q, setQ] = useState("");
@@ -73,7 +76,7 @@ export function TopBar() {
         <button
           type="button"
           className="mobile-nav-toggle"
-          aria-label={navOpen ? "Close menu" : "Open menu"}
+          aria-label={navOpen ? t("topbar.closeMenu") : t("topbar.openMenu")}
           aria-expanded={navOpen}
           onClick={toggleNav}
         >
@@ -83,10 +86,10 @@ export function TopBar() {
         </button>
         <div className="flex-col">
           <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-            {route?.title ?? "PMAS Live"}
+            {route ? t(`title.${route.id}`) : "PMAS Live"}
           </h1>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
-            {route?.subtitle ?? "Value stream workspace"}
+            {route ? t(`title.${route.id}`) : t("topbar.valueStream")}
           </p>
         </div>
       </div>
@@ -101,7 +104,7 @@ export function TopBar() {
                 setOpen(true);
               }}
               onFocus={() => setOpen(true)}
-              placeholder="Search products, tasks…"
+              placeholder={t("topbar.searchPlaceholder")}
               className="top-bar-search"
               style={{
                 minWidth: 200,
@@ -145,7 +148,7 @@ export function TopBar() {
                 ))}
                 {(searchData?.hits ?? []).length === 0 ? (
                   <p className="text-dim" style={{ padding: "0.75rem", fontSize: "0.8rem" }}>
-                    No results
+                    {t("common.noResults")}
                   </p>
                 ) : null}
               </div>
@@ -162,24 +165,25 @@ export function TopBar() {
         )}
         <NotificationBell />
         <ThemeToggle />
+        <LanguageSwitcher />
         <button
           type="button"
           className="btn btn-sm top-bar-help-btn"
           onClick={() => user && resetTour(String(user.id))}
-          title="Replay first-run setup wizard"
+          title={t("topbar.replayTour")}
         >
-          Help tour
+          {t("topbar.helpTour")}
         </button>
         <div className="top-bar-badge top-bar-badge-optional">
           <div className="pulse-indicator pulse-active" />
           <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
-            Live Mode
+            {t("topbar.liveMode")}
           </span>
         </div>
         {activeProducts > 0 && (
           <div className="top-bar-badge top-bar-badge-optional">
             <span className="font-mono" style={{ fontSize: "0.75rem", fontWeight: 700 }}>
-              {activeProducts} Active Product{activeProducts !== 1 ? "s" : ""}
+              {activeProducts} {activeProducts !== 1 ? t("topbar.activeProducts") : t("topbar.activeProduct")}
             </span>
           </div>
         )}

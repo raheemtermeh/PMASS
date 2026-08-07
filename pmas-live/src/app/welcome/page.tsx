@@ -12,6 +12,8 @@ import {
 } from "@/core/auth/auth-store";
 import { PasswordField } from "@/components/PasswordField";
 import { PmasLoader } from "@/components/PmasLoader";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useI18n } from "@/core/providers/I18nProvider";
 import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { setLastAuthPortal } from "@/shared/auth-portals";
 import { firstAllowedPath } from "@/shared/routes";
@@ -27,43 +29,19 @@ type SlugCheck =
 const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "500+"];
 
 const FEATURES = [
-  {
-    icon: "◈",
-    title: "Value Stream Management",
-    desc: "Full product lifecycle from idea to delivery — pipelines, stages, and execution in one view.",
-  },
-  {
-    icon: "◎",
-    title: "Organization Structure",
-    desc: "Departments, teams, and employees — each company gets an isolated, secure workspace.",
-  },
-  {
-    icon: "▣",
-    title: "Multi-layer Planning",
-    desc: "Project → Feature → Task under every product with real progress tracking.",
-  },
-  {
-    icon: "⬡",
-    title: "Dedicated Dashboard",
-    desc: "Every company has its own panel and data — fully separated from other tenants.",
-  },
-  {
-    icon: "⬢",
-    title: "Granular Permissions",
-    desc: "VSM roles and permissions per user — full control by the company admin.",
-  },
-  {
-    icon: "◆",
-    title: "Enterprise Security",
-    desc: "JWT authentication, tenant isolation, and encrypted credential storage.",
-  },
+  { icon: "◈", key: "featVsm" },
+  { icon: "◎", key: "featOrg" },
+  { icon: "▣", key: "featPlanning" },
+  { icon: "⬡", key: "featDashboard" },
+  { icon: "⬢", key: "featPermissions" },
+  { icon: "◆", key: "featSecurity" },
 ];
 
 const STEPS = [
-  { num: "1", title: "Request Access", desc: "Fill out the form at the bottom of this page." },
-  { num: "2", title: "Platform Review", desc: "Our team evaluates your company request." },
-  { num: "3", title: "Receive Credentials", desc: "You get a Company ID and admin login details." },
-  { num: "4", title: "Get Started", desc: "Sign in to your company panel and invite your team." },
+  { num: "1", key: "stepRequest" },
+  { num: "2", key: "stepReview" },
+  { num: "3", key: "stepCredentials" },
+  { num: "4", key: "stepStart" },
 ];
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -74,7 +52,7 @@ export default function WelcomePage() {
   const setSession = useAuthStore((s) => s.setSession);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
-
+  const { t } = useI18n();
   const [showLanding, setShowLanding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [tenantSlug, setTenantSlug] = useState("");
@@ -314,7 +292,7 @@ export default function WelcomePage() {
           <button
             type="button"
             className="landing-menu-btn"
-            aria-label="Toggle menu"
+            aria-label={t("welcome.toggleMenu")}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
           >
@@ -324,14 +302,14 @@ export default function WelcomePage() {
           </button>
 
           <nav className={`landing-nav${menuOpen ? " landing-nav-open" : ""}`}>
-            <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
-            <a href="#how-it-works" onClick={() => setMenuOpen(false)}>How it works</a>
-            <a href="#login" onClick={() => setMenuOpen(false)}>Company login</a>
+            <a href="#features" onClick={() => setMenuOpen(false)}>{t("welcome.features")}</a>
+            <a href="#how-it-works" onClick={() => setMenuOpen(false)}>{t("welcome.howItWorks")}</a>
+            <a href="#login" onClick={() => setMenuOpen(false)}>{t("welcome.companyLogin")}</a>
             <a href="#request" className="landing-nav-cta" onClick={() => setMenuOpen(false)}>
-              Request access
+              {t("welcome.requestAccess")}
             </a>
             <Link href="/platform/login" className="landing-nav-platform" onClick={() => setMenuOpen(false)}>
-              Platform admin
+              {t("welcome.platformAdmin")}
             </Link>
           </nav>
         </div>
@@ -340,38 +318,37 @@ export default function WelcomePage() {
       <section className="landing-hero">
         <div className="landing-hero-glow" aria-hidden />
         <div className="landing-hero-content">
-          <span className="landing-badge">Enterprise Product Management Platform</span>
+          <span className="landing-badge">{t("welcome.enterpriseTitle")}</span>
           <h1>
-            Intelligent
+            {t("welcome.intelligent")}
             <br />
-            <span className="landing-gradient-text">Product Lifecycle</span>
-            {" "}Management
+            <span className="landing-gradient-text">{t("welcome.productLifecycle")}</span>
+            {" "}{t("welcome.management")}
           </h1>
           <p className="landing-hero-desc">
-            PMAS Live gives every company a dedicated workspace — from org structure
-            and planning to Value Stream execution, all in one modern, isolated panel.
+            {t("welcome.heroDesc")}
           </p>
           <div className="landing-hero-actions">
-            <a href="#request" className="btn btn-primary landing-btn-lg">Request access</a>
-            <a href="#login" className="btn landing-btn-lg landing-btn-ghost">Company sign in</a>
+            <a href="#request" className="btn btn-primary landing-btn-lg">{t("welcome.requestAccess")}</a>
+            <a href="#login" className="btn landing-btn-lg landing-btn-ghost">{t("welcome.companySignIn")}</a>
           </div>
         </div>
         <div className="landing-hero-visual" aria-hidden>
           <div className="landing-mock-card landing-mock-card-1">
-            <span className="landing-mock-label">Products</span>
+            <span className="landing-mock-label">{t("welcome.mockProducts")}</span>
             <div className="landing-mock-bar" style={{ width: "72%" }} />
             <div className="landing-mock-bar" style={{ width: "48%" }} />
           </div>
           <div className="landing-mock-card landing-mock-card-2">
-            <span className="landing-mock-label">Planning</span>
+            <span className="landing-mock-label">{t("welcome.mockPlanning")}</span>
             <div className="landing-mock-pills">
-              <span>Project</span>
-              <span>Feature</span>
-              <span>Task</span>
+              <span>{t("dashboard.products")}</span>
+              <span>{t("dashboard.features")}</span>
+              <span>{t("quickActions.createTask")}</span>
             </div>
           </div>
           <div className="landing-mock-card landing-mock-card-3">
-            <span className="landing-mock-label">Organization</span>
+            <span className="landing-mock-label">{t("welcome.mockOrganization")}</span>
             <div className="landing-mock-dots">
               <span /><span /><span />
             </div>
@@ -380,27 +357,27 @@ export default function WelcomePage() {
       </section>
 
       <section id="features" className="landing-section">
-        <h2 className="landing-section-title">Platform Features</h2>
-        <p className="landing-section-sub">Everything you need to manage products and teams at scale</p>
+        <h2 className="landing-section-title">{t("welcome.platformFeatures")}</h2>
+        <p className="landing-section-sub">{t("welcome.featuresSub")}</p>
         <div className="landing-features-grid">
           {FEATURES.map((f) => (
-            <article key={f.title} className="landing-feature-card">
+            <article key={f.key} className="landing-feature-card">
               <span className="landing-feature-icon">{f.icon}</span>
-              <h3>{f.title}</h3>
-              <p>{f.desc}</p>
+              <h3>{t(`welcome.${f.key}`)}</h3>
+              <p>{t(`welcome.${f.key}Desc`)}</p>
             </article>
           ))}
         </div>
       </section>
 
       <section id="how-it-works" className="landing-section landing-section-alt">
-        <h2 className="landing-section-title">How to Get Started</h2>
+        <h2 className="landing-section-title">{t("welcome.getStarted")}</h2>
         <div className="landing-steps">
           {STEPS.map((s) => (
             <div key={s.num} className="landing-step">
               <span className="landing-step-num">{s.num}</span>
-              <h3>{s.title}</h3>
-              <p>{s.desc}</p>
+              <h3>{t(`welcome.${s.key}`)}</h3>
+              <p>{t(`welcome.${s.key}Desc`)}</p>
             </div>
           ))}
         </div>
@@ -409,31 +386,30 @@ export default function WelcomePage() {
       <section id="login" className="landing-section">
         <div className="landing-split">
           <div className="landing-split-info">
-            <h2>Company Admin Sign In</h2>
+            <h2>{t("welcome.companyAdminSignIn")}</h2>
             <p>
-              Company administrators sign in here with their Company ID and admin credentials
-              to manage the workspace, users, and permissions.
+              {t("welcome.companyAdminDesc")}
             </p>
             <ul className="landing-checklist">
-              <li>Your unique Company ID</li>
-              <li>Company admin email and password</li>
-              <li>Full access to users, organization, and settings</li>
+              <li>{t("welcome.checklist1")}</li>
+              <li>{t("welcome.checklist2")}</li>
+              <li>{t("welcome.checklist3")}</li>
             </ul>
             <p className="landing-admin-employee-hint">
-              Employee of a company?{" "}
-              <Link href="/employee/login">Sign in to the employee portal</Link>
+              {t("welcome.employeeHint")}{" "}
+              <Link href="/employee/login">{t("welcome.employeePortal")}</Link>
             </p>
           </div>
           <form onSubmit={handleLogin} className="landing-form-card auth-login-card">
             <header className="auth-login-head">
-              <p className="auth-login-kicker">Company admin</p>
-              <h3>Admin sign in</h3>
-              <p className="auth-login-sub">Use your Company ID and admin credentials.</p>
+              <p className="auth-login-kicker">{t("role.companyAdmin")}</p>
+              <h3>{t("welcome.adminSignIn")}</h3>
+              <p className="auth-login-sub">{t("welcome.useCredentials")}</p>
             </header>
 
             <div className="auth-login-fields">
               <div className="form-group">
-                <label htmlFor="login-slug">Company ID</label>
+                <label htmlFor="login-slug">{t("welcome.companyId")}</label>
                 <input
                   id="login-slug"
                   value={tenantSlug}
@@ -444,7 +420,7 @@ export default function WelcomePage() {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="login-email">Email or username</label>
+                <label htmlFor="login-email">{t("welcome.emailOrUsername")}</label>
                 <input
                   id="login-email"
                   value={loginId}
@@ -455,7 +431,7 @@ export default function WelcomePage() {
               </div>
               <PasswordField
                 id="login-pass"
-                label="Password"
+                label={t("welcome.password")}
                 value={password}
                 onChange={setPassword}
                 required
@@ -471,8 +447,8 @@ export default function WelcomePage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />
                 <span className="auth-remember-text">
-                  <strong>Remember me</strong>
-                  <em>Stay signed in for 30 days</em>
+                  <strong>{t("welcome.rememberMe")}</strong>
+                  <em>{t("welcome.staySignedIn")}</em>
                 </span>
               </label>
               <Link
@@ -483,7 +459,7 @@ export default function WelcomePage() {
                 }`}
                 className="auth-forgot-link"
               >
-                Forgot password?
+                {t("welcome.forgotPassword")}
               </Link>
             </div>
 
