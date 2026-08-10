@@ -80,9 +80,9 @@ function toDateInput(iso?: string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
-function fromDateInput(value: string): string | null {
-  if (!value.trim()) return null;
-  return new Date(`${value}T12:00:00.000Z`).toISOString();
+function fromDateInput(value?: string | null): string | null {
+  if (value == null || !String(value).trim()) return null;
+  return new Date(`${String(value).trim()}T12:00:00.000Z`).toISOString();
 }
 
 export default function PlanningClient() {
@@ -482,15 +482,17 @@ export default function PlanningClient() {
           start_date: toDateInput(r.start_date),
           target_end_date: toDateInput(r.target_end_date),
           goal: r.goal ?? "",
-          description: r.description,
+          description: r.description ?? "",
         })}
         onCreate={async (v) => {
-          const pid = (v.product_id || productId || "").trim();
+          const pid = String(v.product_id || productId || "").trim();
           if (!pid) throw new Error("Select a product");
+          const name = String(v.name ?? "").trim();
+          if (!name) throw new Error("Name is required");
           const body: Record<string, unknown> = {
             product_id: pid,
-            name: v.name,
-            description: v.description || "",
+            name,
+            description: String(v.description ?? ""),
           };
           if (v.code?.trim()) body.code = v.code.trim();
           if (v.goal?.trim()) body.goal = v.goal.trim();

@@ -405,13 +405,13 @@ export function num(v: string, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function optInt(v: string): number | null {
-  if (!v.trim()) return null;
+export function optInt(v?: string | null): number | null {
+  if (v == null || !String(v).trim()) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-export function optStr(v: string): string | null {
-  const t = v.trim();
+export function optStr(v?: string | null): string | null {
+  const t = String(v ?? "").trim();
   return t ? t : null;
 }

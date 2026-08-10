@@ -1,70 +1,120 @@
-# PMAS log observability
+# Grafana + Loki — how to run
 
-## Where things run
+## What you get
 
-| Component | Local dev (`start.bat`) | Production server |
-|-----------|-------------------------|-------------------|
-| App | `:3000` / `:8080` | `http://server.linooxel.com:3185` |
-| **Grafana UI** | `http://127.0.0.1:3186` on your PC | **not on server** |
-| Loki | native on PC | Docker, `127.0.0.1:3100` on server only |
-| Promtail | native on PC (reads `logs/`) | Docker (reads container logs) |
+| Piece | Where | Role |
+|-------|--------|------|
+| Loki | Server Docker (`127.0.0.1:3100`) | Stores logs |
+| Promtail | Server Docker | Sends `api` / `web` / `gateway` logs to Loki |
+| Grafana | **Your PC** `:3186` | UI to search/view logs |
+| SSH tunnel | Your PC (auto) | Connects Grafana → server Loki |
+
+Grafana is **not** on the public internet. You view server logs from your PC.
 
 ---
 
-## Local dev logs
+## One-time setup
+
+### 1) `.deploy.env` (same as update-server)
 
 ```bat
-start.bat
+copy .deploy.env.example .deploy.env
 ```
 
-Grafana: `http://127.0.0.1:3186` — shows logs from local API/Frontend.
+Edit `.deploy.env`:
+
+```
+PMAS_SSH_HOST=server.linooxel.com
+PMAS_SSH_PORT=185
+PMAS_SSH_USER=root
+PMAS_SSH_PASS=your-ssh-password
+PMAS_REMOTE_DIR=/root/termeh/PMASS
+```
+
+### 2) Deploy Loki + Promtail on the server
+
+Push code if needed, then:
+
+```bat
+update-server.bat
+```
+
+In the output you should see something like:
+
+```
+loki    -> ready
+```
+
+and `compose ps` listing `loki` and `promtail`.
 
 ---
 
-## Server logs in local Grafana (recommended)
-
-Yes — Grafana on your PC, logs from the server.
-
-**One-time:** deploy log stack to server (included in `update-server.bat`):
-
-- `docker-compose.logs.yml` adds **Loki + Promtail** on the server
-- Loki is **not public** (`127.0.0.1:3100` on server)
-
-**Each time you want to view server logs:**
+## Every time you want to see logs
 
 ```bat
 view-server-logs.bat
 ```
 
-This will:
+What it does:
 
-1. Open an SSH tunnel: your PC `:3100` → server Loki `:3100` (keep that window open)
-2. Start **Grafana locally** on `http://127.0.0.1:3186`
-3. Grafana queries Loki through the tunnel
+1. Stops any old tunnel/Grafana
+2. Opens SSH tunnel with password from `.deploy.env` (no manual ssh window)
+3. Checks Loki is ready
+4. Hits `/health` so new log lines appear
+5. Starts Grafana on your PC
+6. Opens browser → `http://127.0.0.1:3186`
 
-LogQL examples:
+**Login:** `admin` / `admin`  
+(or `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` in `.env`)
+
+### In Grafana
+
+1. **Dashboards → PMAS → PMAS Logs**
+2. Or **Explore** → datasource **Loki** → query:
 
 ```logql
 {compose_service="api"} |= "http_request"
-{compose_service="gateway"} | json | status >= 400
 ```
 
-Stop: `stop-server-logs.bat` + close the SSH tunnel window.
+```logql
+{compose_service="gateway"}
+```
 
-Manual tunnel (if needed):
+```logql
+{compose_service="web"}
+```
 
-```bash
-ssh -p 185 -L 3100:127.0.0.1:3100 root@server.linooxel.com
+```logql
+{compose_service="api"} |~ "(?i)error"
 ```
 
 ---
 
-## Files
+## Stop
 
-| Path | Purpose |
-|------|---------|
-| `view-server-logs.bat` | Local Grafana + SSH tunnel to server Loki |
-| `stop-server-logs.bat` | Stop local Grafana |
-| `docker-compose.logs.yml` | Server Loki + Promtail |
-| `deploy/observability/start-local.ps1` | Full local stack (dev) |
-| `deploy/observability/start-grafana-only.ps1` | Grafana only (server logs mode) |
+```bat
+stop-server-logs.bat
+```
+
+Kills tunnel + Grafana + ports `3100` / `3186`.
+
+---
+
+## Local app logs (not server)
+
+If you develop with `start.bat`, Grafana also starts locally and shows `logs/api.log` + `logs/web.log` (no SSH).
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| Loki not reachable | Run `update-server.bat` once; check `tools\observability\tunnel.log` |
+| No labels / empty Explore | Wait 30s after deploy; open the app URL to generate traffic; re-run `view-server-logs.bat` |
+| Wrong password | Fix `PMAS_SSH_PASS` in `.deploy.env` |
+| Port busy | `stop-server-logs.bat` then retry |
+| Dashboard missing | Grafana → Explore still works; restart `view-server-logs.bat` |
+
+App URL: http://server.linooxel.com:3185  
+Health: http://server.linooxel.com:3185/health

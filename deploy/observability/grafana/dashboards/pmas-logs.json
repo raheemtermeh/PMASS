@@ -2,40 +2,46 @@
   "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "panels": [
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
       "id": 1,
       "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (compose_service) (count_over_time({compose_service=~\"api|web|gateway\"} [1m]))",
+          "expr": "sum by (compose_service) (count_over_time({compose_service=~\"$service\"} [1m]))",
           "legendFormat": "{{compose_service}}",
           "refId": "A"
         }
       ],
-      "title": "Log rate by service",
+      "title": "Log rate / minute",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 7 },
       "id": 2,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
-        "showLabels": false,
+        "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
@@ -43,23 +49,23 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{compose_service=\"api\"} |~ \"(?i)error|ERROR|level\\\"?:\\\"?ERROR\"",
+          "expr": "{compose_service=\"api\"} |~ \"(?i)error|\\\"status\\\":5\"",
           "refId": "A"
         }
       ],
-      "title": "API errors",
+      "title": "API errors / 5xx",
       "type": "logs"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 7 },
       "id": 3,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
-        "showLabels": false,
+        "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
@@ -67,16 +73,64 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{compose_service=\"api\"} | json | status >= 500",
+          "expr": "{compose_service=\"api\"} |= \"http_request\"",
           "refId": "A"
         }
       ],
-      "title": "API HTTP 5xx",
+      "title": "API requests (http_request)",
       "type": "logs"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 5,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{compose_service=\"gateway\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway (nginx)",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 6,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{compose_service=\"web\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Web (Next.js)",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 25 },
       "id": 4,
       "options": {
         "dedupStrategy": "none",
@@ -91,22 +145,40 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{compose_service=~\"api|web|gateway\"}",
+          "expr": "{compose_service=~\"$service\"}",
           "refId": "A"
         }
       ],
-      "title": "Recent logs (api / web / gateway)",
+      "title": "All selected services",
       "type": "logs"
     }
   ],
-  "refresh": "10s",
+  "refresh": "5s",
   "schemaVersion": 39,
   "tags": ["pmas", "logs"],
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values(compose_service)",
+        "includeAll": true,
+        "allValue": "api|web|gateway|loki|promtail",
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": "label_values(compose_service)",
+        "refresh": 2,
+        "regex": "",
+        "type": "query"
+      }
+    ]
+  },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
   "title": "PMAS Logs",
   "uid": "pmas-logs",
-  "version": 1
+  "version": 2
 }

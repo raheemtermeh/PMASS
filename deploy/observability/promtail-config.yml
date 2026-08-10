@@ -15,11 +15,15 @@ scrape_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
     relabel_configs:
+      # Keep only Compose containers (project name set)
       - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
         regex: ".+"
         action: keep
+      # Prefer PMAS project if label present; still keep others with compose project
       - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: compose_service
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: compose_project
       - source_labels: ["__meta_docker_container_name"]
         regex: "/?(.*)"
         target_label: container
@@ -29,3 +33,9 @@ scrape_configs:
         regex: "/?([a-f0-9]{64})"
         source_labels: ["__meta_docker_container_id"]
         target_label: __path__
+    pipeline_stages:
+      # Unwrap Docker JSON log wrapper → raw line
+      - docker: {}
+      # Drop empty lines
+      - drop:
+          expression: "^\\s*$"
