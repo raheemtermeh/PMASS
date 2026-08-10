@@ -25,7 +25,11 @@ fi
 
 compose() {
   # shellcheck disable=SC2086
-  $COMPOSE_BIN "$@"
+  if [[ -f docker-compose.logs.yml ]]; then
+    $COMPOSE_BIN -f docker-compose.yml -f docker-compose.logs.yml "$@"
+  else
+    $COMPOSE_BIN "$@"
+  fi
 }
 
 ts="$(date -u +%Y%m%d-%H%M%S)"
@@ -106,21 +110,20 @@ sha="$(git rev-parse --short HEAD)"
 echo "      HEAD = $(git log -1 --oneline)"
 
 echo
-echo "[2/6] free dangling docker layers + remove old observability orphans"
+echo "[2/6] free dangling docker layers (safe prune)"
 docker image prune -f >/dev/null 2>&1 || true
-# Old Loki/Grafana stack (removed from compose) — drop leftovers if present
-for c in $($COMPOSE_BIN ps -a --services 2>/dev/null | grep -E '^(loki|promtail|grafana)$' || true); do
-  compose stop "$c" >/dev/null 2>&1 || true
-  compose rm -f "$c" >/dev/null 2>&1 || true
-done
-docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E 'loki|promtail|grafana' | while read -r name; do
+# Drop legacy standalone grafana container if it exists (Grafana is local-only now)
+docker ps -a --format '{{.Names}}' 2>/dev/null | grep -i grafana | while read -r name; do
   case "$name" in
     *pmas*|*pmass*|*termeh*) docker rm -f "$name" >/dev/null 2>&1 || true ;;
   esac
 done || true
 
 echo
-echo "[3/6] build Docker images"
+echo "[3/6] pull log stack images + build app images"
+if [[ -f docker-compose.logs.yml ]]; then
+  compose pull loki promtail || true
+fi
 compose build
 
 echo
@@ -131,17 +134,19 @@ docker tag termeh-pmas-web:latest "termeh-pmas-web:${ts}"
 docker tag termeh-pmas-web:latest "termeh-pmas-web:${sha}"
 
 echo
-echo "[5/6] restart stack (api web gateway)"
+echo "[5/6] restart stack (api web gateway + loki promtail if configured)"
 compose up -d --remove-orphans
 
 echo
 echo "[6/6] health check (retry up to ~2 min)"
 health=""
 home_code="000"
+loki_ready=""
 ok=0
 for i in $(seq 1 24); do
   health="$(curl -sS -m 10 http://127.0.0.1:3185/health 2>/dev/null || true)"
   home_code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3185/ 2>/dev/null || true)"
+  loki_ready="$(curl -sS -m 5 http://127.0.0.1:3100/ready 2>/dev/null || true)"
   if [[ "$health" == *UP* && "$home_code" == "200" ]]; then
     ok=1
     break
@@ -152,6 +157,9 @@ done
 
 echo "      /health -> ${health:-FAILED}"
 echo "      /       -> HTTP ${home_code:-000}"
+if [[ -f docker-compose.logs.yml ]]; then
+  echo "      loki    -> ${loki_ready:-not running} (127.0.0.1:3100 on server — use view-server-logs.bat from PC)"
+fi
 compose ps || true
 
 echo

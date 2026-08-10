@@ -47,7 +47,10 @@ REPO_URL = "https://github.com/raheemtermeh/PMASS.git"
 UPLOAD_FILES = (
     ("deploy/update.sh", "deploy/update.sh", True),
     ("docker-compose.yml", "docker-compose.yml", True),
+    ("docker-compose.logs.yml", "docker-compose.logs.yml", True),
     ("deploy/nginx.conf", "deploy/nginx.conf", True),
+    ("deploy/observability/loki-config.yml", "deploy/observability/loki-config.yml", True),
+    ("deploy/observability/promtail-config.yml", "deploy/observability/promtail-config.yml", True),
 )
 
 
@@ -180,7 +183,7 @@ def main() -> int:
     print("========================================")
     print("Note: application code comes from GitHub.")
     print("      Push your commits before updating if you need new code.")
-    print("      docker-compose.yml + nginx.conf + update.sh are uploaded from this PC.")
+    print("      docker-compose.yml, docker-compose.logs.yml, nginx.conf, update.sh uploaded from this PC.")
 
     password = load_password()
     if not password:
@@ -254,5 +257,8 @@ if __name__ == "__main__":
         print(f"\n[ERROR] {exc}")
         code = 1
     if sys.stdin.isatty():
-        input("\nPress Enter to close...")
+        try:
+            input("\nPress Enter to close...")
+        except EOFError:
+            pass
     raise SystemExit(code)

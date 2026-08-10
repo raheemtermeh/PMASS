@@ -1,55 +1,70 @@
-# PMAS log observability (native Loki + Grafana)
+# PMAS log observability
 
-Local log monitoring runs as **native Windows processes** (no Docker).
+## Where things run
 
-`start.bat` starts:
+| Component | Local dev (`start.bat`) | Production server |
+|-----------|-------------------------|-------------------|
+| App | `:3000` / `:8080` | `http://server.linooxel.com:3185` |
+| **Grafana UI** | `http://127.0.0.1:3186` on your PC | **not on server** |
+| Loki | native on PC | Docker, `127.0.0.1:3100` on server only |
+| Promtail | native on PC (reads `logs/`) | Docker (reads container logs) |
 
-1. Loki + Promtail + Grafana (binaries under `tools/observability/`)
-2. API (`go run`) → tee to `logs/api.log`
-3. Frontend (`npm run dev`) → tee to `logs/web.log`
+---
 
-## Start
+## Local dev logs
 
 ```bat
 start.bat
 ```
 
-- App: `http://localhost:3000`
-- API: `http://localhost:8080`
-- Grafana: `http://127.0.0.1:3186` (default `admin` / `admin`, or `GRAFANA_ADMIN_*` in `.env`)
+Grafana: `http://127.0.0.1:3186` — shows logs from local API/Frontend.
 
-First run downloads Loki / Promtail / Grafana into `tools/observability/` (~150MB, cached afterward).
+---
 
-## Stop
+## Server logs in local Grafana (recommended)
+
+Yes — Grafana on your PC, logs from the server.
+
+**One-time:** deploy log stack to server (included in `update-server.bat`):
+
+- `docker-compose.logs.yml` adds **Loki + Promtail** on the server
+- Loki is **not public** (`127.0.0.1:3100` on server)
+
+**Each time you want to view server logs:**
 
 ```bat
-stop-observability.bat
+view-server-logs.bat
 ```
 
-Close the API / Frontend terminal windows separately.
+This will:
 
-## Sample LogQL
+1. Open an SSH tunnel: your PC `:3100` → server Loki `:3100` (keep that window open)
+2. Start **Grafana locally** on `http://127.0.0.1:3186`
+3. Grafana queries Loki through the tunnel
+
+LogQL examples:
 
 ```logql
 {compose_service="api"} |= "http_request"
+{compose_service="gateway"} | json | status >= 400
 ```
 
-```logql
-{compose_service="api"} |= "ERROR"
+Stop: `stop-server-logs.bat` + close the SSH tunnel window.
+
+Manual tunnel (if needed):
+
+```bash
+ssh -p 185 -L 3100:127.0.0.1:3100 root@server.linooxel.com
 ```
 
-```logql
-{compose_service="web"}
-```
+---
 
-## Layout
+## Files
 
 | Path | Purpose |
 |------|---------|
-| `deploy/observability/start-local.ps1` | download + start native stack |
-| `deploy/observability/stop-local.ps1` | stop native stack |
-| `deploy/observability/loki-local-config.yml` | Loki config for Windows |
-| `tools/observability/` | binaries, data, pid file (gitignored) |
-| `logs/` | API / web log files (gitignored) |
-
-Server Docker Compose (`api` / `web` / `gateway`) is unrelated to this log UI.
+| `view-server-logs.bat` | Local Grafana + SSH tunnel to server Loki |
+| `stop-server-logs.bat` | Stop local Grafana |
+| `docker-compose.logs.yml` | Server Loki + Promtail |
+| `deploy/observability/start-local.ps1` | Full local stack (dev) |
+| `deploy/observability/start-grafana-only.ps1` | Grafana only (server logs mode) |
