@@ -127,3 +127,26 @@ type ProvisionTenantResponse struct {
 	Tenant Tenant                 `json:"tenant"`
 	Admin  AppUserWithPermissions `json:"admin"`
 }
+
+// UpdateTenantRequest is used by platform admins to rename or activate/deactivate a company.
+type UpdateTenantRequest struct {
+	Name     *string `json:"name,omitempty"`
+	IsActive *bool   `json:"is_active,omitempty"`
+}
+
+// TenantDetail is the platform-admin detail view for one company workspace.
+type TenantDetail struct {
+	Tenant
+	CompanyID     *string `json:"company_id,omitempty"`
+	CompanyStatus string  `json:"company_status,omitempty"`
+	LogoURL       string  `json:"logo_url,omitempty"`
+	Language      string  `json:"language,omitempty"`
+	Timezone      string  `json:"timezone,omitempty"`
+	UserCount     int     `json:"user_count"`
+	ActiveUsers   int     `json:"active_users"`
+	EmployeeCount int     `json:"employee_count"`
+	ProductCount  int     `json:"product_count"`
+	ProjectCount  int     `json:"project_count"`
+	AdminEmail    string  `json:"admin_email,omitempty"`
+	AdminName     string  `json:"admin_name,omitempty"`
+}
