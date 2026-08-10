@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -16,37 +15,40 @@ import (
 	"PMAS/internal/database"
 	httpapi "PMAS/internal/delivery/http"
 	"PMAS/internal/handlers"
+	"PMAS/internal/logging"
 	"PMAS/internal/middleware"
 )
 
 func main() {
-	log.Println("[Bootstrap] Starting PMAS API backend service...")
 	config.LoadDotEnv(".env")
-
 	cfg := config.Load()
+	logging.Init(cfg.AppEnv)
+
+	logging.Info("bootstrap_start", "env", cfg.AppEnv, "port", cfg.ServerPort)
+
 	auth.ConfigureJWTSecret(cfg.JWTSecret)
 	if err := auth.InitEncryption(cfg.EncryptionKey); err != nil {
-		log.Fatalf("[Bootstrap] Encryption init failed: %v\n", err)
+		logging.Fatal("encryption_init_failed", "error", err.Error())
 	}
-	log.Printf("[Bootstrap] Configuration loaded (env=%s). Binding to port: %s\n", cfg.AppEnv, cfg.ServerPort)
+	logging.Info("config_loaded", "env", cfg.AppEnv, "port", cfg.ServerPort)
 
 	db, err := sql.Open("postgres", cfg.SupabaseDBURL)
 	if err != nil {
-		log.Fatalf("[Bootstrap] Fatal error: failed to initialize SQL driver: %v\n", err)
+		logging.Fatal("sql_driver_init_failed", "error", err.Error())
 	}
 
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	log.Println("[Bootstrap] Connecting to database...")
+	logging.Info("database_connecting")
 	if err := db.Ping(); err != nil {
-		log.Fatalf("[Bootstrap] Database unreachable: %v\nSet SUPABASE_DB_URL to your Supabase pooler session string (port 5432).\n", err)
+		logging.Fatal("database_unreachable", "error", err.Error())
 	}
-	log.Println("[Bootstrap] Database connection established.")
+	logging.Info("database_connected")
 
 	if err := database.EnsureSchema(db); err != nil {
-		log.Fatalf("[Bootstrap] Schema migration failed: %v\n", err)
+		logging.Fatal("schema_migration_failed", "error", err.Error())
 	}
 	defer db.Close()
 
@@ -56,9 +58,9 @@ func main() {
 		RPOrigins:     cfg.WebAuthnRPOrigins,
 	})
 	if err != nil {
-		log.Fatalf("[Bootstrap] WebAuthn init failed: %v\n", err)
+		logging.Fatal("webauthn_init_failed", "error", err.Error())
 	}
-	log.Printf("[Bootstrap] WebAuthn ready (rpID=%s origins=%v)\n", cfg.WebAuthnRPID, cfg.WebAuthnRPOrigins)
+	logging.Info("webauthn_ready", "rp_id", cfg.WebAuthnRPID, "origins", cfg.WebAuthnRPOrigins)
 
 	// Until SMTP exists, non-production forgot-password may return the reset token to the UI.
 	h := handlers.NewHandler(db, wa, cfg.AppEnv != "production")
@@ -157,9 +159,10 @@ func main() {
 		fmt.Fprintf(w, `{"status":"UP"}`)
 	})
 
-	handler := middleware.WithSecurity(middleware.SecurityOptions{
+	// Outer request log wraps security so 403/429 from security are still recorded.
+	handler := middleware.WithRequestLog(middleware.WithSecurity(middleware.SecurityOptions{
 		AllowedOrigins: cfg.CORSOrigins,
-	}, mux)
+	}, mux))
 
 	serverAddr := ":" + cfg.ServerPort
 	server := &http.Server{
@@ -172,8 +175,8 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	log.Printf("[Bootstrap] Service online. Listening on http://localhost%s\n", serverAddr)
+	logging.Info("service_online", "addr", "http://localhost"+serverAddr)
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("[Bootstrap] Service halted: %v\n", err)
+		logging.Fatal("service_halted", "error", err.Error())
 	}
 }

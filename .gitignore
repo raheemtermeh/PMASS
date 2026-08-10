@@ -4,6 +4,8 @@ pmas-api.exe
 *.exe
 api-err.log
 api-out.log
+logs/
+tools/observability/
 node_modules
 .DS_Store
 .agents/

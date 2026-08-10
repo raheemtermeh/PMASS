@@ -1,6 +1,7 @@
 version: "3"
 
 # Host port 3185 is reserved for this stack (avoids 80/443/3000/8011/etc).
+# Log monitoring (Loki/Grafana) is native via start.bat / deploy/observability — not Docker.
 services:
   api:
     build:
