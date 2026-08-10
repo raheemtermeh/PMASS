@@ -14,10 +14,19 @@ Password / SSH (first match wins):
 from __future__ import annotations
 
 import getpass
+import io
 import os
 import sys
 import time
 from pathlib import Path
+
+# Next.js / Docker build logs may contain Unicode (e.g. ▲). Windows cp1252 crashes otherwise.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+else:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 try:
     import paramiko
@@ -244,5 +253,6 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"\n[ERROR] {exc}")
         code = 1
-    input("\nPress Enter to close...")
+    if sys.stdin.isatty():
+        input("\nPress Enter to close...")
     raise SystemExit(code)
