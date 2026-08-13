@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, type FieldDef } from "@/components/ResourceManager";
-import { StatusKanbanBoard } from "@/components/visual/StatusKanbanBoard";
 import { httpClient } from "@/core/api/http-client";
 import {
   HealthCell,
@@ -50,7 +48,6 @@ const STATUS_OPTIONS = [
 
 export default function ProductsPage() {
   const qc = useQueryClient();
-  const router = useRouter();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -176,7 +173,6 @@ export default function ProductsPage() {
     ];
   }, [visibleProducts, summaryById]);
 
-  const boardProducts = products.filter((p) => p.status !== "ARCHIVED");
   const filtersActive =
     Boolean(search.trim()) ||
     Boolean(statusFilter || ownerFilter || managerFilter || categoryFilter || priorityFilter);
@@ -327,32 +323,6 @@ export default function ProductsPage() {
   return (
     <div className="page-stack products-page">
       {isLoading ? null : <ProductPulseStrip metrics={pulseMetrics} />}
-
-      {boardProducts.length > 0 ? (
-        <StatusKanbanBoard
-          layoutKey="products-board"
-          title="Products · visual"
-          hint="Drag products across lifecycle lanes · status saved once on drop"
-          columns={[
-            { id: "DRAFT", label: "Draft" },
-            { id: "READY", label: "Ready" },
-            { id: "PLANNING", label: "Planning" },
-            { id: "ACTIVE", label: "Active" },
-            { id: "ON_HOLD", label: "On hold" },
-            { id: "COMPLETED", label: "Completed" },
-          ]}
-          cards={boardProducts.map((p) => ({
-            id: p.id,
-            title: p.name,
-            status: p.status,
-            subtitle: summaryById.get(p.id)?.current_stage || p.code || p.status,
-          }))}
-          onStatusChange={async (id, status) => {
-            await updateMut.mutateAsync({ id, body: { status } });
-          }}
-          onOpen={(id) => router.push(`/products/${id}`)}
-        />
-      ) : null}
 
       <ResourceManager
         title="Products"

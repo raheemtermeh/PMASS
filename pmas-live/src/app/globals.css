@@ -2602,6 +2602,9 @@ a.auth-forgot-link {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: capitalize;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  border: 1px solid var(--border-outline-variant-60);
 }
 
 .status-healthy { background: var(--color-success-glow); color: var(--color-success); }
@@ -8117,23 +8120,30 @@ a .cc-kpi:hover {
   margin-bottom: 0;
   border: 1px solid var(--border-outline-variant-60);
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-surface-card) 70%, transparent);
 }
 
 .pl-toolbar select {
   padding: 0.5rem 0.65rem;
   min-width: 8.5rem;
   border-radius: 0.55rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background-color: rgba(6, 9, 16, 0.85);
+  border: 1px solid var(--border-outline);
+  background-color: var(--surface-input);
   color: var(--text-on-surface);
   font-size: 0.8125rem;
+  color-scheme: inherit;
+}
+
+.pl-toolbar select option {
+  background-color: var(--select-option-bg);
+  color: var(--select-option-fg);
 }
 
 .pl-toolbar select:focus {
   outline: none;
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+  border-color: var(--color-primary);
+  background-color: var(--surface-input-focus);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
 .pl-sort {
@@ -8152,16 +8162,23 @@ a .cc-kpi:hover {
   width: 100%;
   padding: 0.55rem 0.75rem 0.55rem 1.95rem;
   border-radius: 0.55rem;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background-color: rgba(6, 9, 16, 0.85);
+  border: 1px solid var(--border-outline);
+  background-color: var(--surface-input);
   color: var(--text-on-surface);
   font-size: 0.8125rem;
+  color-scheme: inherit;
+}
+
+.pl-search input::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
 }
 
 .pl-search input:focus {
   outline: none;
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+  border-color: var(--color-primary);
+  background-color: var(--surface-input-focus);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
 .pl-search-icon {
@@ -8169,7 +8186,7 @@ a .cc-kpi:hover {
   left: 0.7rem;
   width: 0.7rem;
   height: 0.7rem;
-  border: 1.5px solid #94a3b8;
+  border: 1.5px solid var(--text-dim);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -8179,7 +8196,7 @@ a .cc-kpi:hover {
   position: absolute;
   width: 0.32rem;
   height: 1.5px;
-  background: #94a3b8;
+  background: var(--text-dim);
   right: -0.26rem;
   bottom: -0.1rem;
   transform: rotate(45deg);
@@ -8214,7 +8231,7 @@ a .cc-kpi:hover {
 }
 
 .pl-name-link:hover {
-  color: #a5b4fc;
+  color: var(--link-accent);
 }
 
 .pl-name-code {
@@ -8231,7 +8248,7 @@ a .cc-kpi:hover {
   font-size: 0.78rem;
   border: 1px solid rgba(34, 211, 238, 0.35);
   background: rgba(6, 182, 212, 0.12);
-  color: #cffafe;
+  color: #a5f3fc;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -8275,7 +8292,8 @@ a .cc-kpi:hover {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8125rem;
-  color: #fda4af;
+  color: #fb7185;
+  font-weight: 550;
 }
 
 .pl-stage-missing::before {
@@ -8312,10 +8330,10 @@ a .cc-kpi:hover {
   border: 1px solid currentColor;
 }
 
-.pl-health-healthy { color: #6ee7b7; }
-.pl-health-warning { color: #fcd34d; }
-.pl-health-critical { color: #fda4af; }
-.pl-health-idle { color: var(--text-dim); }
+.pl-health-healthy { color: #34d399; font-weight: 600; }
+.pl-health-warning { color: #fbbf24; font-weight: 600; }
+.pl-health-critical { color: #fb7185; font-weight: 600; }
+.pl-health-idle { color: var(--text-dim); font-weight: 550; }
 
 /* Only products that need attention pulse — a calm list stays calm. */
 .pl-health-critical .pl-health-dot::after {
@@ -8434,7 +8452,7 @@ a .cc-kpi:hover {
   padding: 0.85rem 1rem;
   border-radius: 0.85rem;
   border: 1px solid var(--border-outline-variant-60);
-  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  background: var(--bg-surface-card);
   overflow: hidden;
   animation: pl-card-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -8467,11 +8485,11 @@ a .cc-kpi:hover {
   animation: pl-glow-drift 6s ease-in-out infinite;
 }
 
-.pl-pulse-good .pl-pulse-value { color: #6ee7b7; }
+.pl-pulse-good .pl-pulse-value { color: #34d399; }
 .pl-pulse-good .pl-pulse-glow { background: rgba(34, 197, 94, 0.45); }
-.pl-pulse-warn .pl-pulse-value { color: #fcd34d; }
+.pl-pulse-warn .pl-pulse-value { color: #fbbf24; }
 .pl-pulse-warn .pl-pulse-glow { background: rgba(250, 204, 21, 0.35); }
-.pl-pulse-bad .pl-pulse-value { color: #fda4af; }
+.pl-pulse-bad .pl-pulse-value { color: #fb7185; }
 .pl-pulse-bad .pl-pulse-glow { background: rgba(244, 63, 94, 0.45); }
 
 .pl-pulse-bad::after {
@@ -10006,6 +10024,71 @@ a .cc-kpi:hover {
 
 [data-theme="light"] .viz-card-meta {
   fill: #64748b;
+}
+
+/* Products list — light theme contrast fixes */
+[data-theme="light"] .pl-toolbar {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .pl-toolbar select,
+[data-theme="light"] .pl-search input {
+  background-color: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  color: #0f172a;
+}
+
+[data-theme="light"] .pl-search input::placeholder {
+  color: #64748b;
+}
+
+[data-theme="light"] .pl-stage-chip {
+  color: #0e7490;
+  background: rgba(14, 116, 144, 0.1);
+  border-color: rgba(14, 116, 144, 0.28);
+}
+
+[data-theme="light"] .pl-stage-flow {
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(14, 116, 144, 0.22) 45%,
+    transparent 70%
+  );
+}
+
+[data-theme="light"] .pl-stage-missing {
+  color: #be123c;
+}
+
+[data-theme="light"] .pl-health-healthy { color: #047857; }
+[data-theme="light"] .pl-health-warning { color: #b45309; }
+[data-theme="light"] .pl-health-critical { color: #be123c; }
+
+[data-theme="light"] .pl-pulse-card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .pl-pulse-good .pl-pulse-value { color: #047857; }
+[data-theme="light"] .pl-pulse-warn .pl-pulse-value { color: #b45309; }
+[data-theme="light"] .pl-pulse-bad .pl-pulse-value { color: #be123c; }
+
+[data-theme="light"] .pl-progress-bar {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .products-page .data-table tbody tr:hover {
+  background: rgba(3, 105, 161, 0.06);
+}
+
+[data-theme="light"] .products-page .status-pill {
+  color: #334155;
+  background: #f1f5f9;
+  border-color: rgba(15, 23, 42, 0.12);
 }
 
 [data-theme="light"] .cc-flow-toolbar {

@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { ResourceManager, optInt } from "@/components/ResourceManager";
-import { StatusKanbanBoard } from "@/components/visual/StatusKanbanBoard";
 import { httpClient } from "@/core/api/http-client";
 import type {
   ChecklistItem,
@@ -332,37 +331,6 @@ export default function PlanningClient() {
         </div>
       </section>
 
-      {projects.length > 0 ? (
-        <StatusKanbanBoard
-          layoutKey={`planning-projects:${productId || "all"}`}
-          title="Projects · visual"
-          hint="Drag a project into another lane to update status · one API call per drop"
-          columns={[
-            { id: "BACKLOG", label: "Backlog" },
-            { id: "ACTIVE", label: "Active" },
-            { id: "IN_PROGRESS", label: "In progress" },
-            { id: "BLOCKED", label: "Blocked" },
-            { id: "COMPLETED", label: "Completed" },
-            { id: "PLANNING", label: "Planning" },
-            { id: "ON_HOLD", label: "On hold" },
-          ]}
-          cards={projects.map((p) => ({
-            id: p.id,
-            title: p.name,
-            status: p.status,
-            subtitle: p.code || p.status,
-          }))}
-          onStatusChange={async (id, status) => {
-            await updateProject.mutateAsync({ id, body: { status } });
-          }}
-          onOpen={(id) => {
-            setProjectId(id);
-            setFeatureId("");
-            setSelectedTaskId("");
-          }}
-        />
-      ) : null}
-
       <ResourceManager
         title="Projects"
         description="Select a product, then create a project with New project…"
@@ -553,36 +521,6 @@ export default function PlanningClient() {
       />
 
       {projectId ? (
-        <>
-        {features.length > 0 ? (
-          <StatusKanbanBoard
-            layoutKey={`planning-features:${projectId}`}
-            title="Features · visual"
-            hint="Drag features across lanes · status saved once on drop"
-            columns={[
-              { id: "BACKLOG", label: "Backlog" },
-              { id: "ACTIVE", label: "Active" },
-              { id: "IN_PROGRESS", label: "In progress" },
-              { id: "BLOCKED", label: "Blocked" },
-              { id: "COMPLETED", label: "Completed" },
-              { id: "REVIEW", label: "Review" },
-              { id: "DONE", label: "Done" },
-            ]}
-            cards={features.map((f) => ({
-              id: f.id,
-              title: f.title,
-              status: f.status,
-              subtitle: f.priority,
-            }))}
-            onStatusChange={async (id, status) => {
-              await changeFeatureStatus.mutateAsync({ id, status });
-            }}
-            onOpen={(id) => {
-              setFeatureId(id);
-              setSelectedTaskId("");
-            }}
-          />
-        ) : null}
         <ResourceManager
           title="Features"
           description="Type a name and press Enter — details can be filled later with Edit."
@@ -760,7 +698,6 @@ export default function PlanningClient() {
             </>
           )}
         />
-        </>
       ) : null}
 
       {featureId ? (
@@ -831,31 +768,6 @@ export default function PlanningClient() {
               </button>
             ))}
           </div>
-
-          {filteredTasks.length > 0 ? (
-            <StatusKanbanBoard
-              layoutKey={`planning-tasks:${featureId}`}
-              title="Tasks · visual"
-              hint="Drag tasks across lanes · status saved once on drop"
-              columns={[
-                { id: "BACKLOG", label: "Todo" },
-                { id: "IN_PROGRESS", label: "In progress" },
-                { id: "BLOCKED", label: "Blocked" },
-                { id: "COMPLETED", label: "Done" },
-                { id: "ON_HOLD", label: "On hold" },
-              ]}
-              cards={filteredTasks.map((t) => ({
-                id: t.id,
-                title: t.title,
-                status: t.status,
-                subtitle: t.priority,
-              }))}
-              onStatusChange={async (id, status) => {
-                await updateTask.mutateAsync({ id, body: { status } });
-              }}
-              onOpen={(id) => setSelectedTaskId(id)}
-            />
-          ) : null}
 
           <ResourceManager
             title="Tasks"
