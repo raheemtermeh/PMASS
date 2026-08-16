@@ -13,15 +13,54 @@ if [[ "${1:-}" == "--skip-git" ]]; then
   SKIP_GIT=1
 fi
 
+COMPOSE_V2_VERSION="${COMPOSE_V2_VERSION:-2.29.7}"
+COMPOSE_PLUGIN_DIR="/usr/local/lib/docker/cli-plugins"
+
+detect_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_BIN="docker compose"
+    return 0
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    local standalone_version
+    standalone_version="$(docker-compose version --short 2>/dev/null | tr -d 'v' || true)"
+    case "$standalone_version" in
+      2.*) COMPOSE_BIN="docker-compose"; return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+install_compose_v2() {
+  local arch url tmp
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="aarch64" ;;
+    *) echo "[ERROR] unsupported arch for Compose v2: $(uname -m)"; return 1 ;;
+  esac
+  url="https://github.com/docker/compose/releases/download/v${COMPOSE_V2_VERSION}/docker-compose-linux-${arch}"
+  tmp="$(mktemp)"
+  mkdir -p "$COMPOSE_PLUGIN_DIR"
+  if ! curl -fsSL --retry 3 --retry-delay 2 -m 300 "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    echo "[ERROR] download failed: $url"
+    return 1
+  fi
+  chmod 0755 "$tmp"
+  mv -f "$tmp" "$COMPOSE_PLUGIN_DIR/docker-compose"
+  docker compose version >/dev/null 2>&1
+}
+
 COMPOSE_BIN=""
-if command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_BIN="docker-compose"
-elif docker compose version >/dev/null 2>&1; then
-  COMPOSE_BIN="docker compose"
-else
-  echo "[ERROR] docker-compose / 'docker compose' not found"
-  exit 1
+if ! detect_compose; then
+  echo "[INFO] Docker Compose v2 not found (legacy v1 cannot read this stack) — installing v${COMPOSE_V2_VERSION}"
+  if ! install_compose_v2 || ! detect_compose; then
+    echo "[ERROR] could not provide Docker Compose v2."
+    echo "        Install manually: https://docs.docker.com/compose/install/linux/"
+    exit 1
+  fi
 fi
+echo "[INFO] compose: $($COMPOSE_BIN version --short 2>/dev/null || echo unknown) via '$COMPOSE_BIN'"
 
 compose() {
   # shellcheck disable=SC2086
@@ -30,6 +69,22 @@ compose() {
   else
     $COMPOSE_BIN "$@"
   fi
+}
+
+# Compose v1 named containers "<project>_<service>_<n>"; v2 uses "<project>-<service>-<n>".
+# Leftover v1 containers keep holding port 3185, so drop them once after the switch.
+remove_legacy_v1_containers() {
+  local project pattern names
+  project="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
+  pattern="^${project}_(db|api|web|gateway|loki|promtail)_[0-9]+$"
+  names="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "$pattern" || true)"
+  [[ -z "$names" ]] && return 0
+  echo "      removing legacy Compose v1 containers:"
+  while read -r name; do
+    [[ -z "$name" ]] && continue
+    echo "        - $name"
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  done <<< "$names"
 }
 
 ts="$(date -u +%Y%m%d-%H%M%S)"
@@ -128,6 +183,7 @@ echo "      HEAD = $(git log -1 --oneline)"
 echo
 echo "[2/6] free dangling docker layers (safe prune)"
 docker image prune -f >/dev/null 2>&1 || true
+remove_legacy_v1_containers
 # Drop legacy standalone grafana container if it exists (Grafana is local-only now)
 docker ps -a --format '{{.Names}}' 2>/dev/null | grep -i grafana | while read -r name; do
   case "$name" in
@@ -159,9 +215,15 @@ health=""
 home_code="000"
 loki_ready=""
 db_health=""
+db_cid=""
 ok=0
 for i in $(seq 1 24); do
-  db_health="$(compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | awk '$1=="db"{print $2; exit}' || true)"
+  db_cid="$(compose ps -q db 2>/dev/null | head -n1 || true)"
+  if [[ -n "$db_cid" ]]; then
+    db_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$db_cid" 2>/dev/null || true)"
+  else
+    db_health=""
+  fi
   health="$(curl -sS -m 10 http://127.0.0.1:3185/health 2>/dev/null || true)"
   home_code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3185/ 2>/dev/null || true)"
   loki_ready="$(curl -sS -m 5 http://127.0.0.1:3100/ready 2>/dev/null || true)"

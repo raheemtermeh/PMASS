@@ -2,8 +2,6 @@
 # Deploy: docker compose -f docker-compose.yml -f docker-compose.logs.yml up -d
 # Loki is localhost-only on the server — view from your PC via SSH tunnel + view-server-logs.bat
 
-version: "3"
-
 services:
   loki:
     image: grafana/loki:3.0.0

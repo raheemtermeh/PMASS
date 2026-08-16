@@ -12,3 +12,5 @@ node_modules
 .agents/
 skills-lock.json
 .deploy.env
+__pycache__/
+*.pyc
