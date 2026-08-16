@@ -35,6 +35,12 @@ if not exist "deploy\nginx.conf" (
   pause
   exit /b 1
 )
+if not exist ".env" (
+  echo  [ERROR] .env not found.
+  echo         The updater securely sends this file to the server without committing it.
+  pause
+  exit /b 1
+)
 
 if not exist ".deploy.env" (
   echo  [WARN] .deploy.env not found.
@@ -79,8 +85,7 @@ if not "%ERR%"=="0" (
   echo  Check the log above. Common causes:
   echo    - code not pushed to GitHub
   echo    - wrong SSH password / port 185
-  echo    - server .env missing SUPABASE_DB_URL / JWT_SECRET / CREDENTIALS_ENCRYPTION_KEY / POSTGRES_PASSWORD
-  echo    - SUPABASE_DB_URL still points at Supabase (use @db:5432?sslmode=disable)
+  echo    - local .env missing SUPABASE_DB_URL / JWT_SECRET / CREDENTIALS_ENCRYPTION_KEY / POSTGRES_PASSWORD
   echo    - Docker build error on server
 ) else (
   echo  OK. Open http://server.linooxel.com:3185/health

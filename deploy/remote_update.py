@@ -19,6 +19,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 # Next.js / Docker build logs may contain Unicode (e.g. ▲). Windows cp1252 crashes otherwise.
 if hasattr(sys.stdout, "reconfigure"):
@@ -149,6 +150,76 @@ def upload_deploy_files(ssh: paramiko.SSHClient) -> None:
         sftp.close()
 
 
+def build_server_env() -> bytes:
+    """Build server .env from local secrets without ever committing them."""
+    env_path = ROOT / ".env"
+    if not env_path.exists():
+        raise FileNotFoundError(f"Missing local file: {env_path}")
+
+    lines = env_path.read_text(encoding="utf-8-sig").splitlines()
+    values: dict[str, str] = {}
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+
+    required = (
+        "SUPABASE_DB_URL",
+        "POSTGRES_PASSWORD",
+        "JWT_SECRET",
+        "CREDENTIALS_ENCRYPTION_KEY",
+    )
+    missing = [key for key in required if not values.get(key)]
+    if missing:
+        raise ValueError(f"local .env missing required values: {', '.join(missing)}")
+
+    parsed = urlsplit(values["SUPABASE_DB_URL"])
+    if parsed.scheme not in ("postgres", "postgresql") or "@" not in parsed.netloc:
+        raise ValueError("SUPABASE_DB_URL must be a PostgreSQL URL with username/password")
+    userinfo = parsed.netloc.rsplit("@", 1)[0]
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["sslmode"] = "disable"
+    values["SUPABASE_DB_URL"] = urlunsplit(
+        (parsed.scheme, f"{userinfo}@db:5432", parsed.path or "/pmas", urlencode(query), "")
+    )
+    values["APP_ENV"] = "production"
+    values["COOKIE_SECURE"] = values.get("COOKIE_SECURE", "false")
+
+    output: list[str] = [
+        "# Generated securely by deploy/remote_update.py; never commit this file.",
+    ]
+    emitted: set[str] = set()
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key = stripped.split("=", 1)[0].strip()
+        if key in emitted:
+            continue
+        output.append(f"{key}={values[key]}")
+        emitted.add(key)
+    for key in ("APP_ENV", "COOKIE_SECURE"):
+        if key not in emitted:
+            output.append(f"{key}={values[key]}")
+    return ("\n".join(output) + "\n").encode("utf-8")
+
+
+def upload_runtime_env(ssh: paramiko.SSHClient) -> None:
+    payload = build_server_env()
+    sftp = ssh.open_sftp()
+    try:
+        sftp_mkdirs(sftp, REMOTE_DIR)
+        remote = f"{REMOTE_DIR}/.env"
+        with sftp.file(remote, "wb") as fh:
+            fh.write(payload)
+        sftp.chmod(remote, 0o600)
+        print(f"uploaded {remote} securely (mode 0600)", flush=True)
+    finally:
+        sftp.close()
+
+
 def git_pull_on_server(ssh: paramiko.SSHClient) -> int:
     # Preserve .env; hard-reset to origin/master or origin/main.
     cmd = (
@@ -183,7 +254,7 @@ def main() -> int:
     print("========================================")
     print("Note: application code comes from GitHub.")
     print("      Push your commits before updating if you need new code.")
-    print("      docker-compose.yml, docker-compose.logs.yml, nginx.conf, update.sh uploaded from this PC.")
+    print("      deploy files and local .env are sent directly over SSH (secrets are not committed).")
 
     password = load_password()
     if not password:
@@ -218,6 +289,12 @@ def main() -> int:
         if code != 0:
             print("[ERROR] clone/check failed")
             return code
+
+        try:
+            upload_runtime_env(ssh)
+        except Exception as exc:
+            print(f"[ERROR] secure .env upload failed: {exc}")
+            return 1
 
         code = git_pull_on_server(ssh)
         if code != 0:
