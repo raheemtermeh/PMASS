@@ -10,7 +10,6 @@ import type {
   FlowProduct,
   FlowStage,
 } from "@/features/dashboard/types";
-import type { Company, Employee } from "@/features/vsm/types";
 
 type FilterKey = "all" | "active" | "no-pipeline" | "blocked";
 
@@ -78,27 +77,9 @@ export default function StatusBoardPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
 
-  const { data: employees = [] } = useQuery({
-    queryKey: ["vsm-employees"],
-    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees"),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const { data: company } = useQuery({
-    queryKey: ["vsm-company"],
-    queryFn: () => httpClient.get<Company>("/api/v1/company"),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const employeeID = employees.find((e) => e.status === "ACTIVE")?.id ?? employees[0]?.id;
-  const dashPath = employeeID
-    ? `/api/v1/dashboard?employee_id=${employeeID}`
-    : "/api/v1/dashboard";
-
   const { data: dash, isLoading, isFetching, dataUpdatedAt } = useQuery({
-    queryKey: ["vsm-dashboard", employeeID],
-    queryFn: () => httpClient.get<DashboardData>(dashPath),
+    queryKey: ["vsm-dashboard", "status"],
+    queryFn: () => httpClient.get<DashboardData>("/api/v1/dashboard?view=status"),
     staleTime: 15_000,
     refetchInterval: 30_000,
     retry: false,
@@ -157,7 +138,7 @@ export default function StatusBoardPage() {
         <div>
           <p className="command-eyebrow">Live status</p>
           <h2 className="sb-hero-title">
-            {company?.name ? company.name : "Organization"}
+            {dash?.flow?.company_name || "Organization"}
             <span> status board</span>
           </h2>
           <p className="sb-hero-sub">

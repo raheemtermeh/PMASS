@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
-import type { Employee } from "@/features/vsm/types";
 
 interface NotificationItem {
   id: string;
@@ -16,11 +15,6 @@ interface NotificationItem {
   created_at: string;
 }
 
-interface DashboardData {
-  summary: { unread_notifications: number };
-  notifications: NotificationItem[];
-}
-
 export function NotificationBell() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -28,22 +22,10 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const { data: employees = [] } = useQuery({
-    queryKey: ["vsm-employees"],
-    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees"),
-    enabled: hasTenant,
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const employeeID = employees.find((e) => e.status === "ACTIVE")?.id ?? employees[0]?.id;
-  const dashPath = employeeID
-    ? `/api/v1/dashboard?employee_id=${employeeID}`
-    : "/api/v1/dashboard";
-
-  const { data: dash } = useQuery({
-    queryKey: ["vsm-dashboard", employeeID],
-    queryFn: () => httpClient.get<DashboardData>(dashPath),
+  const { data: items = [] } = useQuery({
+    queryKey: ["vsm-notifications", "mine"],
+    queryFn: () =>
+      httpClient.get<NotificationItem[]>("/api/v1/notifications?mine=true&page_size=20"),
     enabled: hasTenant,
     staleTime: 20_000,
     retry: false,
@@ -51,7 +33,7 @@ export function NotificationBell() {
 
   const markRead = useMutation({
     mutationFn: (id: string) => httpClient.post(`/api/v1/notifications/${id}/read`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-dashboard"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-notifications", "mine"] }),
   });
 
   useEffect(() => {
@@ -64,8 +46,7 @@ export function NotificationBell() {
 
   if (!hasTenant) return null;
 
-  const unread = dash?.summary.unread_notifications ?? 0;
-  const items = dash?.notifications ?? [];
+  const unread = items.filter((item) => !item.is_read).length;
 
   return (
     <div className="notif-bell" ref={rootRef}>

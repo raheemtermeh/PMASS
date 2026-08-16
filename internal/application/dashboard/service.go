@@ -52,12 +52,12 @@ type DeptProduct struct {
 
 // MyWork is personal Command Center counts for the scoped employee.
 type MyWork struct {
-	Assigned       int64 `json:"assigned"`
-	DueToday       int64 `json:"due_today"`
-	Overdue        int64 `json:"overdue"`
-	WaitingReview  int64 `json:"waiting_review"`
-	Mentions       int64 `json:"mentions"`
-	Approvals      int64 `json:"approvals"`
+	Assigned      int64 `json:"assigned"`
+	DueToday      int64 `json:"due_today"`
+	Overdue       int64 `json:"overdue"`
+	WaitingReview int64 `json:"waiting_review"`
+	Mentions      int64 `json:"mentions"`
+	Approvals     int64 `json:"approvals"`
 }
 
 // UpcomingDeadline is a company-wide due task for the manager deadlines widget.
@@ -134,17 +134,17 @@ type FlowFeature struct {
 
 // FlowProduct is a company product with its stage chain, projects, and features.
 type FlowProduct struct {
-	ID             uuid.UUID      `json:"id"`
-	Name           string         `json:"name"`
-	Status         string         `json:"status"`
-	PipelineID     *uuid.UUID     `json:"pipeline_id,omitempty"`
-	PipelineName   string         `json:"pipeline_name,omitempty"`
-	PipelineStatus string         `json:"pipeline_status,omitempty"`
-	ActiveStage    string         `json:"active_stage,omitempty"`
-	NextStage      string         `json:"next_stage,omitempty"`
-	Stages         []FlowStage    `json:"stages"`
-	Projects       []FlowProject  `json:"projects"`
-	Features       []FlowFeature  `json:"features"`
+	ID             uuid.UUID     `json:"id"`
+	Name           string        `json:"name"`
+	Status         string        `json:"status"`
+	PipelineID     *uuid.UUID    `json:"pipeline_id,omitempty"`
+	PipelineName   string        `json:"pipeline_name,omitempty"`
+	PipelineStatus string        `json:"pipeline_status,omitempty"`
+	ActiveStage    string        `json:"active_stage,omitempty"`
+	NextStage      string        `json:"next_stage,omitempty"`
+	Stages         []FlowStage   `json:"stages"`
+	Projects       []FlowProject `json:"projects"`
+	Features       []FlowFeature `json:"features"`
 }
 
 // FlowGraph is the Command Center lifecycle graph (company-scoped, live DB).
@@ -171,6 +171,14 @@ type Dashboard struct {
 	Notifications     []map[string]any   `json:"notifications"`
 }
 
+// StatusDashboard is the compact read model used by the live Status Board.
+// It intentionally excludes personal work, charts, notifications and widget data.
+type StatusDashboard struct {
+	Summary          Summary          `json:"summary"`
+	Flow             FlowGraph        `json:"flow"`
+	PipelineStatuses []PipelineStatus `json:"pipeline_statuses"`
+}
+
 // NamedID is a lightweight workspace item for "My Products/Projects/Features".
 type NamedID struct {
 	ID     uuid.UUID `json:"id"`
@@ -183,6 +191,57 @@ type Service struct {
 }
 
 func NewService(db *postgres.DB) *Service { return &Service{db: db} }
+
+func (s *Service) GetStatus(ctx context.Context, companyID uuid.UUID) (*StatusDashboard, error) {
+	q := s.db.Q(ctx)
+	out := &StatusDashboard{
+		Flow:             FlowGraph{Products: []FlowProduct{}},
+		PipelineStatuses: []PipelineStatus{},
+	}
+	_ = q.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE status='ACTIVE'),
+			COUNT(*) FILTER (WHERE status='COMPLETED'),
+			COUNT(*) FILTER (WHERE status='ON_HOLD')
+		FROM products
+		WHERE company_id=$1 AND deleted_at IS NULL`, companyID).
+		Scan(&out.Summary.ActiveProducts, &out.Summary.CompletedProducts, &out.Summary.OnHoldProducts)
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM tasks
+		WHERE company_id=$1 AND deleted_at IS NULL
+		  AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).
+		Scan(&out.Summary.OpenTasks)
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL`, companyID).
+		Scan(&out.Summary.Projects)
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM features
+		WHERE company_id=$1 AND deleted_at IS NULL
+		  AND status NOT IN ('COMPLETED','ARCHIVED','DONE')`, companyID).
+		Scan(&out.Summary.OpenFeatures)
+
+	out.Flow = loadFlowGraph(ctx, q, companyID)
+	rows, err := q.QueryContext(ctx, `
+		SELECT p.id, p.name, p.status, COALESCE(s.name,'')
+		FROM products p
+		LEFT JOIN stage_instances si ON si.product_id = p.id AND si.status = 'ACTIVE' AND si.company_id = p.company_id
+		LEFT JOIN stages s ON s.id = si.stage_id
+		WHERE p.company_id=$1 AND p.deleted_at IS NULL
+		  AND p.status IN ('ACTIVE','READY','DRAFT','PLANNING','ON_HOLD')
+		ORDER BY p.updated_at DESC LIMIT 15`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ps PipelineStatus
+		if err := rows.Scan(&ps.ProductID, &ps.ProductName, &ps.Status, &ps.ActiveStage); err != nil {
+			return nil, err
+		}
+		out.PipelineStatuses = append(out.PipelineStatuses, ps)
+	}
+	return out, rows.Err()
+}
 
 func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid.UUID) (*Dashboard, error) {
 	q := s.db.Q(ctx)

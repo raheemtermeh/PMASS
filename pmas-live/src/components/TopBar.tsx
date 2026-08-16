@@ -12,7 +12,6 @@ import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useOnboardingStore } from "@/features/guidance/guidance-store";
 import { getRouteByPath } from "@/shared/routes";
-import type { Product } from "@/features/vsm/types";
 
 interface SearchHit {
   type: string;
@@ -33,19 +32,6 @@ export function TopBar() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
 
-  const canFetchProducts =
-    hasTenant &&
-    (user?.role === "tenant_admin" || user?.permissions.includes("product.view") || false);
-
-  const { data: products = [] } = useQuery({
-    queryKey: ["vsm-products"],
-    queryFn: () => httpClient.get<Product[]>("/api/v1/products"),
-    enabled: canFetchProducts,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-
   const { data: searchData } = useQuery({
     queryKey: ["vsm-search", q],
     queryFn: () =>
@@ -54,8 +40,6 @@ export function TopBar() {
     staleTime: 10_000,
     retry: false,
   });
-
-  const activeProducts = products.filter((p) => p.status === "ACTIVE").length;
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -180,13 +164,6 @@ export function TopBar() {
             {t("topbar.liveMode")}
           </span>
         </div>
-        {activeProducts > 0 && (
-          <div className="top-bar-badge top-bar-badge-optional">
-            <span className="font-mono" style={{ fontSize: "0.75rem", fontWeight: 700 }}>
-              {activeProducts} {activeProducts !== 1 ? t("topbar.activeProducts") : t("topbar.activeProduct")}
-            </span>
-          </div>
-        )}
       </div>
     </header>
   );

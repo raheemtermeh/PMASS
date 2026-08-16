@@ -5,12 +5,13 @@ cd /d "%~dp0"
 
 echo.
 echo  ========================================
-echo   PMAS - API + Frontend + Logs (Grafana)
+echo   PMAS - DB + API + Frontend + Logs
 echo  ========================================
 echo.
 echo  Ports:
 echo    Frontend  http://localhost:3000
 echo    API       http://localhost:8080
+echo    Postgres  127.0.0.1:5432 (Docker, localhost-only)
 echo    Grafana   http://127.0.0.1:3186
 echo.
 
@@ -36,7 +37,15 @@ if errorlevel 1 (
 
 where powershell >nul 2>&1
 if errorlevel 1 (
-  echo  [ERROR] PowerShell is required for local log stack.
+  echo  [ERROR] PowerShell is required for local stack helpers.
+  pause
+  exit /b 1
+)
+
+where docker >nul 2>&1
+if errorlevel 1 (
+  echo  [ERROR] Docker is required for self-hosted Postgres.
+  echo         Install Docker Desktop, then re-run start.bat.
   pause
   exit /b 1
 )
@@ -58,12 +67,20 @@ if not exist "logs\" mkdir logs
 if not exist "logs\api.log" type nul > "logs\api.log"
 if not exist "logs\web.log" type nul > "logs\web.log"
 
-REM Load optional Grafana creds from .env for the native stack
-for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /i "GRAFANA_ADMIN_" ".env"`) do (
-  set "%%A=%%B"
+REM Load optional Grafana + Postgres settings from .env (do not override vars already set)
+for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /i "GRAFANA_ADMIN_ POSTGRES_ PG_ SUPABASE_DB_URL" ".env"`) do (
+  if not defined %%A set "%%A=%%B"
 )
 
-echo  [1/3] Starting Loki + Promtail + Grafana (native, no Docker)
+echo  [1/4] Starting self-hosted Postgres (Docker db)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\start-db.ps1"
+if errorlevel 1 (
+  echo  [ERROR] Failed to start Postgres.
+  pause
+  exit /b 1
+)
+
+echo  [2/4] Starting Loki + Promtail + Grafana (native, no Docker)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\observability\start-local.ps1"
 if errorlevel 1 (
   echo  [ERROR] Failed to start local observability stack.
@@ -71,12 +88,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo  [2/3] Starting API on http://localhost:8080
+echo  [3/4] Starting API on http://localhost:8080
 start "PMAS API" /D "%~dp0" cmd /k ""%~dp0deploy\dev-run-api.bat""
 
 timeout /t 2 /nobreak >nul
 
-echo  [3/3] Starting Frontend on http://localhost:3000
+echo  [4/4] Starting Frontend on http://localhost:3000
 start "PMAS Frontend" /D "%~dp0pmas-live" cmd /k ""%~dp0deploy\dev-run-web.bat""
 
 echo  Waiting for Frontend :3000 ...
@@ -103,11 +120,13 @@ start "" "http://127.0.0.1:3186"
 
 echo.
 echo  Done.
-echo    App:     http://localhost:3000
-echo    API:     http://localhost:8080
-echo    Grafana: http://127.0.0.1:3186
+echo    App:      http://localhost:3000
+echo    API:      http://localhost:8080
+echo    Postgres: 127.0.0.1:5432  (Docker, localhost-only)
+echo    Grafana:  http://127.0.0.1:3186
 echo.
 echo  Stop logs stack: stop-observability.bat
+echo  Stop Postgres:   docker compose stop db
 echo  Stop app: close the API / Frontend windows
 echo.
 pause

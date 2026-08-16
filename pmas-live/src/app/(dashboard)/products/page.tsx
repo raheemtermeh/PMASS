@@ -59,7 +59,7 @@ export default function ProductsPage() {
   const [showArchived, setShowArchived] = useState(false);
 
   const { data: products = [], isLoading } = useQuery({
-    queryKey: ["vsm-products"],
+    queryKey: ["vsm-products", "list", 100],
     queryFn: () => httpClient.get<Product[]>("/api/v1/products?page_size=100"),
     staleTime: 30_000,
   });
@@ -71,8 +71,8 @@ export default function ProductsPage() {
   });
 
   const { data: employees = [] } = useQuery({
-    queryKey: ["vsm-employees"],
-    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees"),
+    queryKey: ["vsm-employees", "list", 100],
+    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees?page_size=100"),
     staleTime: 60_000,
   });
 

@@ -11,6 +11,7 @@ import (
 	dashboardapp "PMAS/internal/application/dashboard"
 	searchapp "PMAS/internal/application/search"
 	"PMAS/internal/domain/shared"
+	"PMAS/internal/middleware"
 )
 
 type CollabHandler struct {
@@ -183,6 +184,34 @@ func (h *CollabHandler) HandleNotifications(w http.ResponseWriter, r *http.Reque
 	switch {
 	case len(parts) == 0 && r.Method == http.MethodGet:
 		q := PageQueryFromRequest(r)
+		if r.URL.Query().Get("mine") == "true" {
+			claims := middleware.ClaimsFromContext(r.Context())
+			if claims == nil {
+				WriteErr(w, shared.ErrUnauthorized)
+				return
+			}
+			var receiverID uuid.UUID
+			err := h.Scope.DB.Q(r.Context()).QueryRowContext(r.Context(), `
+				SELECT COALESCE(
+					(SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 LIMIT 1),
+					'00000000-0000-0000-0000-000000000000'::uuid
+				)`, companyID, claims.UserID).Scan(&receiverID)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			if receiverID == uuid.Nil {
+				WriteOK(w, http.StatusOK, []any{}, nil)
+				return
+			}
+			items, meta, err := h.Svc.ListNotificationsForReceiver(r.Context(), companyID, receiverID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
 		if raw := r.URL.Query().Get("receiver_id"); raw != "" {
 			rid, err := ParseUUIDParam(raw)
 			if err != nil {
@@ -233,10 +262,29 @@ func (h *DashboardHandler) HandleDashboard(w http.ResponseWriter, r *http.Reques
 		WriteErr(w, shared.New("METHOD_NOT_ALLOWED", "Method not allowed", 405))
 		return
 	}
+	if r.URL.Query().Get("view") == "status" {
+		data, err := h.Svc.GetStatus(r.Context(), companyID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, data, nil)
+		return
+	}
 	var empID *uuid.UUID
 	if raw := r.URL.Query().Get("employee_id"); raw != "" {
 		id, err := ParseUUIDParam(raw)
 		if err == nil {
+			empID = &id
+		}
+	} else if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
+		var id uuid.UUID
+		err := h.Scope.DB.Q(r.Context()).QueryRowContext(r.Context(), `
+			SELECT COALESCE(
+				(SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 LIMIT 1),
+				'00000000-0000-0000-0000-000000000000'::uuid
+			)`, companyID, claims.UserID).Scan(&id)
+		if err == nil && id != uuid.Nil {
 			empID = &id
 		}
 	}

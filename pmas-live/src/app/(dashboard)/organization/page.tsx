@@ -45,19 +45,19 @@ export default function OrganizationPage() {
   });
 
   const { data: employees = [], isLoading: empLoading } = useQuery({
-    queryKey: ["vsm-employees"],
+    queryKey: ["vsm-employees", "list", 100],
     queryFn: () => httpClient.get<Employee[]>("/api/v1/employees?page_size=100"),
     staleTime: 30_000,
   });
 
   const { data: departments = [], isLoading: deptLoading } = useQuery({
-    queryKey: ["vsm-departments"],
+    queryKey: ["vsm-departments", "list", 100],
     queryFn: () => httpClient.get<Department[]>("/api/v1/departments?page_size=100"),
     staleTime: 30_000,
   });
 
   const { data: teams = [], isLoading: teamLoading } = useQuery({
-    queryKey: ["vsm-teams"],
+    queryKey: ["vsm-teams", "list", 100],
     queryFn: () => httpClient.get<Team[]>("/api/v1/teams?page_size=100"),
     staleTime: 30_000,
   });
@@ -65,6 +65,7 @@ export default function OrganizationPage() {
   const { data: memberships = [] } = useQuery({
     queryKey: ["vsm-team-memberships"],
     queryFn: () => httpClient.get<TeamMembership[]>("/api/v1/teams/memberships"),
+    enabled: tab === "teams" || tab === "membership",
     staleTime: 15_000,
   });
 

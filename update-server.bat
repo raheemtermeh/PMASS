@@ -79,7 +79,8 @@ if not "%ERR%"=="0" (
   echo  Check the log above. Common causes:
   echo    - code not pushed to GitHub
   echo    - wrong SSH password / port 185
-  echo    - server .env missing SUPABASE_DB_URL / JWT_SECRET / CREDENTIALS_ENCRYPTION_KEY
+  echo    - server .env missing SUPABASE_DB_URL / JWT_SECRET / CREDENTIALS_ENCRYPTION_KEY / POSTGRES_PASSWORD
+  echo    - SUPABASE_DB_URL still points at Supabase (use @db:5432?sslmode=disable)
   echo    - Docker build error on server
 ) else (
   echo  OK. Open http://server.linooxel.com:3185/health

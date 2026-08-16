@@ -98,20 +98,21 @@ export default function PlanningClient() {
   const [checklistError, setChecklistError] = useState("");
 
   const { data: products = [] } = useQuery({
-    queryKey: ["vsm-products"],
-    queryFn: () => httpClient.get<Product[]>("/api/v1/products"),
+    queryKey: ["vsm-products", "list", 100],
+    queryFn: () => httpClient.get<Product[]>("/api/v1/products?page_size=100"),
     staleTime: 30_000,
   });
 
   const { data: employees = [] } = useQuery({
-    queryKey: ["vsm-employees"],
-    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees"),
+    queryKey: ["vsm-employees", "list", 100],
+    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees?page_size=100"),
     staleTime: 60_000,
   });
 
   const { data: teams = [] } = useQuery({
-    queryKey: ["vsm-teams"],
-    queryFn: () => httpClient.get<Team[]>("/api/v1/teams"),
+    queryKey: ["vsm-teams", "list", 100],
+    queryFn: () => httpClient.get<Team[]>("/api/v1/teams?page_size=100"),
+    enabled: Boolean(projectId),
     staleTime: 60_000,
   });
 

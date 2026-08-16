@@ -54,7 +54,7 @@ if command -v sed >/dev/null 2>&1; then
 fi
 
 missing=0
-for key in SUPABASE_DB_URL JWT_SECRET CREDENTIALS_ENCRYPTION_KEY; do
+for key in SUPABASE_DB_URL JWT_SECRET CREDENTIALS_ENCRYPTION_KEY POSTGRES_PASSWORD; do
   val="$(grep -E "^${key}=" .env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   if [[ -z "$val" ]]; then
     echo "[ERROR] .env missing required value: $key"
@@ -63,6 +63,22 @@ for key in SUPABASE_DB_URL JWT_SECRET CREDENTIALS_ENCRYPTION_KEY; do
 done
 if [[ "$missing" -ne 0 ]]; then
   exit 1
+fi
+
+# Self-hosted Postgres: api container must use host "db" (compose service), not Supabase pooler.
+db_url="$(grep -E '^SUPABASE_DB_URL=' .env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r')"
+if [[ "$db_url" == *"supabase.co"* ]] || [[ "$db_url" == *"pooler.supabase"* ]]; then
+  echo "[ERROR] SUPABASE_DB_URL still points at Supabase."
+  echo "        Use self-hosted Postgres, e.g.:"
+  echo "        SUPABASE_DB_URL=postgresql://pmas:PASSWORD@db:5432/pmas?sslmode=disable"
+  exit 1
+fi
+if [[ "$db_url" != *"sslmode="* ]]; then
+  echo "[WARN] SUPABASE_DB_URL has no sslmode= — API will default to sslmode=require (may fail vs local Postgres)."
+  echo "       Prefer: .../pmas?sslmode=disable"
+fi
+if [[ "$db_url" != *"@db:"* ]] && [[ "$db_url" != *"@db/"* ]]; then
+  echo "[WARN] SUPABASE_DB_URL host is not 'db'. Inside Docker Compose the Postgres service hostname is 'db'."
 fi
 
 if [[ ! -f docker-compose.yml ]]; then
@@ -134,7 +150,7 @@ docker tag termeh-pmas-web:latest "termeh-pmas-web:${ts}"
 docker tag termeh-pmas-web:latest "termeh-pmas-web:${sha}"
 
 echo
-echo "[5/6] restart stack (api web gateway + loki promtail if configured)"
+echo "[5/6] restart stack (db api web gateway + loki promtail if configured)"
 compose up -d --remove-orphans
 
 echo
@@ -142,8 +158,10 @@ echo "[6/6] health check (retry up to ~2 min)"
 health=""
 home_code="000"
 loki_ready=""
+db_health=""
 ok=0
 for i in $(seq 1 24); do
+  db_health="$(compose ps --format '{{.Service}} {{.Health}}' 2>/dev/null | awk '$1=="db"{print $2; exit}' || true)"
   health="$(curl -sS -m 10 http://127.0.0.1:3185/health 2>/dev/null || true)"
   home_code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3185/ 2>/dev/null || true)"
   loki_ready="$(curl -sS -m 5 http://127.0.0.1:3100/ready 2>/dev/null || true)"
@@ -151,10 +169,11 @@ for i in $(seq 1 24); do
     ok=1
     break
   fi
-  echo "      attempt $i/24  health=${health:-FAILED}  home=HTTP ${home_code:-000}"
+  echo "      attempt $i/24  db=${db_health:-?}  health=${health:-FAILED}  home=HTTP ${home_code:-000}"
   sleep 5
 done
 
+echo "      db      -> ${db_health:-unknown}"
 echo "      /health -> ${health:-FAILED}"
 echo "      /       -> HTTP ${home_code:-000}"
 if [[ -f docker-compose.logs.yml ]]; then

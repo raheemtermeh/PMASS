@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
-import type { Company, Employee } from "@/features/vsm/types";
 import type { DashboardData } from "@/features/dashboard/types";
 import { useI18n } from "@/core/providers/I18nProvider";
 import {
@@ -58,33 +57,15 @@ export default function HomePage() {
   const [overId, setOverId] = useState<WidgetId | null>(null);
   const [ccLayout, setCcLayout] = useState<CommandCenterLayout>(() => defaultCommandCenterLayout());
 
-  const { data: employees = [] } = useQuery({
-    queryKey: ["vsm-employees"],
-    queryFn: () => httpClient.get<Employee[]>("/api/v1/employees"),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const { data: company } = useQuery({
-    queryKey: ["vsm-company"],
-    queryFn: () => httpClient.get<Company>("/api/v1/company"),
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const employeeID = employees.find((e) => e.status === "ACTIVE")?.id ?? employees[0]?.id;
-  const dashPath = employeeID
-    ? `/api/v1/dashboard?employee_id=${employeeID}`
-    : "/api/v1/dashboard";
-
   const { data: dash, isLoading, isFetching, dataUpdatedAt } = useQuery({
-    queryKey: ["vsm-dashboard", employeeID],
-    queryFn: () => httpClient.get<DashboardData>(dashPath),
+    queryKey: ["vsm-dashboard", "self"],
+    queryFn: () => httpClient.get<DashboardData>("/api/v1/dashboard"),
     staleTime: 15_000,
     refetchInterval: 30_000,
     retry: false,
   });
 
-  const layoutKey = layoutKeyFor(company?.id, user?.id);
+  const layoutKey = layoutKeyFor(user?.tenant_id ? String(user.tenant_id) : undefined, user?.id);
   const { layout: savedLayout, ready: layoutReady, saveLayout } =
     useUILayout<Record<string, unknown>>(layoutKey);
 
@@ -461,7 +442,7 @@ export default function HomePage() {
         <div className="cc-hero-copy">
           <p className="command-eyebrow">{t("dashboard.commandCenter")}</p>
           <h2 className="cc-hero-title">
-            {company?.name ? company.name : t("dashboard.orgFallback")}
+            {dash?.flow?.company_name || t("dashboard.orgFallback")}
             <span> {t("dashboard.liveWorkspace")}</span>
           </h2>
           <p className="cc-hero-sub">{t("dashboard.heroSub")}</p>
@@ -495,7 +476,9 @@ export default function HomePage() {
           </button>
           <div className="cc-hero-pulse" aria-hidden>
             <div className="cc-pulse-ring" />
-            <div className="cc-pulse-core">{company?.name?.slice(0, 2)?.toUpperCase() || "CC"}</div>
+            <div className="cc-pulse-core">
+              {dash?.flow?.company_name?.slice(0, 2)?.toUpperCase() || "CC"}
+            </div>
           </div>
         </div>
       </section>
@@ -522,8 +505,8 @@ export default function HomePage() {
       ) : null}
 
       <LifecycleFlowGraph
-        flow={dash?.flow ?? { company_name: company?.name ?? "", products: [] }}
-        companyName={company?.name}
+        flow={dash?.flow ?? { company_name: "", products: [] }}
+        companyName={dash?.flow?.company_name}
       />
 
       {isLoading ? <p className="text-dim">{t("dashboard.loading")}</p> : null}
