@@ -50,8 +50,13 @@ foreach ($opt in @("PG_SHARED_BUFFERS", "PG_EFFECTIVE_CACHE_SIZE", "PG_WORK_MEM"
     }
 }
 
+$composeFiles = @("-f", "docker-compose.yml")
+if (Test-Path (Join-Path $Root "docker-compose.local.yml")) {
+    $composeFiles += @("-f", "docker-compose.local.yml")
+}
+
 Write-Host "Starting Postgres (compose service: db)..."
-docker compose -f docker-compose.yml up -d db
+docker compose @composeFiles up -d db
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] docker compose up -d db failed." -ForegroundColor Red
     exit 1
@@ -64,7 +69,7 @@ $db = $env:POSTGRES_DB
 for ($i = 1; $i -le 36; $i++) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    docker compose -f docker-compose.yml exec -T db pg_isready -U $user -d $db 2>$null | Out-Null
+    docker compose @composeFiles exec -T db pg_isready -U $user -d $db 2>$null | Out-Null
     $readyCode = $LASTEXITCODE
     $ErrorActionPreference = $prev
     if ($readyCode -eq 0) {
@@ -76,7 +81,7 @@ for ($i = 1; $i -le 36; $i++) {
 
 if (-not $ok) {
     Write-Host "[ERROR] Postgres did not become healthy in time." -ForegroundColor Red
-    docker compose -f docker-compose.yml logs --tail=40 db
+    docker compose @composeFiles logs --tail=40 db
     exit 1
 }
 

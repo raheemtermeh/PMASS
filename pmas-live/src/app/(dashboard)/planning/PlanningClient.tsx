@@ -19,10 +19,10 @@ import type {
 import { employeeLabel } from "@/features/vsm/types";
 import {
   priorityBadgeClass,
-  priorityLabel,
   statusBadgeClass,
-  statusLabel,
 } from "@/features/planning/badges";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
 
 // MVP Feature Planning additions layered on top of the original lifecycle —
 // existing statuses keep working exactly as before.
@@ -85,7 +85,20 @@ function fromDateInput(value?: string | null): string | null {
 }
 
 export default function PlanningClient() {
+  const { t } = useI18n();
   const qc = useQueryClient();
+  const localizeStatuses = (options: { value: string; label: string }[]) =>
+    options.map((option) => ({
+      ...option,
+      label: localizedEnumLabel(option.value, statusTranslationKey(option.value), t),
+    }));
+  const projectStatusOptions = localizeStatuses(PROJECT_STATUSES);
+  const featureStatusOptions = localizeStatuses(FEATURE_STATUSES);
+  const taskStatusOptions = localizeStatuses(TASK_STATUSES);
+  const priorityOptions = PRIORITY_OPTIONS.map((option) => ({
+    ...option,
+    label: localizedEnumLabel(option.value, priorityTranslationKey(option.value), t),
+  }));
   const search = useSearchParams();
   const initialProduct = search.get("product_id") ?? "";
   const [productId, setProductId] = useState(initialProduct);
@@ -304,14 +317,13 @@ export default function PlanningClient() {
     <div className="page-stack">
       <section className="data-panel">
         <h2 className="panel-title" style={{ marginBottom: "0.5rem" }}>
-          Planning cascade
+          {t("planning.cascade")}
         </h2>
         <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-          Product → Project → Feature → Task. Pick a product, then add items with the quick bar (Enter
-          to create). Use Edit only when you need extra details.
+          {t("planning.cascadeHint")}
         </p>
         <div className="form-group" style={{ maxWidth: 420 }}>
-          <label htmlFor="product">Product</label>
+          <label htmlFor="product">{t("products.product")}</label>
           <select
             id="product"
             value={productId}
@@ -322,7 +334,7 @@ export default function PlanningClient() {
               setSelectedTaskId("");
             }}
           >
-            <option value="">All products</option>
+            <option value="">{t("filters.allProducts")}</option>
             {productOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -333,12 +345,14 @@ export default function PlanningClient() {
       </section>
 
       <ResourceManager
-        title="Projects"
-        description="Select a product, then create a project with New project…"
-        createLabel="New project…"
-        emptyTitle="No projects"
+        title={t("planning.projects")}
+        description={t("planning.selectProductHint")}
+        createLabel={t("planning.createProject")}
+        emptyTitle={t("planning.noProjects")}
         emptyDescription={
-          productId ? "Create the first project with New project…" : "Select a product first (required to create)."
+          productId
+            ? t("planning.createFirstProject")
+            : t("planning.selectProductFirst")
         }
         isLoading={projectsLoading}
         items={projects}
@@ -346,18 +360,18 @@ export default function PlanningClient() {
         createFields={[
           {
             name: "product_id",
-            label: "Product",
+            label: t("products.product"),
             type: "select",
             required: true,
             options: productOptions,
           },
-          { name: "name", label: "Name", required: true, placeholder: "e.g. Mobile app v1" },
-          { name: "description", label: "Description", type: "textarea", placeholder: "Optional" },
+          { name: "name", label: t("common.name"), required: true },
+          { name: "description", label: t("common.description"), type: "textarea" },
         ]}
         columns={[
           {
             key: "name",
-            label: "Project",
+            label: t("planning.project"),
             render: (r) => (
               <button
                 type="button"
@@ -375,18 +389,20 @@ export default function PlanningClient() {
           },
           {
             key: "status",
-            label: "Status",
+            label: t("common.status"),
             render: (r) => (
-              <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+              <span className={`badge ${statusBadgeClass(r.status)}`}>
+                {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+              </span>
             ),
           },
           {
             key: "priority",
-            label: "Priority",
+            label: t("planning.priority"),
             render: (r) =>
               r.priority ? (
                 <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
-                  {priorityLabel(r.priority)}
+                  {localizedEnumLabel(r.priority, priorityTranslationKey(r.priority), t)}
                 </span>
               ) : (
                 "—"
@@ -394,12 +410,12 @@ export default function PlanningClient() {
           },
           {
             key: "owner",
-            label: "Owner",
+            label: t("common.owner"),
             render: (r) => (r.owner_id ? assigneeName(r.owner_id) : "—"),
           },
           {
             key: "product",
-            label: "Product",
+            label: t("products.product"),
             render: (r) => {
               const product = products.find((p) => p.id === r.product_id);
               if (!product) return "—";
@@ -414,31 +430,31 @@ export default function PlanningClient() {
         fields={[
           {
             name: "product_id",
-            label: "Product",
+            label: t("products.product"),
             type: "select",
             required: true,
             options: productOptions,
           },
-          { name: "name", label: "Name", required: true },
-          { name: "code", label: "Code" },
+          { name: "name", label: t("common.name"), required: true },
+          { name: "code", label: t("common.code") },
           {
             name: "priority",
-            label: "Priority",
+            label: t("planning.priority"),
             type: "select",
-            options: PRIORITY_OPTIONS,
+            options: priorityOptions,
           },
           {
             name: "status",
-            label: "Status",
+            label: t("common.status"),
             type: "select",
-            options: PROJECT_STATUSES,
+            options: projectStatusOptions,
           },
-          { name: "owner_id", label: "Owner", type: "select", options: empOptions },
-          { name: "manager_id", label: "Manager", type: "select", options: empOptions },
-          { name: "start_date", label: "Start date", type: "date" },
-          { name: "target_end_date", label: "Target end date", type: "date" },
-          { name: "goal", label: "Goal", type: "textarea" },
-          { name: "description", label: "Description", type: "textarea" },
+          { name: "owner_id", label: t("common.owner"), type: "select", options: empOptions },
+          { name: "manager_id", label: t("common.manager"), type: "select", options: empOptions },
+          { name: "start_date", label: t("common.startDate"), type: "date" },
+          { name: "target_end_date", label: t("planning.targetEndDate"), type: "date" },
+          { name: "goal", label: t("planning.goal"), type: "textarea" },
+          { name: "description", label: t("common.description"), type: "textarea" },
         ]}
         toFormValues={(r) => ({
           product_id: r.product_id,
@@ -455,9 +471,9 @@ export default function PlanningClient() {
         })}
         onCreate={async (v) => {
           const pid = String(v.product_id || productId || "").trim();
-          if (!pid) throw new Error("Select a product");
+          if (!pid) throw new Error(t("errors.selectProduct"));
           const name = String(v.name ?? "").trim();
-          if (!name) throw new Error("Name is required");
+          if (!name) throw new Error(t("errors.nameIsRequired"));
           const body: Record<string, unknown> = {
             product_id: pid,
             name,
@@ -514,7 +530,7 @@ export default function PlanningClient() {
                 className="btn btn-sm btn-danger"
                 onClick={() => softDeleteProject.mutate(row.id)}
               >
-                Soft delete
+                {t("planning.softDelete")}
               </button>
             )}
           </>
@@ -523,31 +539,31 @@ export default function PlanningClient() {
 
       {projectId ? (
         <ResourceManager
-          title="Features"
-          description="Type a name and press Enter — details can be filled later with Edit."
-          createLabel="New feature…"
-          emptyTitle="No features yet"
-          emptyDescription="Use the quick bar above to add the first capability."
+          title={t("planning.features")}
+          description={t("planning.projectQuickHint")}
+          createLabel={t("planning.createFeature")}
+          emptyTitle={t("planning.noFeatures")}
+          emptyDescription={t("emptyStates.noFeatures")}
           isLoading={featuresLoading}
           items={features}
           quickCreate={{
-            placeholder: "Type a feature name and press Enter…",
+            placeholder: t("planning.quickFeaturePlaceholder"),
             fieldName: "title",
             defaults: { priority: "MEDIUM" },
           }}
           createFields={[
-            { name: "title", label: "Title", required: true, placeholder: "e.g. User login" },
+            { name: "title", label: t("common.title"), required: true },
             {
               name: "priority",
-              label: "Priority",
+              label: t("planning.priority"),
               type: "select",
-              options: PRIORITY_OPTIONS,
+              options: priorityOptions,
             },
           ]}
           columns={[
             {
               key: "title",
-              label: "Feature",
+              label: t("planning.feature"),
               render: (r) => (
                 <button
                   type="button"
@@ -564,11 +580,11 @@ export default function PlanningClient() {
             },
             {
               key: "priority",
-              label: "Priority",
+              label: t("planning.priority"),
               render: (r) =>
                 r.priority ? (
                   <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
-                    {priorityLabel(r.priority)}
+                    {localizedEnumLabel(r.priority, priorityTranslationKey(r.priority), t)}
                   </span>
                 ) : (
                   "—"
@@ -576,55 +592,57 @@ export default function PlanningClient() {
             },
             {
               key: "owner",
-              label: "Owner",
+              label: t("common.owner"),
               render: (r) => (r.owner_id ? assigneeName(r.owner_id) : "—"),
             },
             {
               key: "team",
-              label: "Team",
+              label: t("organization.team"),
               render: (r) => teams.find((t) => t.id === r.team_id)?.name ?? "—",
             },
             {
               key: "status",
-              label: "Status",
+              label: t("common.status"),
               render: (r) => (
-                <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+                <span className={`badge ${statusBadgeClass(r.status)}`}>
+                  {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+                </span>
               ),
             },
           ]}
           fields={[
-            { name: "title", label: "Title", required: true },
-            { name: "code", label: "Code" },
+            { name: "title", label: t("common.title"), required: true },
+            { name: "code", label: t("common.code") },
             {
               name: "priority",
-              label: "Priority",
+              label: t("planning.priority"),
               type: "select",
-              options: PRIORITY_OPTIONS,
+              options: priorityOptions,
             },
             {
               name: "feature_type",
-              label: "Feature type",
+              label: t("planning.featureType"),
               options: [
-                { value: "STORY", label: "Story" },
-                { value: "BUG", label: "Bug" },
-                { value: "IMPROVEMENT", label: "Improvement" },
-                { value: "SPIKE", label: "Spike" },
+                { value: "STORY", label: t("planning.featureTypes.story") },
+                { value: "BUG", label: t("planning.featureTypes.bug") },
+                { value: "IMPROVEMENT", label: t("planning.featureTypes.improvement") },
+                { value: "SPIKE", label: t("planning.featureTypes.spike") },
               ],
               type: "select",
             },
-            { name: "owner_id", label: "Owner", type: "select", options: empOptions },
-            { name: "team_id", label: "Team", type: "select", options: teamOptions },
+            { name: "owner_id", label: t("common.owner"), type: "select", options: empOptions },
+            { name: "team_id", label: t("common.team"), type: "select", options: teamOptions },
             {
               name: "parent_feature_id",
-              label: "Parent feature",
+              label: t("planning.parentFeature"),
               type: "select",
               options: features.map((f) => ({ value: f.id, label: f.title })),
             },
-            { name: "start_date", label: "Start date", type: "date" },
-            { name: "target_end_date", label: "Target end date", type: "date" },
-            { name: "estimated_effort", label: "Estimated effort (points)", type: "number" },
-            { name: "goal", label: "Goal", type: "textarea" },
-            { name: "description", label: "Description", type: "textarea" },
+            { name: "start_date", label: t("common.startDate"), type: "date" },
+            { name: "target_end_date", label: t("planning.targetEndDate"), type: "date" },
+            { name: "estimated_effort", label: t("planning.estimatedEffort"), type: "number" },
+            { name: "goal", label: t("planning.goal"), type: "textarea" },
+            { name: "description", label: t("common.description"), type: "textarea" },
           ]}
           toFormValues={(r) => ({
             title: r.title,
@@ -685,7 +703,7 @@ export default function PlanningClient() {
                 }
                 style={{ maxWidth: 140 }}
               >
-                {FEATURE_STATUSES.map((s) => (
+                {featureStatusOptions.map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label}
                   </option>
@@ -704,10 +722,10 @@ export default function PlanningClient() {
       {featureId ? (
         <section className="data-panel">
           <h3 className="panel-title" style={{ marginBottom: "0.5rem" }}>
-            Feature dependencies
+            {t("planning.featureDependencies")}
           </h3>
           <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "0.75rem" }}>
-            This feature is blocked until the selected features complete.
+            {t("planning.featureDependenciesHint")}
           </p>
           {depsError ? <p className="auth-error">{depsError}</p> : null}
           <div className="flex" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
@@ -734,7 +752,7 @@ export default function PlanningClient() {
                 );
               })}
             {features.filter((f) => f.id !== featureId).length === 0 ? (
-              <p className="text-dim">No other features in this project yet.</p>
+              <p className="text-dim">{t("planning.noOtherFeatures")}</p>
             ) : null}
           </div>
         </section>
@@ -743,8 +761,8 @@ export default function PlanningClient() {
       {projectId && !featureId ? (
         <section className="data-panel">
           <EmptyState
-            title="Select a feature to add tasks"
-            description="Click a feature name above (or create one with the quick bar), then add tasks in one line."
+            title={t("planning.selectFeature")}
+            description={t("planning.featureHint")}
           />
         </section>
       ) : null}
@@ -754,9 +772,9 @@ export default function PlanningClient() {
           <div className="org-tab-row" style={{ marginBottom: "-0.5rem" }}>
             {(
               [
-                ["all", "All tasks"],
-                ["open", "Open"],
-                ["mine", "My tasks"],
+                ["all", t("planning.allTasks")],
+                ["open", t("planning.openTasks")],
+                ["mine", t("planning.myTasks")],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -771,29 +789,29 @@ export default function PlanningClient() {
           </div>
 
           <ResourceManager
-            title="Tasks"
-            description="Type a task and press Enter. Assign / due date / checklist can come later."
-            createLabel="New task…"
-            emptyTitle="No tasks yet"
-            emptyDescription="Use the quick bar to add work items under this feature."
+            title={t("planning.tasks")}
+            description={t("planning.taskHint")}
+            createLabel={t("planning.createTask")}
+            emptyTitle={t("planning.noTasks")}
+            emptyDescription={t("emptyStates.noTasks")}
             isLoading={tasksLoading}
             items={filteredTasks}
             quickCreate={{
-              placeholder: "Type a task and press Enter…",
+              placeholder: t("planning.quickTaskPlaceholder"),
               fieldName: "title",
               defaults: { priority: "MEDIUM" },
             }}
             createFields={[
-              { name: "title", label: "Title", required: true, placeholder: "e.g. Design login screen" },
+              { name: "title", label: t("common.title"), required: true },
               {
                 name: "priority",
-                label: "Priority",
+                label: t("planning.priority"),
                 type: "select",
-                options: PRIORITY_OPTIONS,
+                options: priorityOptions,
               },
               {
                 name: "assignee_id",
-                label: "Assignee (optional)",
+                label: t("planning.assignee"),
                 type: "select",
                 options: empOptions,
               },
@@ -801,7 +819,7 @@ export default function PlanningClient() {
             columns={[
               {
                 key: "title",
-                label: "Task",
+                label: t("planning.task"),
                 render: (r) => (
                   <button type="button" className="btn btn-sm" onClick={() => setSelectedTaskId(r.id)}>
                     {r.title}
@@ -810,11 +828,11 @@ export default function PlanningClient() {
               },
               {
                 key: "priority",
-                label: "Priority",
+                label: t("planning.priority"),
                 render: (r) =>
                   r.priority ? (
                     <span className={`priority-pill ${priorityBadgeClass(r.priority)}`}>
-                      {priorityLabel(r.priority)}
+                      {localizedEnumLabel(r.priority, priorityTranslationKey(r.priority), t)}
                     </span>
                   ) : (
                     "—"
@@ -822,58 +840,60 @@ export default function PlanningClient() {
               },
               {
                 key: "assignee",
-                label: "Assignee",
+                label: t("planning.assignee"),
                 render: (r) => assigneeName(r.assignee_id),
               },
               {
                 key: "due_date",
-                label: "Due",
+                label: t("common.due"),
                 render: (r) => (r.due_date ? toDateInput(r.due_date) : "—"),
               },
               {
                 key: "status",
-                label: "Status",
+                label: t("common.status"),
                 render: (r) => (
-                  <span className={`badge ${statusBadgeClass(r.status)}`}>{statusLabel(r.status)}</span>
+                  <span className={`badge ${statusBadgeClass(r.status)}`}>
+                    {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+                  </span>
                 ),
               },
             ]}
             fields={[
-              { name: "title", label: "Title", required: true },
+              { name: "title", label: t("common.title"), required: true },
               {
                 name: "priority",
-                label: "Priority",
+                label: t("planning.priority"),
                 type: "select",
-                options: PRIORITY_OPTIONS,
+                options: priorityOptions,
               },
               {
                 name: "task_type",
-                label: "Task type",
+                label: t("planning.taskType"),
                 type: "select",
                 options: [
-                  { value: "GENERAL", label: "General" },
-                  { value: "BUG", label: "Bug" },
-                  { value: "REVIEW", label: "Review" },
-                  { value: "DOCS", label: "Docs" },
+                  { value: "GENERAL", label: t("planning.taskTypes.general") },
+                  { value: "BUG", label: t("planning.taskTypes.bug") },
+                  { value: "REVIEW", label: t("planning.taskTypes.review") },
+                  { value: "DOCS", label: t("planning.taskTypes.docs") },
                 ],
               },
               {
                 name: "assignee_id",
-                label: "Assignee",
+                label: t("planning.assignee"),
                 type: "select",
                 options: empOptions,
               },
-              { name: "start_date", label: "Start date", type: "date" },
-              { name: "due_date", label: "Due date", type: "date" },
-              { name: "estimated_minutes", label: "Estimated minutes", type: "number" },
-              { name: "actual_minutes", label: "Actual minutes", type: "number" },
+              { name: "start_date", label: t("common.startDate"), type: "date" },
+              { name: "due_date", label: t("common.dueDate"), type: "date" },
+              { name: "estimated_minutes", label: t("planning.estimatedMinutes"), type: "number" },
+              { name: "actual_minutes", label: t("planning.actualMinutes"), type: "number" },
               {
                 name: "status",
-                label: "Status",
+                label: t("common.status"),
                 type: "select",
-                options: TASK_STATUSES,
+                options: taskStatusOptions,
               },
-              { name: "description", label: "Description", type: "textarea" },
+              { name: "description", label: t("common.description"), type: "textarea" },
             ]}
             toFormValues={(r) => ({
               title: r.title,
@@ -999,21 +1019,23 @@ export default function PlanningClient() {
                     </button>
                   </li>
                 ))}
-                {checklist.length === 0 ? <li className="text-dim">No checklist items yet.</li> : null}
+                {checklist.length === 0 ? (
+                  <li className="text-dim">{t("planning.noChecklistItems")}</li>
+                ) : null}
               </ul>
               <form className="auth-form" onSubmit={onAddChecklistItem}>
                 <div className="form-group">
-                  <label htmlFor="checklist-item">New checklist item</label>
+                  <label htmlFor="checklist-item">{t("planning.newChecklistItem")}</label>
                   <input
                     id="checklist-item"
                     value={checklistTitle}
                     onChange={(e) => setChecklistTitle(e.target.value)}
-                    placeholder="e.g. Write tests"
+                    placeholder={t("planning.checklistPlaceholder")}
                   />
                 </div>
                 {checklistError ? <p className="auth-error">{checklistError}</p> : null}
                 <button type="submit" className="btn btn-sm btn-primary" disabled={addChecklistItem.isPending}>
-                  Add item
+                  {t("planning.addItem")}
                 </button>
               </form>
             </section>

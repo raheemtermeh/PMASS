@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, num, optStr } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface FinanceEntry {
   id: number;
@@ -16,6 +18,7 @@ interface FinanceEntry {
 }
 
 export default function FinancePage() {
+  const { t, n } = useI18n();
   const qc = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["finance-entries"],
@@ -56,71 +59,88 @@ export default function FinancePage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="finance"
-        title="Finance workboard"
-        description="Budget tasks, todos, and status updates for finance operations."
+        title={t("finance.workboard.title")}
+        description={t("finance.workboard.description")}
       />
       <div className="grid grid-cols-3">
         <div className="card">
-          <div className="card-title">Entries</div>
-          <div className="card-value font-mono">{items.length}</div>
+          <div className="card-title">{t("finance.stats.entries")}</div>
+          <div className="card-value font-mono">{n(items.length)}</div>
         </div>
         <div className="card">
-          <div className="card-title">Total amount</div>
-          <div className="card-value font-mono">${total.toLocaleString()}</div>
-        </div>
-        <div className="card">
-          <div className="card-title">Active</div>
+          <div className="card-title">{t("finance.stats.totalAmount")}</div>
           <div className="card-value font-mono">
-            {items.filter((i) => i.status === "Active").length}
+            {t("finance.currency", { amount: n(total) })}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-title">{t("statuses.active")}</div>
+          <div className="card-value font-mono">
+            {n(items.filter((i) => i.status === "Active").length)}
           </div>
         </div>
       </div>
 
       <ResourceManager
-        title="Finance Ledger"
-        description="Track OpEx, CapEx, and revenue entries for your company."
-        createLabel="New entry"
-        emptyTitle="No finance entries"
-        emptyDescription="Add burn and expenditure records to populate finance telemetry."
+        title={t("finance.ledger.title")}
+        description={t("finance.ledger.description")}
+        createLabel={t("finance.ledger.create")}
+        emptyTitle={t("finance.ledger.emptyTitle")}
+        emptyDescription={t("finance.ledger.emptyDescription")}
         isLoading={isLoading}
         items={items}
         columns={[
-          { key: "title", label: "Title" },
-          { key: "category", label: "Category" },
+          { key: "title", label: t("finance.fields.title") },
+          {
+            key: "category",
+            label: t("finance.fields.category"),
+            render: (r) => t(`finance.categories.${r.category}`),
+          },
           {
             key: "amount",
-            label: "Amount",
-            render: (r) => <span className="font-mono">${r.amount.toLocaleString()}</span>,
+            label: t("finance.fields.amount"),
+            render: (r) => (
+              <span className="font-mono">{t("finance.currency", { amount: n(r.amount) })}</span>
+            ),
           },
-          { key: "period", label: "Period", render: (r) => r.period ?? "—" },
-          { key: "status", label: "Status" },
+          { key: "period", label: t("finance.fields.period"), render: (r) => r.period ?? "—" },
+          {
+            key: "status",
+            label: t("finance.fields.status"),
+            render: (r) =>
+              localizedEnumLabel(
+                r.status,
+                statusTranslationKey(r.status) ?? `finance.statuses.${r.status.toLowerCase()}`,
+                t,
+              ),
+          },
         ]}
         fields={[
-          { name: "title", label: "Title", required: true },
+          { name: "title", label: t("finance.fields.title"), required: true },
           {
             name: "category",
-            label: "Category",
+            label: t("finance.fields.category"),
             type: "select",
             required: true,
             options: [
-              { value: "opex", label: "OpEx" },
-              { value: "capex", label: "CapEx" },
-              { value: "revenue", label: "Revenue" },
+              { value: "opex", label: t("finance.categories.opex") },
+              { value: "capex", label: t("finance.categories.capex") },
+              { value: "revenue", label: t("finance.categories.revenue") },
             ],
           },
-          { name: "amount", label: "Amount", type: "number", step: "0.01", required: true },
-          { name: "period", label: "Period", placeholder: "2026-Q3" },
+          { name: "amount", label: t("finance.fields.amount"), type: "number", step: "0.01", required: true },
+          { name: "period", label: t("finance.fields.period"), placeholder: t("finance.placeholders.period") },
           {
             name: "status",
-            label: "Status",
+            label: t("finance.fields.status"),
             type: "select",
             options: [
-              { value: "Active", label: "Active" },
-              { value: "Closed", label: "Closed" },
-              { value: "Forecast", label: "Forecast" },
+              { value: "Active", label: t("statuses.active") },
+              { value: "Closed", label: t("finance.statuses.closed") },
+              { value: "Forecast", label: t("finance.statuses.forecast") },
             ],
           },
-          { name: "notes", label: "Notes", type: "textarea" },
+          { name: "notes", label: t("finance.fields.notes"), type: "textarea" },
         ]}
         toFormValues={(r) => ({
           title: r.title,

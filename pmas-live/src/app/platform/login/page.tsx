@@ -15,10 +15,12 @@ import { setLastAuthPortal } from "@/shared/auth-portals";
 import { isPlatformRole } from "@/shared/permissions";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function PlatformLoginPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
   const token = useAuthStore((s) => s.token);
@@ -62,7 +64,7 @@ export default function PlatformLoginPage() {
           );
         }
       } catch {
-        setError("Cannot reach API server. Start the backend on port 8080.");
+        setError(t("platformLogin.apiUnavailable"));
       }
     }
     void checkBootstrap();
@@ -94,8 +96,8 @@ export default function PlatformLoginPage() {
         false,
       );
       applySession(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError(t("platformLogin.loginFailed"));
     } finally {
       setLoading(false);
     }
@@ -106,7 +108,8 @@ export default function PlatformLoginPage() {
     setPasskeyLoading(true);
     try {
       if (!isPasskeySupported()) {
-        throw new Error("Passkeys are not supported in this browser");
+        setError(t("platformLogin.passkeyUnsupported"));
+        return;
       }
       const identifier = email.trim();
       const begin = await httpClient.post<{
@@ -137,8 +140,8 @@ export default function PlatformLoginPage() {
         false,
       );
       applySession(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Passkey sign-in failed");
+    } catch {
+      setError(t("platformLogin.passkeyFailed"));
     } finally {
       setPasskeyLoading(false);
     }
@@ -151,16 +154,16 @@ export default function PlatformLoginPage() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Platform Admin</h1>
+          <h1>{t("role.platformAdmin")}</h1>
         </div>
         <p className="auth-subtitle">
-          Sign in to review company access requests and provision workspaces.
+          {t("platformLogin.subtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form auth-login-card">
           <div className="auth-login-fields">
             <div className="form-group">
-              <label htmlFor="email">Email or username</label>
+              <label htmlFor="email">{t("welcome.emailOrUsername")}</label>
               <input
                 id="email"
                 value={email}
@@ -171,7 +174,7 @@ export default function PlatformLoginPage() {
             </div>
             <PasswordField
               id="password"
-              label="Password"
+              label={t("common.password")}
               value={password}
               onChange={setPassword}
               required
@@ -187,8 +190,8 @@ export default function PlatformLoginPage() {
                 onChange={(e) => setRememberMe(e.target.checked)}
               />
               <span className="auth-remember-text">
-                <strong>Remember me</strong>
-                <em>Stay signed in for 30 days</em>
+                <strong>{t("welcome.rememberMe")}</strong>
+                <em>{t("welcome.staySignedIn")}</em>
               </span>
             </label>
             <Link
@@ -197,7 +200,7 @@ export default function PlatformLoginPage() {
               )}`}
               className="auth-forgot-link"
             >
-              Forgot password?
+              {t("welcome.forgotPassword")}
             </Link>
           </div>
 
@@ -208,13 +211,13 @@ export default function PlatformLoginPage() {
             className="btn btn-primary auth-submit"
             disabled={!email.trim() || !password || loading || passkeyLoading}
           >
-            {loading ? "Signing in…" : "Sign in to platform panel"}
+            {loading ? t("welcome.signingIn") : t("platformLogin.submit")}
           </button>
 
           {passkeysOk ? (
             <div className="auth-passkey-block">
               <div className="auth-passkey-divider" aria-hidden>
-                <span>or</span>
+                <span>{t("platformLogin.or")}</span>
               </div>
               <button
                 type="button"
@@ -243,8 +246,8 @@ export default function PlatformLoginPage() {
                   />
                 </svg>
                 <span className="auth-passkey-copy">
-                  <strong>{passkeyLoading ? "Waiting for device…" : "Sign in with passkey"}</strong>
-                  <em>Face ID · Touch ID · Windows Hello · security key</em>
+                  <strong>{passkeyLoading ? t("welcome.waitingForDevice") : t("welcome.passkey")}</strong>
+                  <em>{t("welcome.passkeyHint")}</em>
                 </span>
               </button>
             </div>
@@ -252,11 +255,11 @@ export default function PlatformLoginPage() {
         </form>
 
         <p className="auth-footnote">
-          Company Admin? <Link href="/welcome#login">Admin sign in</Link>
+          {t("platformLogin.companyAdminQuestion")} <Link href="/welcome#login">{t("platformLogin.adminSignIn")}</Link>
           {" · "}
-          Employee? <Link href="/employee/login">Employee sign in</Link>
+          {t("platformLogin.employeeQuestion")} <Link href="/employee/login">{t("platformLogin.employeeSignIn")}</Link>
           {" · "}
-          <Link href="/forgot-password?slug=platform">Forgot password</Link>
+          <Link href="/forgot-password?slug=platform">{t("platformLogin.forgotPassword")}</Link>
         </p>
       </div>
     </div>

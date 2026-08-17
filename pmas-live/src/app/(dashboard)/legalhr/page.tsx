@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, optStr } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface Control {
   id: number;
@@ -16,6 +18,7 @@ interface Control {
 }
 
 export default function LegalHRPage() {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["compliance-controls"],
@@ -54,51 +57,65 @@ export default function LegalHRPage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="legalhr"
-        title="Legal & HR workboard"
-        description="Compliance tasks, todos, and status checkpoints."
+        title={t("legalhr.workboard.title")}
+        description={t("legalhr.workboard.description")}
       />
     <ResourceManager
-      title="Legal & HR Compliance"
-      description="Maintain GDPR/SOC2 style controls and ownership for your organization."
-      createLabel="New control"
-      emptyTitle="No compliance controls"
-      emptyDescription="Add compliance checklist items and assign owners for audits."
+      title={t("legalhr.controls.title")}
+      description={t("legalhr.controls.description")}
+      createLabel={t("legalhr.controls.create")}
+      emptyTitle={t("legalhr.controls.emptyTitle")}
+      emptyDescription={t("legalhr.controls.emptyDescription")}
       isLoading={isLoading}
       items={items}
       columns={[
-        { key: "code", label: "Code", render: (r) => <span className="font-mono">{r.code}</span> },
-        { key: "title", label: "Title" },
-        { key: "framework", label: "Framework", render: (r) => r.framework ?? "—" },
-        { key: "status", label: "Status" },
-        { key: "owner_name", label: "Owner", render: (r) => r.owner_name ?? "—" },
+        { key: "code", label: t("legalhr.fields.code"), render: (r) => <span className="font-mono">{r.code}</span> },
+        { key: "title", label: t("legalhr.fields.title") },
+        {
+          key: "framework",
+          label: t("legalhr.fields.framework"),
+          render: (r) => r.framework ? t(`legalhr.frameworks.${r.framework.toLowerCase()}`) : "—",
+        },
+        {
+          key: "status",
+          label: t("legalhr.fields.status"),
+          render: (r) =>
+            localizedEnumLabel(
+              r.status,
+              statusTranslationKey(r.status) ??
+                `legalhr.statuses.${r.status.toLowerCase().replace(/\s+/g, "")}`,
+              t,
+            ),
+        },
+        { key: "owner_name", label: t("legalhr.fields.owner"), render: (r) => r.owner_name ?? "—" },
       ]}
       fields={[
-        { name: "code", label: "Code", required: true, placeholder: "SOC2-CC6.1" },
-        { name: "title", label: "Title", required: true },
+        { name: "code", label: t("legalhr.fields.code"), required: true, placeholder: t("legalhr.placeholders.code") },
+        { name: "title", label: t("legalhr.fields.title"), required: true },
         {
           name: "framework",
-          label: "Framework",
+          label: t("legalhr.fields.framework"),
           type: "select",
           options: [
-            { value: "SOC2", label: "SOC2" },
-            { value: "GDPR", label: "GDPR" },
-            { value: "ISO27001", label: "ISO27001" },
-            { value: "Internal", label: "Internal" },
+            { value: "SOC2", label: t("legalhr.frameworks.soc2") },
+            { value: "GDPR", label: t("legalhr.frameworks.gdpr") },
+            { value: "ISO27001", label: t("legalhr.frameworks.iso27001") },
+            { value: "Internal", label: t("legalhr.frameworks.internal") },
           ],
         },
         {
           name: "status",
-          label: "Status",
+          label: t("legalhr.fields.status"),
           type: "select",
           options: [
-            { value: "Pending", label: "Pending" },
-            { value: "In Progress", label: "In Progress" },
-            { value: "Compliant", label: "Compliant" },
-            { value: "At Risk", label: "At Risk" },
+            { value: "Pending", label: t("statuses.pending") },
+            { value: "In Progress", label: t("statuses.inProgress") },
+            { value: "Compliant", label: t("legalhr.statuses.compliant") },
+            { value: "At Risk", label: t("legalhr.statuses.atrisk") },
           ],
         },
-        { name: "owner_name", label: "Owner" },
-        { name: "notes", label: "Notes", type: "textarea" },
+        { name: "owner_name", label: t("legalhr.fields.owner") },
+        { name: "notes", label: t("legalhr.fields.notes"), type: "textarea" },
       ]}
       toFormValues={(r) => ({
         code: r.code,

@@ -7,6 +7,8 @@ import { ModalPortal } from "@/components/ModalPortal";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { isPlatformRole } from "@/shared/permissions";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface Tenant {
   id: number;
@@ -39,13 +41,8 @@ interface ProvisionResponse {
 
 type StatusFilter = "all" | "active" | "inactive";
 
-function fmtDate(value?: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
-}
-
 export default function PlatformTenantsPage() {
+  const { t, n, d } = useI18n();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
@@ -75,7 +72,6 @@ export default function PlatformTenantsPage() {
     data: detail,
     isLoading: detailLoading,
     isError: detailError,
-    error: detailErr,
   } = useQuery({
     queryKey: ["tenant-detail", detailId],
     queryFn: () => httpClient.get<TenantDetail>(`/api/v1/tenants/${detailId}`),
@@ -105,7 +101,7 @@ export default function PlatformTenantsPage() {
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setCreatedHint(
-        `Created ${res.tenant.name} (${res.tenant.slug}). Admin: ${res.admin.email}`,
+        t("platformTenants.created", { name: res.tenant.name, slug: res.tenant.slug, email: res.admin.email }),
       );
       setTenantName("");
       setTenantSlug("");
@@ -118,16 +114,16 @@ export default function PlatformTenantsPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: number; body: { name?: string; is_active?: boolean } }) =>
       httpClient.patch<Tenant>(`/api/v1/tenants/${id}`, body),
-    onSuccess: (t, vars) => {
+    onSuccess: (tenant, vars) => {
       void queryClient.invalidateQueries({ queryKey: ["tenants"] });
-      void queryClient.invalidateQueries({ queryKey: ["tenant-detail", t.id] });
+      void queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenant.id] });
       setEditing(null);
       if (vars.body.name !== undefined) {
-        setActionHint(`Renamed company to “${t.name}”.`);
+        setActionHint(t("platformTenants.renamed", { name: tenant.name }));
       } else if (vars.body.is_active === false) {
-        setActionHint(`Deactivated “${t.name}”. Users of this company cannot sign in.`);
+        setActionHint(t("platformTenants.deactivated", { name: tenant.name }));
       } else if (vars.body.is_active === true) {
-        setActionHint(`Activated “${t.name}”.`);
+        setActionHint(t("platformTenants.activated", { name: tenant.name }));
       }
     },
   });
@@ -135,8 +131,8 @@ export default function PlatformTenantsPage() {
   if (!enabled) {
     return (
       <EmptyState
-        title="Platform access only"
-        description="Only platform administrators can provision company accounts."
+        title={t("platformTenants.accessOnly")}
+        description={t("platformTenants.accessOnlyDescription")}
       />
     );
   }
@@ -160,52 +156,52 @@ export default function PlatformTenantsPage() {
     updateMutation.mutate({ id: editing.id, body: { name } });
   }
 
-  function toggleActive(t: Tenant) {
-    if (t.is_active) {
+  function toggleActive(tenant: Tenant) {
+    if (tenant.is_active) {
       const ok = window.confirm(
-        `Deactivate “${t.name}”? Users of this company will not be able to sign in until it is activated again.`,
+        t("platformTenants.deactivateConfirm", { name: tenant.name }),
       );
       if (!ok) return;
-      updateMutation.mutate({ id: t.id, body: { is_active: false } });
+      updateMutation.mutate({ id: tenant.id, body: { is_active: false } });
       return;
     }
-    updateMutation.mutate({ id: t.id, body: { is_active: true } });
+    updateMutation.mutate({ id: tenant.id, body: { is_active: true } });
   }
 
   return (
     <div className="page-stack">
       <section className="data-panel">
-        <h2 className="panel-title">Provision Company</h2>
+        <h2 className="panel-title">{t("platformTenants.provisionTitle")}</h2>
         <p className="text-dim" style={{ marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Creates an isolated company workspace with empty services and a tenant admin who can invite employees.
+          {t("platformTenants.provisionDescription")}
         </p>
         <form onSubmit={handleSubmit} className="user-form">
           <div className="grid grid-cols-2">
             <div className="form-group">
-              <label htmlFor="t-name">Company name</label>
+              <label htmlFor="t-name">{t("platformTenants.companyName")}</label>
               <input id="t-name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label htmlFor="t-slug">Company ID (slug)</label>
+              <label htmlFor="t-slug">{t("platformTenants.companyIdSlug")}</label>
               <input
                 id="t-slug"
                 value={tenantSlug}
                 onChange={(e) => setTenantSlug(e.target.value)}
-                placeholder="acme-corp"
+                placeholder={t("platformTenants.slugPlaceholder")}
                 required
                 pattern="[a-z0-9]+(-[a-z0-9]+)*"
               />
             </div>
             <div className="form-group">
-              <label htmlFor="a-name">Admin full name</label>
+              <label htmlFor="a-name">{t("platformTenants.adminFullName")}</label>
               <input id="a-name" value={adminFullName} onChange={(e) => setAdminFullName(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label htmlFor="a-email">Admin email</label>
+              <label htmlFor="a-email">{t("platformTenants.adminEmail")}</label>
               <input id="a-email" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label htmlFor="a-pass">Admin password</label>
+              <label htmlFor="a-pass">{t("platformTenants.adminPassword")}</label>
               <input
                 id="a-pass"
                 type="password"
@@ -218,14 +214,12 @@ export default function PlatformTenantsPage() {
           </div>
           {provisionMutation.isError && (
             <p className="auth-error">
-              {provisionMutation.error instanceof Error
-                ? provisionMutation.error.message
-                : "Provision failed"}
+              {t("platformTenants.provisionFailed")}
             </p>
           )}
           {createdHint && <p className="text-dim">{createdHint}</p>}
           <button type="submit" className="btn btn-primary" disabled={provisionMutation.isPending}>
-            {provisionMutation.isPending ? "Provisioning…" : "Create company"}
+            {provisionMutation.isPending ? t("platformTenants.provisioning") : t("platformTenants.createCompany")}
           </button>
         </form>
       </section>
@@ -233,7 +227,7 @@ export default function PlatformTenantsPage() {
       <section className="data-panel">
         <div className="panel-header" style={{ marginBottom: "1rem" }}>
           <h2 className="panel-title" style={{ marginBottom: 0 }}>
-            Companies
+            {t("platformTenants.companies")}
           </h2>
         </div>
 
@@ -242,15 +236,15 @@ export default function PlatformTenantsPage() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name or company ID…"
-            aria-label="Search companies"
+            placeholder={t("platformTenants.searchPlaceholder")}
+            aria-label={t("platformTenants.searchLabel")}
             style={{ minWidth: "14rem", flex: "1 1 12rem" }}
           />
           <div style={{ display: "flex", gap: "0.35rem" }}>
             {([
-              ["all", "All"],
-              ["active", "Active"],
-              ["inactive", "Inactive"],
+              ["all", t("common.all")],
+              ["active", localizedEnumLabel("ACTIVE", statusTranslationKey("ACTIVE"), t)],
+              ["inactive", localizedEnumLabel("INACTIVE", statusTranslationKey("INACTIVE"), t)],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -267,64 +261,64 @@ export default function PlatformTenantsPage() {
         {actionHint ? <p className="text-dim" style={{ marginBottom: "0.75rem" }}>{actionHint}</p> : null}
         {updateMutation.isError ? (
           <p className="auth-error">
-            {updateMutation.error instanceof Error ? updateMutation.error.message : "Update failed"}
+            {t("platformTenants.updateFailed")}
           </p>
         ) : null}
 
         {isLoading ? (
-          <p className="text-dim">Loading…</p>
+          <p className="text-dim">{t("common.loading")}</p>
         ) : tenants.length === 0 ? (
           <EmptyState
-            title="No companies yet"
-            description="Provision the first customer account. Their panel will start empty until they add their own data."
+            title={t("platformTenants.noCompanies")}
+            description={t("platformTenants.noCompaniesDescription")}
           />
         ) : filtered.length === 0 ? (
-          <EmptyState title="No matches" description="Try a different search or status filter." />
+          <EmptyState title={t("platformTenants.noMatches")} description={t("platformTenants.noMatchesDescription")} />
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Company ID</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
+                <th>{t("common.name")}</th>
+                <th>{t("platformTenants.companyId")}</th>
+                <th>{t("common.status")}</th>
+                <th>{t("platformTenants.createdColumn")}</th>
+                <th>{t("common.actions")}</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => (
-                <tr key={t.id}>
+              {filtered.map((tenant) => (
+                <tr key={tenant.id}>
                   <td>
-                    <button type="button" className="link-btn" onClick={() => setDetailId(t.id)}>
-                      {t.name}
+                    <button type="button" className="link-btn" onClick={() => setDetailId(tenant.id)}>
+                      {tenant.name}
                     </button>
                   </td>
-                  <td className="font-mono">{t.slug}</td>
+                  <td className="font-mono">{tenant.slug}</td>
                   <td>
-                    <span className={`status-badge status-${t.is_active ? "active" : "inactive"}`}>
-                      {t.is_active ? "Active" : "Inactive"}
+                    <span className={`status-badge status-${tenant.is_active ? "active" : "inactive"}`}>
+                      {localizedEnumLabel(tenant.is_active ? "ACTIVE" : "INACTIVE", statusTranslationKey(tenant.is_active ? "ACTIVE" : "INACTIVE"), t)}
                     </span>
                   </td>
-                  <td>{fmtDate(t.created_at)}</td>
+                  <td>{d(tenant.created_at, { dateStyle: "medium", timeStyle: "short" })}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button type="button" className="btn btn-sm" onClick={() => setDetailId(t.id)}>
-                      Details
+                    <button type="button" className="btn btn-sm" onClick={() => setDetailId(tenant.id)}>
+                      {t("common.details")}
                     </button>{" "}
                     <button
                       type="button"
                       className="btn btn-sm"
-                      onClick={() => openEdit(t)}
+                      onClick={() => openEdit(tenant)}
                       disabled={updateMutation.isPending}
                     >
-                      Edit
+                      {t("common.edit")}
                     </button>{" "}
                     <button
                       type="button"
-                      className={`btn btn-sm${t.is_active ? " btn-danger" : ""}`}
-                      onClick={() => toggleActive(t)}
+                      className={`btn btn-sm${tenant.is_active ? " btn-danger" : ""}`}
+                      onClick={() => toggleActive(tenant)}
                       disabled={updateMutation.isPending}
                     >
-                      {t.is_active ? "Deactivate" : "Activate"}
+                      {tenant.is_active ? t("platformTenants.deactivate") : t("platformTenants.activate")}
                     </button>
                   </td>
                 </tr>
@@ -346,14 +340,14 @@ export default function PlatformTenantsPage() {
               style={{ maxWidth: "36rem" }}
             >
               <h3 id="company-detail-title" className="panel-title">
-                Company details
+                {t("platformTenants.companyDetails")}
               </h3>
 
               {detailLoading ? (
-                <p className="text-dim">Loading…</p>
+                <p className="text-dim">{t("common.loading")}</p>
               ) : detailError ? (
                 <p className="auth-error">
-                  {detailErr instanceof Error ? detailErr.message : "Failed to load details"}
+                  {t("platformTenants.detailsFailed")}
                 </p>
               ) : detail ? (
                 <div className="page-stack" style={{ gap: "1rem" }}>
@@ -361,11 +355,11 @@ export default function PlatformTenantsPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
                       <strong style={{ fontSize: "1.1rem" }}>{detail.name}</strong>
                       <span className={`status-badge status-${detail.is_active ? "active" : "inactive"}`}>
-                        {detail.is_active ? "Active" : "Inactive"}
+                        {localizedEnumLabel(detail.is_active ? "ACTIVE" : "INACTIVE", statusTranslationKey(detail.is_active ? "ACTIVE" : "INACTIVE"), t)}
                       </span>
                       {detail.company_status ? (
                         <span className="text-dim" style={{ fontSize: "0.8rem" }}>
-                          Company: {detail.company_status}
+                          {t("platformTenants.companyStatus", { status: localizedEnumLabel(detail.company_status, statusTranslationKey(detail.company_status), t) })}
                         </span>
                       ) : null}
                     </div>
@@ -377,23 +371,23 @@ export default function PlatformTenantsPage() {
 
                   <dl className="grid grid-cols-2" style={{ gap: "0.75rem 1rem", margin: 0 }}>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Created</dt>
-                      <dd style={{ margin: 0 }}>{fmtDate(detail.created_at)}</dd>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.createdColumn")}</dt>
+                      <dd style={{ margin: 0 }}>{d(detail.created_at, { dateStyle: "medium", timeStyle: "short" })}</dd>
                     </div>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Updated</dt>
-                      <dd style={{ margin: 0 }}>{fmtDate(detail.updated_at)}</dd>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.updated")}</dt>
+                      <dd style={{ margin: 0 }}>{detail.updated_at ? d(detail.updated_at, { dateStyle: "medium", timeStyle: "short" }) : "—"}</dd>
                     </div>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Language</dt>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.language")}</dt>
                       <dd style={{ margin: 0 }}>{detail.language || "—"}</dd>
                     </div>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Timezone</dt>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.timezone")}</dt>
                       <dd style={{ margin: 0 }}>{detail.timezone || "—"}</dd>
                     </div>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Admin</dt>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.admin")}</dt>
                       <dd style={{ margin: 0 }}>
                         {detail.admin_name || detail.admin_email
                           ? `${detail.admin_name || "—"}${detail.admin_email ? ` (${detail.admin_email})` : ""}`
@@ -401,22 +395,22 @@ export default function PlatformTenantsPage() {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>Logo</dt>
+                      <dt className="text-dim" style={{ fontSize: "0.75rem" }}>{t("platformTenants.logo")}</dt>
                       <dd style={{ margin: 0, wordBreak: "break-all" }}>{detail.logo_url || "—"}</dd>
                     </div>
                   </dl>
 
                   <div className="grid grid-cols-2" style={{ gap: "0.75rem" }}>
                     {[
-                      ["Users", detail.user_count],
-                      ["Active users", detail.active_users],
-                      ["Employees", detail.employee_count],
-                      ["Products", detail.product_count],
-                      ["Projects", detail.project_count],
+                      [t("platformTenants.users"), detail.user_count],
+                      [t("platformTenants.activeUsers"), detail.active_users],
+                      [t("platformTenants.employees"), detail.employee_count],
+                      [t("platformTenants.products"), detail.product_count],
+                      [t("platformTenants.projects"), detail.project_count],
                     ].map(([label, value]) => (
                       <div key={String(label)} className="data-panel" style={{ padding: "0.75rem", margin: 0 }}>
                         <div className="text-dim" style={{ fontSize: "0.75rem" }}>{label}</div>
-                        <div style={{ fontSize: "1.25rem", fontWeight: 600 }}>{value}</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 600 }}>{n(Number(value))}</div>
                       </div>
                     ))}
                   </div>
@@ -431,7 +425,7 @@ export default function PlatformTenantsPage() {
                           openEdit(detail);
                         }}
                       >
-                        Edit name
+                        {t("platformTenants.editName")}
                       </button>
                       <button
                         type="button"
@@ -439,11 +433,11 @@ export default function PlatformTenantsPage() {
                         onClick={() => toggleActive(detail)}
                         disabled={updateMutation.isPending}
                       >
-                        {detail.is_active ? "Deactivate" : "Activate"}
+                        {detail.is_active ? t("platformTenants.deactivate") : t("platformTenants.activate")}
                       </button>
                     </div>
                     <button type="button" className="btn" onClick={() => setDetailId(null)}>
-                      Close
+                      {t("common.close")}
                     </button>
                   </div>
                 </div>
@@ -464,14 +458,14 @@ export default function PlatformTenantsPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <h3 id="edit-company-title" className="panel-title">
-                Edit company
+                {t("platformTenants.editCompany")}
               </h3>
               <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-                Company ID (<span className="font-mono">{editing.slug}</span>) cannot be changed.
+                {t("platformTenants.immutableId", { slug: editing.slug })}
               </p>
               <form onSubmit={handleEditSubmit} className="user-form">
                 <div className="form-group">
-                  <label htmlFor="edit-name">Company name</label>
+                  <label htmlFor="edit-name">{t("platformTenants.companyName")}</label>
                   <input
                     id="edit-name"
                     value={editName}
@@ -487,10 +481,10 @@ export default function PlatformTenantsPage() {
                     onClick={() => setEditing(null)}
                     disabled={updateMutation.isPending}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={updateMutation.isPending || !editName.trim()}>
-                    {updateMutation.isPending ? "Saving…" : "Save"}
+                    {updateMutation.isPending ? t("common.saving") : t("common.save")}
                   </button>
                 </div>
               </form>

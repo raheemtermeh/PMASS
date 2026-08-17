@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface PmasLoaderProps {
   message?: string;
@@ -27,9 +28,11 @@ function useCreepingProgress(enabled: boolean): number {
 }
 
 export function PmasLoader({
-  message = "Loading PMAS Live…",
+  message,
   variant = "fullscreen",
 }: PmasLoaderProps) {
+  const { t } = useI18n();
+  const resolvedMessage = message ?? t("loader.loading");
   const isFullscreen = variant === "fullscreen";
   const progress = useCreepingProgress(isFullscreen);
   const [slow, setSlow] = useState(false);
@@ -82,8 +85,8 @@ export function PmasLoader({
           <span className="pmas-loader-brand-mark">PMAS</span>
           <span className="pmas-loader-brand-live">Live</span>
         </p>
-        <p className="pmas-loader-message" key={message}>
-          {message}
+        <p className="pmas-loader-message" key={resolvedMessage}>
+          {resolvedMessage}
         </p>
         <div className="pmas-loader-bar" aria-hidden="true">
           {isFullscreen ? (
@@ -93,7 +96,7 @@ export function PmasLoader({
           )}
         </div>
         {slow ? (
-          <p className="pmas-loader-hint">Still working — the server is taking longer than usual.</p>
+          <p className="pmas-loader-hint">{t("loader.slow")}</p>
         ) : null}
       </div>
     </div>

@@ -7,9 +7,11 @@ import {
   useOnboardingStore,
   usePmProgressStore,
 } from "@/features/guidance/guidance-store";
+import { useI18n } from "@/core/providers/I18nProvider";
 import { capabilitiesForUser } from "@/shared/product-guidance";
 
 export default function ProductManagerPage() {
+  const { t, n } = useI18n();
   const user = useAuthStore((s) => s.user);
   const resetTour = useOnboardingStore((s) => s.resetForUser);
   const toggle = usePmProgressStore((s) => s.toggle);
@@ -37,20 +39,19 @@ export default function ProductManagerPage() {
 
   const roleLabel =
     user.role === "platform_admin" || user.role === "super_admin"
-      ? "Platform Admin"
+      ? t("productManager.roles.platformAdmin")
       : user.role === "tenant_admin"
-        ? "Company Admin"
-        : "Contributor";
+        ? t("productManager.roles.companyAdmin")
+        : t("productManager.roles.contributor");
 
   return (
     <div className="page-stack">
       <section className="pm-hero">
         <div>
-          <p className="wizard-kicker">Product Manager</p>
-          <h2 className="pm-hero-title">Value stream playbook</h2>
+          <p className="wizard-kicker">{t("productManager.kicker")}</p>
+          <h2 className="pm-hero-title">{t("productManager.title")}</h2>
           <p className="text-dim" style={{ maxWidth: "40rem", marginTop: "0.5rem" }}>
-            Filtered by your role ({roleLabel}). Product is the center — organization,
-            pipeline execution, and planning cascade around it.
+            {t("productManager.description", { role: roleLabel })}
           </p>
         </div>
         <div className="pm-hero-actions">
@@ -59,12 +60,15 @@ export default function ProductManagerPage() {
             className="btn"
             onClick={() => resetTour(userKey)}
           >
-            Replay setup wizard
+            {t("productManager.replayWizard")}
           </button>
-          <div className="pm-progress-ring" aria-label={`${pct}% complete`}>
-            <strong>{pct}%</strong>
+          <div
+            className="pm-progress-ring"
+            aria-label={t("productManager.progressAria", { percent: n(pct) })}
+          >
+            <strong>{t("productManager.percent", { value: n(pct) })}</strong>
             <span>
-              {done}/{caps.length} done
+              {t("productManager.doneCount", { done: n(done), total: n(caps.length) })}
             </span>
           </div>
         </div>
@@ -72,32 +76,32 @@ export default function ProductManagerPage() {
 
       <section className="stats-row">
         <div className="stat-card">
-          <span className="stat-label">Capabilities</span>
-          <strong className="stat-value">{caps.length}</strong>
+          <span className="stat-label">{t("productManager.stats.capabilities")}</span>
+          <strong className="stat-value">{n(caps.length)}</strong>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Permissions</span>
+          <span className="stat-label">{t("productManager.stats.permissions")}</span>
           <strong className="stat-value">
             {user.role === "tenant_admin" ||
             user.role === "platform_admin" ||
             user.role === "super_admin"
-              ? "All granted"
-              : user.permissions.length}
+              ? t("productManager.allGranted")
+              : n(user.permissions.length)}
           </strong>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Workspace</span>
+          <span className="stat-label">{t("productManager.stats.workspace")}</span>
           <strong className="stat-value" style={{ fontSize: "1rem" }}>
-            {user.tenant?.name ?? "Platform"}
+            {user.tenant?.name ?? t("productManager.platform")}
           </strong>
         </div>
       </section>
 
       {caps.length === 0 ? (
         <section className="data-panel">
-          <h2 className="panel-title">Nothing assigned yet</h2>
+          <h2 className="panel-title">{t("productManager.emptyTitle")}</h2>
           <p className="text-dim">
-            Ask your company admin to grant department permissions in User Management.
+            {t("productManager.emptyDescription")}
           </p>
         </section>
       ) : (
@@ -116,18 +120,22 @@ export default function ProductManagerPage() {
                       checked={checked}
                       onChange={() => toggle(userKey, cap.id)}
                     />
-                    <span>{cap.title}</span>
+                    <span>{t(`productManager.capabilities.${cap.id}.title`)}</span>
                   </label>
                   {cap.href ? (
                     <Link href={cap.href} className="btn btn-sm btn-primary">
-                      Open
+                      {t("productManager.open")}
                     </Link>
                   ) : null}
                 </div>
-                <p className="pm-card-summary">{cap.summary}</p>
+                <p className="pm-card-summary">
+                  {t(`productManager.capabilities.${cap.id}.summary`)}
+                </p>
                 <ol className="pm-card-steps">
-                  {cap.actions.map((a) => (
-                    <li key={a}>{a}</li>
+                  {cap.actions.map((a, index) => (
+                    <li key={a}>
+                      {t(`productManager.capabilities.${cap.id}.actions.${index}`)}
+                    </li>
                   ))}
                 </ol>
               </article>
@@ -137,23 +145,23 @@ export default function ProductManagerPage() {
       )}
 
       <section className="data-panel">
-        <h2 className="panel-title">How PMAS product areas fit together</h2>
+        <h2 className="panel-title">{t("productManager.flow.title")}</h2>
         <div className="pm-flow">
           <div>
-            <strong>1. Access</strong>
-            <p className="text-dim">Users + permissions decide which panels appear.</p>
+            <strong>{t("productManager.flow.access.title")}</strong>
+            <p className="text-dim">{t("productManager.flow.access.description")}</p>
           </div>
           <div>
-            <strong>2. Workboard</strong>
-            <p className="text-dim">Employer-defined tasks / todos / status per section.</p>
+            <strong>{t("productManager.flow.workboard.title")}</strong>
+            <p className="text-dim">{t("productManager.flow.workboard.description")}</p>
           </div>
           <div>
-            <strong>3. Domain CRUD</strong>
-            <p className="text-dim">Campaigns, subsystems, tokens, ledger rows, nodes…</p>
+            <strong>{t("productManager.flow.crud.title")}</strong>
+            <p className="text-dim">{t("productManager.flow.crud.description")}</p>
           </div>
           <div>
-            <strong>4. Cross-links</strong>
-            <p className="text-dim">Graph edges and dependent subsystems connect impact.</p>
+            <strong>{t("productManager.flow.crossLinks.title")}</strong>
+            <p className="text-dim">{t("productManager.flow.crossLinks.description")}</p>
           </div>
         </div>
       </section>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, num } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface Subsystem {
   id: number;
@@ -14,6 +15,7 @@ interface Subsystem {
 }
 
 export default function EngineeringPage() {
+  const { t, n } = useI18n();
   const qc = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["subsystems"],
@@ -54,45 +56,45 @@ export default function EngineeringPage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="engineering"
-        title="Engineering workboard"
-        description="Delivery tasks, todos, and status updates for engineering."
+        title={t("engineering.workboard.title")}
+        description={t("engineering.workboard.description")}
       />
     <ResourceManager
-      title="Engineering Subsystems"
-      description="Manage product subsystems, health, and CI pipeline targets."
-      createLabel="New subsystem"
-      emptyTitle="No subsystems"
-      emptyDescription="Create your engineering workspaces (services/modules) to start tracking load and pipelines."
+      title={t("engineering.subsystems.title")}
+      description={t("engineering.subsystems.description")}
+      createLabel={t("engineering.subsystems.create")}
+      emptyTitle={t("engineering.subsystems.emptyTitle")}
+      emptyDescription={t("engineering.subsystems.emptyDescription")}
       isLoading={isLoading}
       items={items}
       columns={[
-        { key: "name", label: "Name" },
-        { key: "slug", label: "Slug", render: (r) => <span className="font-mono">{r.slug}</span> },
+        { key: "name", label: t("engineering.fields.name") },
+        { key: "slug", label: t("engineering.fields.slug"), render: (r) => <span className="font-mono">{r.slug}</span> },
         {
           key: "status",
-          label: "Status",
-          render: (r) => <span className={`status-pill status-${r.status}`}>{r.status}</span>,
+          label: t("engineering.fields.status"),
+          render: (r) => <span className={`status-pill status-${r.status}`}>{t(`engineering.statuses.${r.status}`)}</span>,
         },
         {
           key: "load_percentage",
-          label: "Load",
-          render: (r) => <span className="font-mono">{r.load_percentage}%</span>,
+          label: t("engineering.fields.load"),
+          render: (r) => <span className="font-mono">{t("engineering.percent", { value: n(r.load_percentage) })}</span>,
         },
       ]}
       fields={[
-        { name: "name", label: "Name", required: true },
-        { name: "slug", label: "Slug", required: true, placeholder: "payments-api" },
+        { name: "name", label: t("engineering.fields.name"), required: true },
+        { name: "slug", label: t("engineering.fields.slug"), required: true, placeholder: t("engineering.placeholders.slug") },
         {
           name: "status",
-          label: "Status",
+          label: t("engineering.fields.status"),
           type: "select",
           options: [
-            { value: "healthy", label: "Healthy" },
-            { value: "warning", label: "Warning" },
-            { value: "blocked", label: "Blocked" },
+            { value: "healthy", label: t("engineering.statuses.healthy") },
+            { value: "warning", label: t("engineering.statuses.warning") },
+            { value: "blocked", label: t("statuses.blocked") },
           ],
         },
-        { name: "load_percentage", label: "Load %", type: "number" },
+        { name: "load_percentage", label: t("engineering.fields.loadPercent"), type: "number" },
       ]}
       toFormValues={(r) => ({
         name: r.name,
@@ -107,7 +109,7 @@ export default function EngineeringPage() {
           disabled={pipelineMut.isPending}
           onClick={() => void pipelineMut.mutateAsync(r.id).catch(() => undefined)}
         >
-          Trigger CI
+          {t("engineering.triggerCi")}
         </button>
       )}
       onCreate={async (v) => {

@@ -4,6 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, optStr } from "@/components/ResourceManager";
 import { StatusKanbanBoard } from "@/components/visual/StatusKanbanBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import {
+  localizedEnumLabel,
+  priorityTranslationKey,
+  statusTranslationKey,
+} from "@/lib/localized-labels";
 import type { Permission } from "@/shared/permissions";
 
 export interface SectionWorkItem {
@@ -18,27 +24,31 @@ export interface SectionWorkItem {
   due_date?: string | null;
 }
 
-const KIND_OPTIONS = [
-  { value: "task", label: "Task" },
-  { value: "todo", label: "Todo" },
-  { value: "status", label: "Status update" },
-];
+type Translate = (key: string) => string;
 
-const STATUS_OPTIONS = [
-  { value: "Backlog", label: "Backlog" },
-  { value: "Todo", label: "Todo" },
-  { value: "In Progress", label: "In Progress" },
-  { value: "Blocked", label: "Blocked" },
-  { value: "Done", label: "Done" },
-  { value: "Cancelled", label: "Cancelled" },
-];
+function kindOptions(t: Translate) {
+  return [
+    { value: "task", label: t("workboard.kinds.task") },
+    { value: "todo", label: t("workboard.kinds.todo") },
+    { value: "status", label: t("workboard.kinds.status") },
+  ];
+}
 
-const PRIORITY_OPTIONS = [
-  { value: "Critical", label: "Critical" },
-  { value: "High", label: "High" },
-  { value: "Medium", label: "Medium" },
-  { value: "Low", label: "Low" },
-];
+function statusOptions(t: Translate) {
+  return ["Backlog", "Todo", "In Progress", "Blocked", "Done", "Cancelled"].map(
+    (value) => ({
+      value,
+      label: localizedEnumLabel(value, statusTranslationKey(value), t),
+    }),
+  );
+}
+
+function priorityOptions(t: Translate) {
+  return ["Critical", "High", "Medium", "Low"].map((value) => ({
+    value,
+    label: localizedEnumLabel(value, priorityTranslationKey(value), t),
+  }));
+}
 
 function statusClass(status: string): string {
   const key = status.toLowerCase().replace(/\s+/g, "-");
@@ -56,11 +66,19 @@ interface SectionWorkBoardProps {
 
 export function SectionWorkBoard({
   section,
-  title = "Section workboard",
-  description = "Tasks, todos, and status updates defined for this department.",
+  title,
+  description,
 }: SectionWorkBoardProps) {
+  const { t, n, d } = useI18n();
   const qc = useQueryClient();
   const queryKey = ["work-items", section];
+  const displayedTitle = title ?? t("workboard.defaultTitle");
+  const displayedDescription = description ?? t("workboard.defaultDescription");
+  const kinds = kindOptions(t);
+  const statuses = statusOptions(t);
+  const priorities = priorityOptions(t);
+  const kindLabel = (value: string) =>
+    kinds.find((option) => option.value === value)?.label ?? value;
 
   const { data: items = [], isLoading } = useQuery({
     queryKey,
@@ -108,29 +126,29 @@ export function SectionWorkBoard({
     <div className="page-stack">
       <section className="stats-row">
         <div className="stat-card">
-          <span className="stat-label">Open</span>
-          <strong className="stat-value">{openCount}</strong>
+          <span className="stat-label">{t("workboard.stats.open")}</span>
+          <strong className="stat-value">{n(openCount)}</strong>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Todos</span>
-          <strong className="stat-value">{todoCount}</strong>
+          <span className="stat-label">{t("workboard.stats.todos")}</span>
+          <strong className="stat-value">{n(todoCount)}</strong>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Blocked</span>
-          <strong className="stat-value">{blockedCount}</strong>
+          <span className="stat-label">{t("workboard.stats.blocked")}</span>
+          <strong className="stat-value">{n(blockedCount)}</strong>
         </div>
       </section>
 
       <StatusKanbanBoard
         layoutKey={`workboard:${section}`}
-        title={`${title} · visual`}
-        hint="Drag cards across lanes to change status · one save per drop"
-        columns={STATUS_OPTIONS.map((s) => ({ id: s.value, label: s.label }))}
+        title={t("workboard.visualTitle", { title: displayedTitle })}
+        hint={t("workboard.visualHint")}
+        columns={statuses.map((s) => ({ id: s.value, label: s.label }))}
         cards={items.map((item) => ({
           id: String(item.id),
           title: item.title,
           status: item.status,
-          subtitle: `${item.kind} · ${item.priority}`,
+          subtitle: `${kindLabel(item.kind)} · ${localizedEnumLabel(item.priority, priorityTranslationKey(item.priority), t)}`,
         }))}
         onStatusChange={async (id, status) => {
           await updateMut.mutateAsync({ id: Number(id), body: { status } });
@@ -138,65 +156,80 @@ export function SectionWorkBoard({
       />
 
       <ResourceManager
-        title={title}
-        description={description}
-        createLabel="Add work item"
-        emptyTitle="No work items yet"
-        emptyDescription="Create tasks, todos, or status checkpoints your team should track in this section."
+        title={displayedTitle}
+        description={displayedDescription}
+        createLabel={t("workboard.addItem")}
+        emptyTitle={t("workboard.emptyTitle")}
+        emptyDescription={t("workboard.emptyDescription")}
         isLoading={isLoading}
         items={items}
         columns={[
           {
             key: "kind",
-            label: "Kind",
-            render: (r) => <span className="kind-chip">{r.kind}</span>,
+            label: t("workboard.fields.kind"),
+            render: (r) => <span className="kind-chip">{kindLabel(r.kind)}</span>,
           },
-          { key: "title", label: "Title" },
+          { key: "title", label: t("workboard.fields.title") },
           {
             key: "status",
-            label: "Status",
+            label: t("workboard.fields.status"),
             render: (r) => (
-              <span className={`status-pill ${statusClass(r.status)}`}>{r.status}</span>
+              <span className={`status-pill ${statusClass(r.status)}`}>
+                {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+              </span>
             ),
           },
-          { key: "priority", label: "Priority" },
+          {
+            key: "priority",
+            label: t("workboard.fields.priority"),
+            render: (r) =>
+              localizedEnumLabel(r.priority, priorityTranslationKey(r.priority), t),
+          },
           {
             key: "assignee",
-            label: "Assignee",
+            label: t("workboard.fields.assignee"),
             render: (r) => r.assignee ?? "—",
           },
           {
             key: "due_date",
-            label: "Due",
-            render: (r) => r.due_date ?? "—",
+            label: t("workboard.fields.due"),
+            render: (r) => (r.due_date ? d(r.due_date) : "—"),
           },
         ]}
         fields={[
           {
             name: "kind",
-            label: "Kind",
+            label: t("workboard.fields.kind"),
             type: "select",
             required: true,
-            options: KIND_OPTIONS,
+            options: kinds,
           },
-          { name: "title", label: "Title", required: true },
-          { name: "description", label: "Description", type: "textarea" },
+          { name: "title", label: t("workboard.fields.title"), required: true },
+          { name: "description", label: t("workboard.fields.description"), type: "textarea" },
           {
             name: "status",
-            label: "Status",
+            label: t("workboard.fields.status"),
             type: "select",
             required: true,
-            options: STATUS_OPTIONS,
+            options: statuses,
           },
           {
             name: "priority",
-            label: "Priority",
+            label: t("workboard.fields.priority"),
             type: "select",
             required: true,
-            options: PRIORITY_OPTIONS,
+            options: priorities,
           },
-          { name: "assignee", label: "Assignee", placeholder: "Owner name" },
-          { name: "due_date", label: "Due date", placeholder: "2026-07-15" },
+          {
+            name: "assignee",
+            label: t("workboard.fields.assignee"),
+            placeholder: t("workboard.placeholders.ownerName"),
+          },
+          {
+            name: "due_date",
+            label: t("workboard.fields.dueDate"),
+            placeholder: t("workboard.placeholders.dueDate"),
+          },
         ]}
         toFormValues={(r) => ({
           kind: r.kind,
@@ -219,7 +252,7 @@ export function SectionWorkBoard({
                 })
               }
             >
-              Mark done
+              {t("workboard.markDone")}
             </button>
           ) : null
         }

@@ -11,17 +11,68 @@ export type ProductDetailTab =
   | "files"
   | "settings";
 
-export const PRODUCT_DETAIL_TABS: { id: ProductDetailTab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "pipeline", label: "Pipeline" },
-  { id: "stages", label: "Stages" },
-  { id: "features", label: "Features" },
-  { id: "projects", label: "Projects" },
-  { id: "members", label: "Members" },
-  { id: "activity", label: "Activity" },
-  { id: "files", label: "Files" },
-  { id: "settings", label: "Settings" },
+export const PRODUCT_DETAIL_TABS: { id: ProductDetailTab }[] = [
+  { id: "overview" },
+  { id: "pipeline" },
+  { id: "stages" },
+  { id: "features" },
+  { id: "projects" },
+  { id: "members" },
+  { id: "activity" },
+  { id: "files" },
+  { id: "settings" },
 ];
+
+const STAGE_TRANSLATION_KEYS: Record<string, string> = {
+  discovery: "discovery",
+  analysis: "analysis",
+  design: "design",
+  development: "development",
+  qa: "qa",
+  release: "release",
+  requirements: "requirements",
+  configuration: "configuration",
+  integration: "integration",
+  uat: "uat",
+  "go-live": "goLive",
+  "data model": "dataModel",
+  workflow: "workflow",
+  pilot: "pilot",
+  rollout: "rollout",
+  concept: "concept",
+  ux: "ux",
+  build: "build",
+  beta: "beta",
+  "store release": "storeRelease",
+  research: "research",
+  strategy: "strategy",
+  creative: "creative",
+  launch: "launch",
+  measure: "measure",
+  hypothesis: "hypothesis",
+  experiment: "experiment",
+  report: "report",
+  decision: "decision",
+};
+
+export function localizedStageName(name: string, t: (key: string) => string): string {
+  const key = STAGE_TRANSLATION_KEYS[name.trim().toLowerCase()];
+  return key ? t(`productDetail.stages.${key}`) : name;
+}
+
+export function canonicalStageName(name: string, t: (key: string) => string): string {
+  const normalized = name.trim().toLocaleLowerCase();
+  for (const [canonical, key] of Object.entries(STAGE_TRANSLATION_KEYS)) {
+    if (t(`productDetail.stages.${key}`).toLocaleLowerCase() === normalized) {
+      if (canonical === "qa" || canonical === "uat" || canonical === "ux") return canonical.toUpperCase();
+      return canonical
+        .split(" ")
+        .map((part) => part.toUpperCase() === part ? part : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+        .join(" ");
+    }
+  }
+  return name.trim();
+}
 
 export function executionModelLabel(model: string): string {
   switch (model) {

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface DesignToken {
   id: number;
@@ -19,15 +20,27 @@ interface UIAsset {
   date: string;
 }
 
-function parseTokenJSON(raw: string): unknown {
+function parseTokenJSON(raw: string, errorMessage: string): unknown {
   try {
     return JSON.parse(raw);
   } catch {
-    throw new Error("Token JSON is invalid");
+    throw new Error(errorMessage);
   }
 }
 
+function localizedSize(
+  value: string,
+  n: (value: number) => string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  const match = value.trim().match(/^([\d.]+)\s*KB$/i);
+  return match
+    ? t("uiux.sizeKilobytes", { value: n(Number(match[1])) })
+    : value;
+}
+
 export default function UIUXPage() {
+  const { t, n, d } = useI18n();
   const qc = useQueryClient();
 
   const { data: tokensRaw, isLoading: tokensLoading } = useQuery({
@@ -82,23 +95,23 @@ export default function UIUXPage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="uiux"
-        title="UI/UX workboard"
-        description="Design tasks, todos, and status checkpoints for this department."
+        title={t("uiux.workboard.title")}
+        description={t("uiux.workboard.description")}
       />
 
       <ResourceManager
-        title="Design Tokens"
-        description="Typography and color tokens that power your design system."
-        createLabel="Add token set"
-        emptyTitle="No design tokens"
-        emptyDescription="Add a colors or typography token category as JSON."
+        title={t("uiux.tokens.title")}
+        description={t("uiux.tokens.description")}
+        createLabel={t("uiux.tokens.create")}
+        emptyTitle={t("uiux.tokens.emptyTitle")}
+        emptyDescription={t("uiux.tokens.emptyDescription")}
         isLoading={tokensLoading}
         items={tokens}
         columns={[
-          { key: "category", label: "Category" },
+          { key: "category", label: t("uiux.fields.category"), render: (r) => t(`uiux.categories.${r.category}`) },
           {
             key: "token_data",
-            label: "Preview",
+            label: t("uiux.fields.preview"),
             render: (r) => (
               <code className="font-mono" style={{ fontSize: "0.75rem" }}>
                 {JSON.stringify(r.token_data ?? {}).slice(0, 80)}…
@@ -109,18 +122,18 @@ export default function UIUXPage() {
         fields={[
           {
             name: "category",
-            label: "Category",
+            label: t("uiux.fields.category"),
             required: true,
             type: "select",
             options: [
-              { value: "colors", label: "Colors" },
-              { value: "typography", label: "Typography" },
-              { value: "spacing", label: "Spacing" },
+              { value: "colors", label: t("uiux.categories.colors") },
+              { value: "typography", label: t("uiux.categories.typography") },
+              { value: "spacing", label: t("uiux.categories.spacing") },
             ],
           },
           {
             name: "token_data",
-            label: "Token JSON",
+            label: t("uiux.fields.tokenJson"),
             type: "textarea",
             required: true,
             placeholder: '{"primary":"#6366f1"}',
@@ -133,13 +146,16 @@ export default function UIUXPage() {
         onCreate={async (v) => {
           await createToken.mutateAsync({
             category: v.category,
-            token_data: parseTokenJSON(v.token_data),
+            token_data: parseTokenJSON(v.token_data, t("uiux.errors.invalidTokenJson")),
           });
         }}
         onUpdate={async (id, v) => {
           await updateToken.mutateAsync({
             id: Number(id),
-            body: { category: v.category, token_data: parseTokenJSON(v.token_data) },
+            body: {
+              category: v.category,
+              token_data: parseTokenJSON(v.token_data, t("uiux.errors.invalidTokenJson")),
+            },
           });
         }}
         onDelete={async (id) => {
@@ -148,33 +164,37 @@ export default function UIUXPage() {
       />
 
       <ResourceManager
-        title="UI Assets"
-        description="Track design assets and CDN sync status."
-        createLabel="Add asset"
-        emptyTitle="No UI assets"
-        emptyDescription="Register logos, illustrations, and font subsets for CDN delivery."
+        title={t("uiux.assets.title")}
+        description={t("uiux.assets.description")}
+        createLabel={t("uiux.assets.create")}
+        emptyTitle={t("uiux.assets.emptyTitle")}
+        emptyDescription={t("uiux.assets.emptyDescription")}
         isLoading={assetsLoading}
         items={Array.isArray(assets) ? assets : []}
         columns={[
-          { key: "name", label: "Name" },
-          { key: "size", label: "Size" },
-          { key: "cdn_status", label: "CDN" },
-          { key: "date", label: "Date" },
+          { key: "name", label: t("uiux.fields.name") },
+          {
+            key: "size",
+            label: t("uiux.fields.size"),
+            render: (r) => localizedSize(r.size, n, t),
+          },
+          { key: "cdn_status", label: t("uiux.fields.cdn"), render: (r) => t(`uiux.cdnStatuses.${r.cdn_status.toLowerCase().replace(/[^a-z]/g, "")}`) },
+          { key: "date", label: t("uiux.fields.date"), render: (r) => d(r.date) },
         ]}
         fields={[
-          { name: "name", label: "Asset name", required: true },
-          { name: "size", label: "Size", required: true, placeholder: "12 KB" },
+          { name: "name", label: t("uiux.fields.assetName"), required: true },
+          { name: "size", label: t("uiux.fields.size"), required: true, placeholder: t("uiux.placeholders.size") },
           {
             name: "cdn_status",
-            label: "CDN status",
+            label: t("uiux.fields.cdnStatus"),
             type: "select",
             options: [
-              { value: "Pending Sync", label: "Pending Sync" },
-              { value: "Syncing...", label: "Syncing..." },
-              { value: "Live", label: "Live" },
+              { value: "Pending Sync", label: t("uiux.cdnStatuses.pendingsync") },
+              { value: "Syncing...", label: t("uiux.cdnStatuses.syncing") },
+              { value: "Live", label: t("uiux.cdnStatuses.live") },
             ],
           },
-          { name: "date", label: "Date", placeholder: "Jul 08, 2026" },
+          { name: "date", label: t("uiux.fields.date"), placeholder: t("uiux.placeholders.date") },
         ]}
         toFormValues={(r) => ({
           name: r.name,
@@ -189,7 +209,7 @@ export default function UIUXPage() {
               className="btn btn-sm btn-primary"
               onClick={() => void pushAsset.mutateAsync(r.name)}
             >
-              Push CDN
+              {t("uiux.pushCdn")}
             </button>
           ) : null
         }
@@ -198,7 +218,7 @@ export default function UIUXPage() {
             name: v.name,
             size: v.size || "0 KB",
             cdn_status: v.cdn_status || "Pending Sync",
-            date: v.date || new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+            date: v.date || new Date().toISOString().slice(0, 10),
           });
         }}
         onUpdate={async (id, v) => {

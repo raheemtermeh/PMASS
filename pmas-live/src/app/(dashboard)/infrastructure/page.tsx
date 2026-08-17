@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, num, optStr } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface InfraNode {
   id: number;
@@ -17,6 +18,7 @@ interface InfraNode {
 }
 
 export default function InfrastructurePage() {
+  const { t, n } = useI18n();
   const qc = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["infra-nodes"],
@@ -56,66 +58,66 @@ export default function InfrastructurePage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="infrastructure"
-        title="Infrastructure workboard"
-        description="Ops tasks, todos, and status updates for infra."
+        title={t("infrastructure.workboard.title")}
+        description={t("infrastructure.workboard.description")}
       />
     <ResourceManager
-      title="Infrastructure Nodes"
-      description="Track servers, clusters, and runtime health for your environments."
-      createLabel="New node"
-      emptyTitle="No infrastructure nodes"
-      emptyDescription="Register nodes to monitor CPU/RAM and deployment targets."
+      title={t("infrastructure.nodes.title")}
+      description={t("infrastructure.nodes.description")}
+      createLabel={t("infrastructure.nodes.create")}
+      emptyTitle={t("infrastructure.nodes.emptyTitle")}
+      emptyDescription={t("infrastructure.nodes.emptyDescription")}
       isLoading={isLoading}
       items={items}
       columns={[
-        { key: "name", label: "Name" },
-        { key: "node_type", label: "Type" },
+        { key: "name", label: t("infrastructure.fields.name") },
+        { key: "node_type", label: t("infrastructure.fields.type"), render: (r) => t(`infrastructure.types.${r.node_type}`) },
         {
           key: "status",
-          label: "Status",
-          render: (r) => <span className={`status-pill status-${r.status}`}>{r.status}</span>,
+          label: t("infrastructure.fields.status"),
+          render: (r) => <span className={`status-pill status-${r.status}`}>{t(`infrastructure.statuses.${r.status}`)}</span>,
         },
         {
           key: "cpu_pct",
-          label: "CPU",
-          render: (r) => <span className="font-mono">{r.cpu_pct}%</span>,
+          label: t("infrastructure.fields.cpu"),
+          render: (r) => <span className="font-mono">{t("infrastructure.percent", { value: n(r.cpu_pct) })}</span>,
         },
         {
           key: "ram_pct",
-          label: "RAM",
-          render: (r) => <span className="font-mono">{r.ram_pct}%</span>,
+          label: t("infrastructure.fields.ram"),
+          render: (r) => <span className="font-mono">{t("infrastructure.percent", { value: n(r.ram_pct) })}</span>,
         },
-        { key: "region", label: "Region", render: (r) => r.region ?? "—" },
+        { key: "region", label: t("infrastructure.fields.region"), render: (r) => r.region ?? "—" },
       ]}
       fields={[
-        { name: "name", label: "Node name", required: true },
+        { name: "name", label: t("infrastructure.fields.nodeName"), required: true },
         {
           name: "node_type",
-          label: "Type",
+          label: t("infrastructure.fields.type"),
           type: "select",
           required: true,
           options: [
-            { value: "server", label: "Server" },
-            { value: "cluster", label: "Cluster" },
-            { value: "database", label: "Database" },
-            { value: "edge", label: "Edge" },
-            { value: "runner", label: "CI Runner" },
+            { value: "server", label: t("infrastructure.types.server") },
+            { value: "cluster", label: t("infrastructure.types.cluster") },
+            { value: "database", label: t("infrastructure.types.database") },
+            { value: "edge", label: t("infrastructure.types.edge") },
+            { value: "runner", label: t("infrastructure.types.runner") },
           ],
         },
         {
           name: "status",
-          label: "Status",
+          label: t("infrastructure.fields.status"),
           type: "select",
           options: [
-            { value: "healthy", label: "Healthy" },
-            { value: "warning", label: "Warning" },
-            { value: "blocked", label: "Blocked" },
+            { value: "healthy", label: t("infrastructure.statuses.healthy") },
+            { value: "warning", label: t("infrastructure.statuses.warning") },
+            { value: "blocked", label: t("statuses.blocked") },
           ],
         },
-        { name: "cpu_pct", label: "CPU %", type: "number" },
-        { name: "ram_pct", label: "RAM %", type: "number" },
-        { name: "region", label: "Region", placeholder: "us-east-1" },
-        { name: "notes", label: "Notes", type: "textarea" },
+        { name: "cpu_pct", label: t("infrastructure.fields.cpuPercent"), type: "number" },
+        { name: "ram_pct", label: t("infrastructure.fields.ramPercent"), type: "number" },
+        { name: "region", label: t("infrastructure.fields.region"), placeholder: t("infrastructure.placeholders.region") },
+        { name: "notes", label: t("infrastructure.fields.notes"), type: "textarea" },
       ]}
       toFormValues={(r) => ({
         name: r.name,

@@ -132,7 +132,7 @@ export function Sidebar() {
       ? t("role.companyAdmin")
       : t("role.employee");
 
-  const workspaceLabel = user.tenant?.name ?? "Platform";
+  const workspaceLabel = user.tenant?.name ?? t("nav.platform");
   const workspaceId = user.tenant?.slug ?? "platform";
 
   function renderNavItem(viewId: ViewId, staggerIndex = 0) {
@@ -160,7 +160,7 @@ export function Sidebar() {
           {showBadge ? (
             <span
               className={`nav-badge${collapsed ? " is-dot" : ""}`}
-              aria-label={`${pendingCount} pending requests`}
+              aria-label={t("nav.pendingRequests", { count: pendingCount })}
             >
               {collapsed ? "" : pendingCount}
             </span>
@@ -223,7 +223,7 @@ export function Sidebar() {
           ) : (
             <span>{initials}</span>
           )}
-          <span className="rail-online" aria-hidden title="Online" />
+          <span className="rail-online" aria-hidden title={t("nav.online")} />
         </div>
         <div className="user-info">
           <span className="user-name">{user.full_name}</span>
@@ -236,7 +236,7 @@ export function Sidebar() {
         </span>
       </Link>
 
-      <nav className="flex-1 sidebar-nav-alive rail-nav" aria-label="Main">
+      <nav className="flex-1 sidebar-nav-alive rail-nav" aria-label={t("nav.mainNavigation")}>
         {platform ? (
           platformNavGroups.map((group, gi) => {
             const items = group.items.filter((id) =>

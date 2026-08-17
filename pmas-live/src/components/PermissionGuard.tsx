@@ -6,6 +6,7 @@ import { useAuthStore } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
 import { isPlatformRole } from "@/shared/permissions";
 import { canAccessRoute, firstAllowedPath, getRouteByPath } from "@/shared/routes";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 export function PermissionGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -48,5 +49,6 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
 }
 
 function Redirecting() {
-  return <PmasLoader message="Redirecting…" />;
+  const { t } = useI18n();
+  return <PmasLoader message={t("auth.redirecting")} />;
 }

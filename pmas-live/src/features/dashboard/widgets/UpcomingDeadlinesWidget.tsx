@@ -5,6 +5,7 @@ import { useI18n } from "@/core/providers/I18nProvider";
 import type { UpcomingDeadline } from "../types";
 import { CommandWidgetShell } from "./CommandWidgetShell";
 import type { WidgetSize } from "../commandCenterLayout";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface Props {
   items?: UpcomingDeadline[];
@@ -15,14 +16,19 @@ interface Props {
   dragOver?: boolean;
 }
 
-function dayLabel(due: Date, today: Date, t: (k: string) => string): string {
+function dayLabel(
+  due: Date,
+  today: Date,
+  t: (k: string) => string,
+  d: (value: Date, options?: Intl.DateTimeFormatOptions) => string,
+): string {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const target = new Date(due.getFullYear(), due.getMonth(), due.getDate());
   const diff = Math.round((target.getTime() - start.getTime()) / 86_400_000);
   if (diff < 0) return t("dashboard.overdue");
   if (diff === 0) return t("dashboard.today");
   if (diff === 1) return t("dashboard.tomorrow");
-  return due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d(due, { month: "short", day: "numeric" });
 }
 
 export function UpcomingDeadlinesWidget({
@@ -33,7 +39,7 @@ export function UpcomingDeadlinesWidget({
   dragging,
   dragOver,
 }: Props) {
-  const { t } = useI18n();
+  const { t, d } = useI18n();
   const now = new Date();
 
   return (
@@ -53,7 +59,7 @@ export function UpcomingDeadlinesWidget({
       <ul className="cc-deadline-list">
         {items.map((item) => {
           const due = item.due_date ? new Date(item.due_date) : null;
-          const label = due ? dayLabel(due, now, t) : "—";
+          const label = due ? dayLabel(due, now, t, d) : "—";
           const overdue = due ? due.getTime() < now.getTime() : false;
           return (
             <li key={item.id} className={overdue ? "cc-deadline-overdue" : undefined}>
@@ -62,7 +68,9 @@ export function UpcomingDeadlinesWidget({
                 <strong>{item.product_name || item.title}</strong>
                 {item.product_name ? <span className="text-dim">{item.title}</span> : null}
               </div>
-              <span className="status-pill">{item.status}</span>
+              <span className="status-pill">
+                {localizedEnumLabel(item.status, statusTranslationKey(item.status), t)}
+              </span>
             </li>
           );
         })}

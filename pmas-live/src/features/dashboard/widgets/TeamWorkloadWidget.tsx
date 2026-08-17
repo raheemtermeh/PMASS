@@ -29,7 +29,7 @@ export function TeamWorkloadWidget({
   dragging,
   dragOver,
 }: Props) {
-  const { t } = useI18n();
+  const { t, n } = useI18n();
 
   return (
     <CommandWidgetShell
@@ -52,7 +52,9 @@ export function TeamWorkloadWidget({
             <li key={row.employee_id}>
               <div className="cc-workload-meta">
                 <strong>{row.name}</strong>
-                <span className={`cc-workload-pct cc-workload-${tone}`}>{row.load_percent}%</span>
+                <span className={`cc-workload-pct cc-workload-${tone}`}>
+                  {n(row.load_percent / 100, { style: "percent", maximumFractionDigits: 0 })}
+                </span>
               </div>
               <div className="cc-workload-track" aria-hidden>
                 <div
@@ -61,7 +63,7 @@ export function TeamWorkloadWidget({
                 />
               </div>
               <span className="text-dim cc-workload-open">
-                {row.open_tasks} {t("dashboard.openTasks")}
+                {n(row.open_tasks)} {t("dashboard.openTasks")}
               </span>
             </li>
           );

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import type { Employee } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface Comment {
   id: string;
@@ -39,6 +40,7 @@ export function CollaborationPanel({
   entityID: string;
   variant?: CollaborationVariant;
 }) {
+  const { t, n, d } = useI18n();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [body, setBody] = useState("");
@@ -109,7 +111,7 @@ export function CollaborationPanel({
       setMentionIds([]);
       invalidateComments();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("collaboration.errors.comment")),
   });
 
   const editComment = useMutation({
@@ -120,13 +122,13 @@ export function CollaborationPanel({
       setEditBody("");
       invalidateComments();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("collaboration.errors.edit")),
   });
 
   const deleteComment = useMutation({
     mutationFn: (id: string) => httpClient.delete(`/api/v1/comments/${id}`),
     onSuccess: invalidateComments,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("collaboration.errors.delete")),
   });
 
   const registerAttachment = useMutation({
@@ -144,7 +146,7 @@ export function CollaborationPanel({
       void qc.invalidateQueries({ queryKey: ["vsm-attachments", entityType, entityID] });
       void qc.invalidateQueries({ queryKey: ["vsm-activities", entityType, entityID] });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("collaboration.errors.upload")),
   });
 
   const uploadFiles = useCallback(
@@ -152,18 +154,18 @@ export function CollaborationPanel({
       setError("");
       const list = Array.from(files);
       if (list.length === 0) return;
-      void Promise.all(list.map((file) => registerAttachment.mutateAsync(file))).catch((e: Error) =>
-        setError(e.message),
+      void Promise.all(list.map((file) => registerAttachment.mutateAsync(file))).catch(() =>
+        setError(t("collaboration.errors.upload")),
       );
     },
-    [registerAttachment],
+    [registerAttachment, t],
   );
 
   function onComment(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (!authorID) {
-      setError("Create an employee first (comment author).");
+      setError(t("collaboration.errors.employeeRequired"));
       return;
     }
     if (!body.trim()) return;
@@ -197,6 +199,47 @@ export function CollaborationPanel({
 
   const topLevel = comments.filter((c) => !c.parent_id);
   const repliesOf = (parentId: string) => comments.filter((c) => c.parent_id === parentId);
+  const activityLabel = (action: string) => {
+    const keyByAction: Record<string, string> = {
+      ProductCreated: "collaboration.activities.productCreated",
+      OwnerChanged: "collaboration.activities.ownerChanged",
+      ManagerChanged: "collaboration.activities.managerChanged",
+      ProductArchived: "collaboration.activities.productArchived",
+      ProductOnHold: "collaboration.activities.productOnHold",
+      ProductResumed: "collaboration.activities.productResumed",
+      ProductSoftDeleted: "collaboration.activities.productDeleted",
+      ProductRestored: "collaboration.activities.productRestored",
+      WorkflowCancelled: "collaboration.activities.workflowCancelled",
+      MemberAdded: "collaboration.activities.memberAdded",
+      MemberRemoved: "collaboration.activities.memberRemoved",
+      PipelineCreated: "collaboration.activities.pipelineCreated",
+      PipelineArchived: "collaboration.activities.pipelineArchived",
+      PipelineRestored: "collaboration.activities.pipelineRestored",
+      ExecutionStarted: "collaboration.activities.executionStarted",
+      StageCompleted: "collaboration.activities.stageCompleted",
+      StageRejected: "collaboration.activities.stageRejected",
+      ProductCompleted: "collaboration.activities.productCompleted",
+      DepartmentTransferred: "collaboration.activities.departmentTransferred",
+      MovedToPreviousStage: "collaboration.activities.movedToPreviousStage",
+      StageReopened: "collaboration.activities.stageReopened",
+      ProjectCreated: "collaboration.activities.projectCreated",
+      ProjectSoftDeleted: "collaboration.activities.projectDeleted",
+      ProjectRestored: "collaboration.activities.projectRestored",
+      FeatureCreated: "collaboration.activities.featureCreated",
+      FeatureStatusChanged: "collaboration.activities.featureStatusChanged",
+      FeatureArchived: "collaboration.activities.featureArchived",
+      FeatureRestored: "collaboration.activities.featureRestored",
+      TaskCreated: "collaboration.activities.taskCreated",
+      TaskAssigned: "collaboration.activities.taskAssigned",
+      TaskCompleted: "collaboration.activities.taskCompleted",
+      TaskRejected: "collaboration.activities.taskRejected",
+      TaskSoftDeleted: "collaboration.activities.taskDeleted",
+      TaskRestored: "collaboration.activities.taskRestored",
+      CommentAdded: "collaboration.activities.commentAdded",
+      AttachmentAdded: "collaboration.activities.attachmentAdded",
+    };
+    return t(keyByAction[action] ?? "collaboration.activities.recorded");
+  };
 
   function renderComment(c: Comment, depth = 0) {
     return (
@@ -213,10 +256,10 @@ export function CollaborationPanel({
                 <textarea rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
                 <div className="flex" style={{ gap: "0.35rem" }}>
                   <button type="button" className="btn btn-sm btn-primary" onClick={saveEdit} disabled={editComment.isPending}>
-                    Save
+                    {t("common.save")}
                   </button>
                   <button type="button" className="btn btn-sm" onClick={() => setEditingId(null)}>
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                 </div>
               </div>
@@ -227,13 +270,13 @@ export function CollaborationPanel({
           {editingId !== c.id ? (
             <div className="flex" style={{ gap: "0.25rem" }}>
               <button type="button" className="btn btn-sm" onClick={() => setReplyTo(c)}>
-                Reply
+                {t("collaboration.reply")}
               </button>
               <button type="button" className="btn btn-sm" onClick={() => startEdit(c)}>
-                Edit
+                {t("common.edit")}
               </button>
               <button type="button" className="btn btn-sm btn-danger" onClick={() => deleteComment.mutate(c.id)}>
-                Delete
+                {t("common.delete")}
               </button>
             </div>
           ) : null}
@@ -249,27 +292,27 @@ export function CollaborationPanel({
 
   const commentsBlock = showComments ? (
     <div className={variant === "full" ? "" : "collab-section"}>
-      {variant !== "comments" ? <h4 className="collab-subtitle">Comments</h4> : null}
+      {variant !== "comments" ? <h4 className="collab-subtitle">{t("collaboration.comments")}</h4> : null}
       <ul className="collab-comment-list">
         {topLevel.map((c) => renderComment(c))}
-        {comments.length === 0 ? <li className="text-dim">No comments yet.</li> : null}
+        {comments.length === 0 ? <li className="text-dim">{t("collaboration.noComments")}</li> : null}
       </ul>
       <form className="auth-form" onSubmit={onComment}>
         {replyTo ? (
           <p className="text-dim" style={{ fontSize: "0.8rem" }}>
-            Replying to <strong>{authorName(replyTo.author_id)}</strong>{" "}
+            {t("collaboration.replyingTo")} <strong>{authorName(replyTo.author_id)}</strong>{" "}
             <button type="button" className="btn btn-sm" onClick={() => setReplyTo(null)}>
-              Cancel
+              {t("common.cancel")}
             </button>
           </p>
         ) : null}
         <div className="form-group">
-          <label htmlFor="cmt">Comment</label>
+          <label htmlFor="cmt">{t("collaboration.comment")}</label>
           <textarea id="cmt" rows={3} value={body} onChange={(e) => setBody(e.target.value)} required />
         </div>
         {employees.length > 0 ? (
           <div className="form-group">
-            <label>Mention</label>
+            <label>{t("collaboration.mention")}</label>
             <div className="flex" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
               {employees.map((e) => (
                 <button
@@ -285,7 +328,7 @@ export function CollaborationPanel({
           </div>
         ) : null}
         <button type="submit" className="btn btn-sm btn-primary" disabled={addComment.isPending}>
-          {addComment.isPending ? "Posting…" : "Post comment"}
+          {addComment.isPending ? t("collaboration.posting") : t("collaboration.postComment")}
         </button>
       </form>
     </div>
@@ -293,17 +336,18 @@ export function CollaborationPanel({
 
   const filesBlock = showFiles ? (
     <div className={variant === "full" ? "" : "collab-section"}>
-      {variant !== "files" ? <h4 className="collab-subtitle">Attachments</h4> : null}
+      {variant !== "files" ? <h4 className="collab-subtitle">{t("collaboration.attachments")}</h4> : null}
       <ul className="collab-file-list">
         {attachments.map((a) => (
           <li key={a.id} className="collab-file-item">
             <span className="collab-file-name">{a.file_name}</span>
             <span className="text-dim">
-              {(a.size / 1024).toFixed(1)} KB · {a.category}
+              {n(a.size / 1024, { maximumFractionDigits: 1 })} {t("collaboration.kilobytes")} ·{" "}
+              {a.category === "general" ? t("collaboration.general") : a.category}
             </span>
           </li>
         ))}
-        {attachments.length === 0 ? <li className="text-dim">No files yet.</li> : null}
+        {attachments.length === 0 ? <li className="text-dim">{t("collaboration.noFiles")}</li> : null}
       </ul>
       <div
         className={`file-drop-zone${dragOver ? " file-drop-zone-active" : ""}`}
@@ -320,8 +364,8 @@ export function CollaborationPanel({
           if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
         }}
       >
-        <p className="file-drop-title">Drop files here or click to upload</p>
-        <p className="text-dim file-drop-hint">Registers file metadata for this product</p>
+        <p className="file-drop-title">{t("collaboration.dropFiles")}</p>
+        <p className="text-dim file-drop-hint">{t("collaboration.fileHint")}</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -333,24 +377,24 @@ export function CollaborationPanel({
           }}
         />
       </div>
-      {registerAttachment.isPending ? <p className="text-dim">Uploading…</p> : null}
+      {registerAttachment.isPending ? <p className="text-dim">{t("collaboration.uploading")}</p> : null}
     </div>
   ) : null;
 
   const activityBlock = showActivity ? (
     <div className={variant === "full" ? "" : "collab-section"}>
-      {variant !== "activity" ? <h4 className="collab-subtitle">Activity</h4> : null}
+      {variant !== "activity" ? <h4 className="collab-subtitle">{t("collaboration.activity")}</h4> : null}
       <ul className="product-activity-timeline">
         {activities.map((a) => (
           <li key={a.id} className="product-activity-item">
             <span className="product-activity-dot" aria-hidden />
             <div>
-              <p>{a.action}</p>
-              <time className="text-dim">{new Date(a.created_at).toLocaleString()}</time>
+              <p>{activityLabel(a.action)}</p>
+              <time className="text-dim">{d(a.created_at, { dateStyle: "medium", timeStyle: "short" })}</time>
             </div>
           </li>
         ))}
-        {activities.length === 0 ? <li className="text-dim">No activity yet.</li> : null}
+        {activities.length === 0 ? <li className="text-dim">{t("collaboration.noActivity")}</li> : null}
       </ul>
     </div>
   ) : null;
@@ -359,7 +403,7 @@ export function CollaborationPanel({
     <section className={variant === "full" ? "data-panel" : undefined}>
       {variant === "full" ? (
         <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
-          Collaboration
+          {t("collaboration.title")}
         </h3>
       ) : null}
       {error ? <p className="auth-error">{error}</p> : null}

@@ -24,7 +24,7 @@ function kindLabel(kind: string, t: (k: string) => string): string {
     case "ON_HOLD":
       return t("dashboard.alertOnHold");
     default:
-      return kind;
+      return t("widgets.pipelineAlert");
   }
 }
 
@@ -36,7 +36,7 @@ export function PipelineAlertsWidget({
   dragging,
   dragOver,
 }: Props) {
-  const { t } = useI18n();
+  const { t, n } = useI18n();
 
   return (
     <CommandWidgetShell
@@ -75,7 +75,7 @@ export function PipelineAlertsWidget({
                 </span>
               </div>
               <span className="cc-alert-days">
-                {alert.days} {t("dashboard.days")}
+                {n(alert.days)} {t("dashboard.days")}
               </span>
             </li>
           );

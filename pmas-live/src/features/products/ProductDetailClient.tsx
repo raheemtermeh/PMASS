@@ -8,15 +8,16 @@ import { CollaborationPanel } from "@/components/CollaborationPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
 import { isSafeResourceId } from "@/shared/security";
-import { PRODUCT_MEMBER_ROLES, productRoleLabel } from "@/features/products/product-roles";
+import { PRODUCT_MEMBER_ROLES } from "@/features/products/product-roles";
 import { COMPANY_PIPELINE_TEMPLATES } from "@/features/products/product-templates";
 import {
   PRODUCT_DETAIL_TABS,
+  canonicalStageName,
   computeProductHealth,
   computeProductKPIs,
   executionModelLabel,
-  formatProductDate,
   inferProductRisks,
+  localizedStageName,
   stageProgressPercent,
   type ProductDetailTab,
 } from "@/features/products/product-utils";
@@ -35,19 +36,26 @@ import type {
   TeamMemberView,
 } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
 
 const PRIORITY_OPTIONS = ["", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const VISIBILITY_OPTIONS = ["ORGANIZATION", "PRIVATE", "PUBLIC"];
 
 export function ProductDetailClient({ productId }: { productId: string }) {
+  const { t, n, d, lang } = useI18n();
   const router = useRouter();
   const search = useSearchParams();
   const qc = useQueryClient();
   const tab = (search.get("tab") as ProductDetailTab) || "overview";
 
   const [error, setError] = useState("");
-  const [pipeName, setPipeName] = useState("Default pipeline");
-  const [stageDraft, setStageDraft] = useState("Discovery, Analysis, Design, Development, QA, Release");
+  const [pipeName, setPipeName] = useState(() => t("productDetail.defaultPipeline"));
+  const [stageDraft, setStageDraft] = useState(() =>
+    ["discovery", "analysis", "design", "development", "qa", "release"]
+      .map((key) => t(`productDetail.stages.${key}`))
+      .join(lang === "fa" ? "، " : ", "),
+  );
   const [newStageName, setNewStageName] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [movePrevReason, setMovePrevReason] = useState("");
@@ -193,8 +201,8 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       success_metrics: product.success_metrics ?? "",
       business_value: product.business_value ?? "",
     });
-    setPipeName(`${product.name} pipeline`);
-  }, [product]);
+    setPipeName(t("productDetail.namedPipeline", { name: product.name }));
+  }, [product, t]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["vsm-product", productId] });
@@ -205,7 +213,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
 
   const createPipeline = useMutation({
     mutationFn: async () => {
-      const names = stageDraft.split(",").map((s) => s.trim()).filter(Boolean);
+      const names = stageDraft.split(/[,،]/).map((s) => canonicalStageName(s, t)).filter(Boolean);
       const stages = names.map((name, order) => ({
         name,
         order,
@@ -222,7 +230,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       });
     },
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
 
   const addStage = useMutation({
@@ -242,18 +250,18 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       setNewStageName("");
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
 
   const start = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/start`),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const moveNext = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/move-next`, { exit_criteria_met: exitMet }),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const movePrev = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/move-prev`, { reason: movePrevReason }),
@@ -261,18 +269,18 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       setMovePrevReason("");
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const reopenStage = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/reopen-stage`),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const completeStage = useMutation({
     mutationFn: () =>
       httpClient.post(`/api/v1/products/${productId}/complete-stage`, { exit_criteria_met: exitMet }),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const rejectStage = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/reject-stage`, { reason: rejectReason }),
@@ -280,28 +288,28 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       setRejectReason("");
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
 
   const holdMut = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/hold`),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const resumeMut = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/resume`),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const restoreMut = useMutation({
     mutationFn: () => httpClient.post(`/api/v1/products/${productId}/restore`),
     onSuccess: invalidate,
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
   const archiveMut = useMutation({
     mutationFn: () => httpClient.delete(`/api/v1/products/${productId}`),
     onSuccess: () => router.push("/products"),
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.actionFailed")),
   });
 
   const updateProduct = useMutation({
@@ -309,14 +317,14 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     onSuccess: () => {
       invalidate();
     },
-    onError: (e: Error) => setSaveError(e.message),
+    onError: () => setSaveError(t("productDetail.errors.saveFailed")),
   });
 
   const changeOwner = useMutation({
     mutationFn: (ownerId: string) =>
       httpClient.put(`/api/v1/products/${productId}/owner`, { owner_id: ownerId }),
     onSuccess: invalidate,
-    onError: (e: Error) => setSaveError(e.message),
+    onError: () => setSaveError(t("productDetail.errors.saveFailed")),
   });
 
   const changeManager = useMutation({
@@ -325,7 +333,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         manager_id: managerId || null,
       }),
     onSuccess: invalidate,
-    onError: (e: Error) => setSaveError(e.message),
+    onError: () => setSaveError(t("productDetail.errors.saveFailed")),
   });
 
   const duplicateProduct = useMutation({
@@ -334,7 +342,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       return httpClient.post<Product>("/api/v1/products", {
         owner_id: product.owner_id,
         manager_id: product.manager_id,
-        name: `${product.name} (copy)`,
+        name: t("productDetail.copyName", { name: product.name }),
         description: product.description,
         category: product.category,
         execution_model: product.execution_model,
@@ -349,7 +357,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       });
     },
     onSuccess: (created: Product) => router.push(`/products/${created.id}?tab=overview`),
-    onError: (e: Error) => setError(e.message),
+    onError: () => setError(t("productDetail.errors.duplicateFailed")),
   });
 
   const addMember = useMutation({
@@ -363,7 +371,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       setMemberError("");
       void qc.invalidateQueries({ queryKey: ["vsm-product-members", productId] });
     },
-    onError: (e: Error) => setMemberError(e.message),
+    onError: () => setMemberError(t("productDetail.errors.memberFailed")),
   });
 
   const removeMember = useMutation({
@@ -382,6 +390,23 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     const e = employees.find((x) => x.id === id);
     return e ? employeeLabel(e) : id.slice(0, 8);
   };
+  const statusLabel = (value?: string | null) =>
+    value ? localizedEnumLabel(value, statusTranslationKey(value), t) : "—";
+  const priorityLabel = (value?: string | null) =>
+    value ? localizedEnumLabel(value, priorityTranslationKey(value), t) : "—";
+  const stageLabel = (value?: string | null) => value ? localizedStageName(value, t) : "—";
+  const dateLabel = (value?: string | null) =>
+    value ? d(value, { year: "numeric", month: "short", day: "numeric" }) : "—";
+  const executionLabel = (value: string) => {
+    const keys: Record<string, string> = {
+      PROJECT_FEATURE_TASK: "projectFeatureTask",
+      FEATURE_TASK: "featureTask",
+      DIRECT_TASK: "directTask",
+    };
+    return keys[value] ? t(`productDetail.executionModels.${keys[value]}`) : executionModelLabel(value);
+  };
+  const productRole = (value: string) =>
+    t(`productDetail.roles.${value.toLowerCase()}`);
 
   const employeeContext = useMemo(() => {
     const map = new Map<string, { department: string; team: string }>();
@@ -418,9 +443,9 @@ export function ProductDetailClient({ productId }: { productId: string }) {
     URL.revokeObjectURL(url);
   }
 
-  if (isLoading) return <p className="text-dim">Loading product…</p>;
+  if (isLoading) return <p className="text-dim">{t("productDetail.loading")}</p>;
   if (!product) {
-    return <EmptyState title="Product not found" description="It may belong to another company or was archived." />;
+    return <EmptyState title={t("productDetail.notFound")} description={t("productDetail.notFoundHint")} />;
   }
 
   const memberIds = new Set(members.map((m) => m.employee_id));
@@ -432,70 +457,70 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         <div className="product-header-top">
           <div>
             <p className="text-dim product-back-link">
-              <Link href="/products">← Products</Link>
+              <Link href="/products">{t("productDetail.backToProducts")}</Link>
             </p>
             <h2 className="product-title">{product.name}</h2>
-            {product.code ? <p className="product-code">Code {product.code}</p> : null}
+            {product.code ? <p className="product-code">{t("productDetail.codeValue", { code: product.code })}</p> : null}
             {product.description ? <p className="product-desc">{product.description}</p> : null}
           </div>
           <div className="product-header-actions">
-            <span className="status-pill">{product.status}</span>
-            {pipeline?.status ? <span className="status-pill">{pipeline.status}</span> : null}
-            {product.deleted_at ? <span className="status-pill">DELETED</span> : null}
+            <span className="status-pill">{statusLabel(product.status)}</span>
+            {pipeline?.status ? <span className="status-pill">{statusLabel(pipeline.status)}</span> : null}
+            {product.deleted_at ? <span className="status-pill">{t("productDetail.deleted")}</span> : null}
           </div>
         </div>
 
         <div className="product-meta-grid">
           <div className="product-meta-item">
-            <span className="product-meta-label">Owner</span>
+            <span className="product-meta-label">{t("common.owner")}</span>
             <strong>{employeeName(product.owner_id)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Manager</span>
+            <span className="product-meta-label">{t("common.manager")}</span>
             <strong>{employeeName(product.manager_id)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Priority</span>
-            <strong>{product.priority || "—"}</strong>
+            <span className="product-meta-label">{t("products.priority")}</span>
+            <strong>{priorityLabel(product.priority)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Execution</span>
-            <strong>{executionModelLabel(product.execution_model)}</strong>
+            <span className="product-meta-label">{t("productDetail.execution")}</span>
+            <strong>{executionLabel(product.execution_model)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Pipeline status</span>
-            <strong>{pipeline?.status ?? (pipelineId ? "ACTIVE" : "Not created")}</strong>
+            <span className="product-meta-label">{t("productDetail.pipelineStatus")}</span>
+            <strong>{pipeline?.status ? statusLabel(pipeline.status) : pipelineId ? t("statuses.active") : t("productDetail.notCreated")}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Created</span>
-            <strong>{formatProductDate(product.created_at)}</strong>
+            <span className="product-meta-label">{t("productDetail.created")}</span>
+            <strong>{dateLabel(product.created_at)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Last updated</span>
-            <strong>{formatProductDate(product.updated_at)}</strong>
+            <span className="product-meta-label">{t("productDetail.lastUpdated")}</span>
+            <strong>{dateLabel(product.updated_at)}</strong>
           </div>
           <div className="product-meta-item">
-            <span className="product-meta-label">Active stage</span>
-            <strong>{activeStage?.name ?? "—"}</strong>
+            <span className="product-meta-label">{t("productDetail.activeStage")}</span>
+            <strong>{stageLabel(activeStage?.name)}</strong>
           </div>
         </div>
 
         <div className="product-action-row">
           <button type="button" className="btn btn-sm" onClick={() => setTab("settings")}>
-            Edit
+            {t("common.edit")}
           </button>
           {product.status === "ON_HOLD" ? (
             <button type="button" className="btn btn-sm" onClick={() => resumeMut.mutate()} disabled={resumeMut.isPending}>
-              Resume
+              {t("productDetail.resume")}
             </button>
           ) : product.status !== "ARCHIVED" && !product.deleted_at ? (
             <button type="button" className="btn btn-sm" onClick={() => holdMut.mutate()} disabled={holdMut.isPending}>
-              Hold
+              {t("productDetail.hold")}
             </button>
           ) : null}
           {product.status === "ARCHIVED" || product.deleted_at ? (
             <button type="button" className="btn btn-sm" onClick={() => restoreMut.mutate()} disabled={restoreMut.isPending}>
-              Restore
+              {t("productDetail.restore")}
             </button>
           ) : (
             <button
@@ -505,38 +530,38 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               onClick={() => {
                 if (
                   window.confirm(
-                    `Archive “${product.name}”?\nProjects, features and tasks are kept.`,
+                    t("productDetail.archiveConfirm", { name: product.name }),
                   )
                 ) {
                   archiveMut.mutate();
                 }
               }}
             >
-              Archive
+              {t("productDetail.archive")}
             </button>
           )}
           <button type="button" className="btn btn-sm" onClick={() => duplicateProduct.mutate()} disabled={duplicateProduct.isPending}>
-            Duplicate
+            {t("productDetail.duplicate")}
           </button>
           <button type="button" className="btn btn-sm" onClick={exportProductJson}>
-            Export
+            {t("productDetail.export")}
           </button>
           <button type="button" className="btn btn-sm" onClick={() => setTab("settings")}>
-            Settings
+            {t("settings.title")}
           </button>
         </div>
         {error ? <p className="auth-error">{error}</p> : null}
       </section>
 
-      <nav className="org-tab-row product-tab-row" aria-label="Product sections">
-        {PRODUCT_DETAIL_TABS.map(({ id, label }) => (
+      <nav className="org-tab-row product-tab-row" aria-label={t("productDetail.sections")}>
+        {PRODUCT_DETAIL_TABS.map(({ id }) => (
           <button
             key={id}
             type="button"
             className={`btn btn-sm${tab === id ? " btn-primary" : ""}`}
             onClick={() => setTab(id)}
           >
-            {label}
+            {t(`productDetail.tabs.${id}`)}
           </button>
         ))}
       </nav>
@@ -545,49 +570,49 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         <section className="data-panel">
           <div className="product-overview-grid">
             <div className="product-stat-card">
-              <h4>Product health</h4>
+              <h4>{t("productDetail.productHealth")}</h4>
               {health ? (
                 <>
                   <p className="product-health-line">
-                    {health.emoji} {health.label}
+                    {health.emoji} {t(`productDetail.health.${health.label === "Healthy" ? "healthy" : health.label === "At risk" ? "atRisk" : "critical"}`)}
                   </p>
                   <div className="product-progress-bar">
                     <span style={{ width: `${health.score}%` }} />
                   </div>
-                  <p className="text-dim">{health.score}%</p>
+                  <p className="text-dim">{n(health.score)}{lang === "fa" ? "٪" : "%"}</p>
                 </>
               ) : null}
             </div>
             <div className="product-stat-card">
-              <h4>KPIs</h4>
+              <h4>{t("productDetail.kpis")}</h4>
               <ul className="product-kpi-list">
-                <li><span>Features</span><strong>{kpis.featuresTotal}</strong></li>
-                <li><span>Completed</span><strong>{kpis.featuresCompleted}</strong></li>
-                <li><span>Open</span><strong>{kpis.featuresOpen}</strong></li>
-                <li><span>Delayed</span><strong>{kpis.featuresDelayed}</strong></li>
+                <li><span>{t("products.features")}</span><strong>{n(kpis.featuresTotal)}</strong></li>
+                <li><span>{t("statuses.completed")}</span><strong>{n(kpis.featuresCompleted)}</strong></li>
+                <li><span>{t("productDetail.open")}</span><strong>{n(kpis.featuresOpen)}</strong></li>
+                <li><span>{t("statuses.delayed")}</span><strong>{n(kpis.featuresDelayed)}</strong></li>
               </ul>
             </div>
             <div className="product-stat-card">
-              <h4>Statistics</h4>
+              <h4>{t("productDetail.statistics")}</h4>
               <ul className="product-kpi-list">
-                <li><span>Tasks</span><strong>{kpis.tasksTotal}</strong></li>
-                <li><span>Projects</span><strong>{kpis.projectsTotal}</strong></li>
-                <li><span>Members</span><strong>{members.length + 2}</strong></li>
-                <li><span>Comments</span><strong>{commentCount}</strong></li>
-                <li><span>Attachments</span><strong>{attachmentCount}</strong></li>
+                <li><span>{t("products.tasks")}</span><strong>{n(kpis.tasksTotal)}</strong></li>
+                <li><span>{t("products.projects")}</span><strong>{n(kpis.projectsTotal)}</strong></li>
+                <li><span>{t("common.members")}</span><strong>{n(members.length + 2)}</strong></li>
+                <li><span>{t("productDetail.comments")}</span><strong>{n(commentCount)}</strong></li>
+                <li><span>{t("productDetail.attachments")}</span><strong>{n(attachmentCount)}</strong></li>
               </ul>
             </div>
             <div className="product-stat-card product-stat-wide">
-              <h4>Stage progress</h4>
+              <h4>{t("productDetail.stageProgress")}</h4>
               {stages.length === 0 ? (
-                <p className="text-dim">Create a pipeline to track stage progress.</p>
+                <p className="text-dim">{t("productDetail.createPipelineForProgress")}</p>
               ) : (
                 <ul className="product-stage-progress-list">
                   {stages.map((s) => {
                     const pct = stageProgressPercent(s, instances);
                     return (
                       <li key={s.id}>
-                        <span>{s.name}</span>
+                        <span>{stageLabel(s.name)}</span>
                         <div className="product-progress-bar">
                           <span style={{ width: `${pct}%` }} />
                         </div>
@@ -598,14 +623,16 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               )}
             </div>
             <div className="product-stat-card product-stat-wide">
-              <h4>Risks</h4>
+              <h4>{t("productDetail.risks")}</h4>
               {risks.length === 0 ? (
-                <p className="text-dim">No risks detected.</p>
+                <p className="text-dim">{t("productDetail.noRisks")}</p>
               ) : (
                 <ul className="product-risk-list">
                   {risks.map((r) => (
                     <li key={r.id} className={`product-risk-${r.severity}`}>
-                      {r.title}
+                      {r.id === "blocked-features"
+                        ? t("productDetail.risk.blockedFeatures", { count: Number.parseInt(r.title, 10) || 0 })
+                        : t(`productDetail.risk.${r.id === "qa-load" ? "qaLoad" : r.id}`)}
                     </li>
                   ))}
                 </ul>
@@ -614,19 +641,19 @@ export function ProductDetailClient({ productId }: { productId: string }) {
           </div>
           {!pipelineId ? (
             <p className="text-dim" style={{ marginTop: "1rem" }}>
-              No pipeline yet.{" "}
+              {t("productDetail.noPipelineYet")}{" "}
               <button type="button" className="btn btn-sm btn-primary" onClick={() => setTab("pipeline")}>
-                Set up pipeline
+                {t("productDetail.setupPipeline")}
               </button>
             </p>
           ) : (
             <div className="product-pipeline-rail" style={{ marginTop: "1rem" }}>
-              <h4>Current pipeline</h4>
+              <h4>{t("productDetail.currentPipeline")}</h4>
               <div className="product-vertical-pipeline">
                 {stages.map((s, i) => (
                   <div key={s.id} className="product-vertical-stage">
                     <span className={`pipeline-stage-dot${activeStage?.id === s.id ? " active" : ""}`} />
-                    <span>{s.name}</span>
+                    <span>{stageLabel(s.name)}</span>
                     {i < stages.length - 1 ? <span className="product-vertical-arrow">↓</span> : null}
                   </div>
                 ))}
@@ -640,12 +667,12 @@ export function ProductDetailClient({ productId }: { productId: string }) {
         <section className="data-panel">
           {!pipelineId ? (
             <>
-              <h3 className="panel-title">Create pipeline</h3>
+              <h3 className="panel-title">{t("productDetail.createPipeline")}</h3>
               <p className="text-dim product-section-lead">
-                Each product has one pipeline. Pick a company template or customize stages.
+                {t("productDetail.pipelineLead")}
               </p>
               <p className="text-dim" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem" }}>
-                Company templates
+                {t("productDetail.companyTemplates")}
               </p>
               <div className="pipeline-templates">
                 {COMPANY_PIPELINE_TEMPLATES.map((tpl) => (
@@ -654,13 +681,13 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                     type="button"
                     className="btn btn-sm pipeline-template-btn"
                     onClick={() => {
-                      setPipeName(`${product.name} · ${tpl.label}`);
-                      setStageDraft(tpl.stages.join(", "));
+                      setPipeName(`${product.name} · ${t(`productDetail.templates.${tpl.id}`)}`);
+                      setStageDraft(tpl.stages.map(stageLabel).join(lang === "fa" ? "، " : ", "));
                     }}
                   >
-                    {tpl.label}
+                    {t(`productDetail.templates.${tpl.id}`)}
                     <span className="text-dim pipeline-template-stages">
-                      {tpl.stages.join(" → ")}
+                      {tpl.stages.map(stageLabel).join(lang === "fa" ? " ← " : " → ")}
                     </span>
                   </button>
                 ))}
@@ -675,30 +702,30 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                 style={{ marginTop: "1rem" }}
               >
                 <div className="form-group">
-                  <label htmlFor="pipeName">Pipeline name</label>
+                  <label htmlFor="pipeName">{t("productDetail.pipelineName")}</label>
                   <input id="pipeName" value={pipeName} onChange={(e) => setPipeName(e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="stages">Stages (comma-separated)</label>
+                  <label htmlFor="stages">{t("productDetail.stagesCommaSeparated")}</label>
                   <input id="stages" value={stageDraft} onChange={(e) => setStageDraft(e.target.value)} required />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={createPipeline.isPending}>
-                  {createPipeline.isPending ? "Creating…" : "Create pipeline"}
+                  {createPipeline.isPending ? t("productDetail.creating") : t("productDetail.createPipeline")}
                 </button>
               </form>
             </>
           ) : (
             <>
-              <h3 className="panel-title">Pipeline</h3>
-              <p className="text-dim">{pipeline?.name ?? "Current pipeline"}</p>
+              <h3 className="panel-title">{t("products.pipeline")}</h3>
+              <p className="text-dim">{pipeline?.name ?? t("productDetail.currentPipeline")}</p>
               <div className="product-vertical-pipeline product-vertical-pipeline-large">
                 {stages.map((s, i) => (
                   <div key={s.id} className="product-vertical-stage">
                     <span className={`pipeline-stage-dot${activeStage?.id === s.id ? " active" : ""}`} />
                     <div>
-                      <strong>{s.name}</strong>
+                      <strong>{stageLabel(s.name)}</strong>
                       <p className="text-dim" style={{ fontSize: "0.8125rem", margin: 0 }}>
-                        {departments.find((d) => d.id === s.department_id)?.name ?? "No department"}
+                        {departments.find((d) => d.id === s.department_id)?.name ?? t("productDetail.noDepartment")}
                       </p>
                     </div>
                     {i < stages.length - 1 ? <span className="product-vertical-arrow">↓</span> : null}
@@ -707,7 +734,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               </div>
               <div className="product-action-row" style={{ marginTop: "1.25rem" }}>
                 <Link href={`/planning?product_id=${product.id}`} className="btn btn-sm btn-primary">
-                  Plan work
+                  {t("productDetail.planWork")}
                 </Link>
               </div>
             </>
@@ -718,12 +745,12 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       {tab === "stages" && (
         <section className="data-panel">
           {!pipelineId ? (
-            <EmptyState title="No pipeline" description="Create a pipeline first." />
+            <EmptyState title={t("productCells.noPipeline")} description={t("productDetail.createPipelineFirst")} />
           ) : (
             <>
-              <h3 className="panel-title">Stages</h3>
+              <h3 className="panel-title">{t("productDetail.tabs.stages")}</h3>
               <p className="text-dim product-section-lead">
-                Stage bible fields (department, manager, entry/exit criteria, auto rules, responsible team) will expand in a future release.
+                {t("productDetail.stageBibleHint")}
               </p>
               <form
                 className="quick-create"
@@ -738,23 +765,23 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                 <input
                   value={newStageName}
                   onChange={(e) => setNewStageName(e.target.value)}
-                  placeholder="Add stage name…"
-                  aria-label="New stage name"
+                  placeholder={t("productDetail.addStagePlaceholder")}
+                  aria-label={t("productDetail.newStageName")}
                 />
                 <button type="submit" className="btn btn-primary" disabled={addStage.isPending}>
-                  Add stage
+                  {t("productDetail.addStage")}
                 </button>
               </form>
               <div className="table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Order</th>
-                      <th>Name</th>
-                      <th>Department</th>
-                      <th>Entry criteria</th>
-                      <th>Exit criteria</th>
-                      <th>Status</th>
+                      <th>{t("productDetail.order")}</th>
+                      <th>{t("common.name")}</th>
+                      <th>{t("profile.department")}</th>
+                      <th>{t("productDetail.entryCriteria")}</th>
+                      <th>{t("productDetail.exitCriteria")}</th>
+                      <th>{t("common.status")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -762,12 +789,12 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                       const inst = instances.find((i) => i.stage_id === s.id);
                       return (
                         <tr key={s.id}>
-                          <td className="font-mono">{s.order + 1}</td>
-                          <td>{s.name}</td>
+                          <td className="font-mono">{n(s.order + 1)}</td>
+                          <td>{stageLabel(s.name)}</td>
                           <td>{departments.find((d) => d.id === s.department_id)?.name ?? "—"}</td>
                           <td>{s.entry_criteria || "—"}</td>
                           <td>{s.exit_criteria || "—"}</td>
-                          <td><span className="status-pill">{inst?.status ?? "PENDING"}</span></td>
+                          <td><span className="status-pill">{statusLabel(inst?.status ?? "PENDING")}</span></td>
                         </tr>
                       );
                     })}
@@ -775,51 +802,51 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                 </table>
               </div>
               <div className="data-panel" style={{ marginTop: "1rem", padding: "1rem" }}>
-                <h4 className="panel-title">Execution controls</h4>
+                <h4 className="panel-title">{t("productDetail.executionControls")}</h4>
                 <p className="text-dim">
-                  Active: <strong>{activeStage?.name ?? "Not started"}</strong>
+                  {t("common.active")}: <strong>{activeStage ? stageLabel(activeStage.name) : t("productCells.notStarted")}</strong>
                 </p>
                 <label className="flex" style={{ alignItems: "center", gap: "0.35rem", fontSize: "0.875rem" }}>
                   <input type="checkbox" checked={exitMet} onChange={(e) => setExitMet(e.target.checked)} />
-                  Exit criteria met
+                  {t("productDetail.exitCriteriaMet")}
                 </label>
                 <div className="product-action-row">
                   {(product.status === "READY" || product.status === "DRAFT") && (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => start.mutate()} disabled={start.isPending}>
-                      Start execution
+                      {t("productDetail.startExecution")}
                     </button>
                   )}
                   {product.status === "ACTIVE" && (
                     <>
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => moveNext.mutate()} disabled={moveNext.isPending}>
-                        Next stage
+                        {t("productDetail.nextStage")}
                       </button>
                       <button type="button" className="btn btn-sm" onClick={() => completeStage.mutate()} disabled={completeStage.isPending}>
-                        Complete stage
+                        {t("productDetail.completeStage")}
                       </button>
                     </>
                   )}
                   {canReopen ? (
                     <button type="button" className="btn btn-sm" onClick={() => reopenStage.mutate()} disabled={reopenStage.isPending}>
-                      Reopen last
+                      {t("productDetail.reopenLast")}
                     </button>
                   ) : null}
                 </div>
                 {product.status === "ACTIVE" ? (
                   <div className="auth-form" style={{ marginTop: "1rem" }}>
                     <div className="form-group">
-                      <label htmlFor="reject">Reject reason</label>
+                      <label htmlFor="reject">{t("productDetail.rejectReason")}</label>
                       <input id="reject" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
                     </div>
                     <button type="button" className="btn btn-sm btn-danger" disabled={!rejectReason.trim() || rejectStage.isPending} onClick={() => rejectStage.mutate()}>
-                      Reject stage
+                      {t("productDetail.rejectStage")}
                     </button>
                     <div className="form-group" style={{ marginTop: "0.75rem" }}>
-                      <label htmlFor="move-prev">Move back reason</label>
+                      <label htmlFor="move-prev">{t("productDetail.moveBackReason")}</label>
                       <input id="move-prev" value={movePrevReason} onChange={(e) => setMovePrevReason(e.target.value)} />
                     </div>
                     <button type="button" className="btn btn-sm" disabled={movePrev.isPending} onClick={() => movePrev.mutate()}>
-                      Move to previous
+                      {t("productDetail.movePrevious")}
                     </button>
                   </div>
                 ) : null}
@@ -832,29 +859,29 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       {tab === "projects" && (
         <section className="data-panel">
           <div className="panel-header">
-            <h3 className="panel-title">Projects</h3>
+            <h3 className="panel-title">{t("products.projects")}</h3>
             <Link href={`/planning?product_id=${product.id}`} className="btn btn-sm btn-primary">
-              Open planning
+              {t("productDetail.openPlanning")}
             </Link>
           </div>
           {projects.length === 0 ? (
-            <EmptyState title="No projects" description="Create projects from the planning workspace." />
+            <EmptyState title={t("productDetail.noProjects")} description={t("productDetail.noProjectsHint")} />
           ) : (
             <div className="table-scroll">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Priority</th>
+                    <th>{t("common.name")}</th>
+                    <th>{t("common.status")}</th>
+                    <th>{t("products.priority")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {projects.map((p) => (
                     <tr key={p.id}>
                       <td>{p.name}</td>
-                      <td><span className="status-pill">{p.status}</span></td>
-                      <td>{p.priority ?? "—"}</td>
+                      <td><span className="status-pill">{statusLabel(p.status)}</span></td>
+                      <td>{priorityLabel(p.priority)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -867,29 +894,29 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       {tab === "features" && (
         <section className="data-panel">
           <div className="panel-header">
-            <h3 className="panel-title">Features</h3>
+            <h3 className="panel-title">{t("products.features")}</h3>
             <Link href={`/planning?product_id=${product.id}`} className="btn btn-sm btn-primary">
-              Manage in planning
+              {t("productDetail.managePlanning")}
             </Link>
           </div>
           {features.length === 0 ? (
-            <EmptyState title="No features" description="Add features under projects in planning." />
+            <EmptyState title={t("productDetail.noFeatures")} description={t("productDetail.noFeaturesHint")} />
           ) : (
             <div className="table-scroll">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Feature</th>
-                    <th>Status</th>
-                    <th>Priority</th>
+                    <th>{t("planning.feature")}</th>
+                    <th>{t("common.status")}</th>
+                    <th>{t("products.priority")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {features.map((f) => (
                     <tr key={f.id}>
                       <td>{f.title}</td>
-                      <td><span className="status-pill">{f.status}</span></td>
-                      <td>{f.priority ?? "—"}</td>
+                      <td><span className="status-pill">{statusLabel(f.status)}</span></td>
+                      <td>{priorityLabel(f.priority)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -901,13 +928,13 @@ export function ProductDetailClient({ productId }: { productId: string }) {
 
       {tab === "members" && (
         <section className="data-panel">
-          <h3 className="panel-title">Members</h3>
+          <h3 className="panel-title">{t("common.members")}</h3>
           <p className="text-dim product-section-lead">
-            Product roles (Owner, Manager, Contributor, …) are separate from workspace roles (Admin, Employee, Viewer).
+            {t("productDetail.rolesHint")}
           </p>
           <div className="product-owner-manager-row">
             <div className="product-meta-item">
-              <span className="product-meta-label">Product owner</span>
+              <span className="product-meta-label">{t("products.productOwner")}</span>
               <select
                 value={product.owner_id}
                 onChange={(e) => changeOwner.mutate(e.target.value)}
@@ -918,7 +945,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               </select>
             </div>
             <div className="product-meta-item">
-              <span className="product-meta-label">Product manager</span>
+              <span className="product-meta-label">{t("products.productManager")}</span>
               <select
                 value={product.manager_id ?? ""}
                 onChange={(e) => changeManager.mutate(e.target.value || null)}
@@ -935,7 +962,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               e.preventDefault();
               setMemberError("");
               if (!memberEmployeeId) {
-                setMemberError("Select an employee.");
+                setMemberError(t("productDetail.selectEmployeeError"));
                 return;
               }
               addMember.mutate();
@@ -943,24 +970,24 @@ export function ProductDetailClient({ productId }: { productId: string }) {
             className="org-assign-row"
           >
             <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-              <label htmlFor="member-emp">Employee</label>
+              <label htmlFor="member-emp">{t("organization.employee")}</label>
               <select id="member-emp" value={memberEmployeeId} onChange={(e) => setMemberEmployeeId(e.target.value)}>
-                <option value="">Select…</option>
+                <option value="">{t("common.select")}</option>
                 {assignableEmployees.map((e) => (
                   <option key={e.id} value={e.id}>{employeeLabel(e)}</option>
                 ))}
               </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="member-role">Product role</label>
+              <label htmlFor="member-role">{t("productDetail.productRole")}</label>
               <select id="member-role" value={memberRole} onChange={(e) => setMemberRole(e.target.value)}>
                 {PRODUCT_MEMBER_ROLES.map((r) => (
-                  <option key={r} value={r}>{productRoleLabel(r)}</option>
+                  <option key={r} value={r}>{productRole(r)}</option>
                 ))}
               </select>
             </div>
             <button type="submit" className="btn btn-primary" disabled={addMember.isPending} style={{ alignSelf: "flex-end" }}>
-              Add member
+              {t("productDetail.addMember")}
             </button>
           </form>
           {memberError ? <p className="auth-error">{memberError}</p> : null}
@@ -968,11 +995,11 @@ export function ProductDetailClient({ productId }: { productId: string }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Department</th>
-                  <th>Team</th>
-                  <th>Product role</th>
-                  <th>Assigned</th>
+                  <th>{t("organization.employee")}</th>
+                  <th>{t("profile.department")}</th>
+                  <th>{t("profile.team")}</th>
+                  <th>{t("productDetail.productRole")}</th>
+                  <th>{t("productDetail.assigned")}</th>
                   <th />
                 </tr>
               </thead>
@@ -981,8 +1008,8 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                   <td>{employeeName(product.owner_id)}</td>
                   <td>{employeeContext.get(product.owner_id)?.department ?? "—"}</td>
                   <td>{employeeContext.get(product.owner_id)?.team ?? "—"}</td>
-                  <td><span className="status-pill">OWNER</span></td>
-                  <td className="font-mono">{formatProductDate(product.created_at)}</td>
+                  <td><span className="status-pill">{productRole("OWNER")}</span></td>
+                  <td className="font-mono">{dateLabel(product.created_at)}</td>
                   <td />
                 </tr>
                 {product.manager_id ? (
@@ -990,8 +1017,8 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                     <td>{employeeName(product.manager_id)}</td>
                     <td>{employeeContext.get(product.manager_id)?.department ?? "—"}</td>
                     <td>{employeeContext.get(product.manager_id)?.team ?? "—"}</td>
-                    <td><span className="status-pill">MANAGER</span></td>
-                    <td className="font-mono">{formatProductDate(product.updated_at)}</td>
+                    <td><span className="status-pill">{productRole("MANAGER")}</span></td>
+                    <td className="font-mono">{dateLabel(product.updated_at)}</td>
                     <td />
                   </tr>
                 ) : null}
@@ -1000,11 +1027,11 @@ export function ProductDetailClient({ productId }: { productId: string }) {
                     <td>{employeeName(m.employee_id)}</td>
                     <td>{employeeContext.get(m.employee_id)?.department ?? "—"}</td>
                     <td>{employeeContext.get(m.employee_id)?.team ?? "—"}</td>
-                    <td><span className="status-pill">{m.role}</span></td>
-                    <td className="font-mono">{formatProductDate(m.created_at)}</td>
+                    <td><span className="status-pill">{productRole(m.role)}</span></td>
+                    <td className="font-mono">{dateLabel(m.created_at)}</td>
                     <td className="actions-cell">
                       <button type="button" className="btn btn-sm btn-danger" onClick={() => removeMember.mutate(m.employee_id)}>
-                        Remove
+                        {t("common.remove")}
                       </button>
                     </td>
                   </tr>
@@ -1025,7 +1052,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
 
       {tab === "settings" && (
         <section className="data-panel">
-          <h3 className="panel-title">Settings</h3>
+          <h3 className="panel-title">{t("settings.title")}</h3>
           <form
               className="auth-form"
               onSubmit={(e) => {
@@ -1048,61 +1075,61 @@ export function ProductDetailClient({ productId }: { productId: string }) {
             >
               <div className="grid grid-cols-2">
                 <div className="form-group">
-                  <label htmlFor="p-name">Name</label>
+                  <label htmlFor="p-name">{t("common.name")}</label>
                   <input id="p-name" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="p-code">Code</label>
+                  <label htmlFor="p-code">{t("productDetail.code")}</label>
                   <input id="p-code" value={form.code ?? ""} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="p-category">Category</label>
+                  <label htmlFor="p-category">{t("products.category")}</label>
                   <input id="p-category" value={form.category ?? ""} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="p-type">Product type</label>
+                  <label htmlFor="p-type">{t("products.productType")}</label>
                   <input id="p-type" value={form.product_type ?? ""} onChange={(e) => setForm((f) => ({ ...f, product_type: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="p-priority">Priority</label>
+                  <label htmlFor="p-priority">{t("products.priority")}</label>
                   <select id="p-priority" value={form.priority ?? ""} onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}>
                     {PRIORITY_OPTIONS.map((p) => (
-                      <option key={p} value={p}>{p || "—"}</option>
+                      <option key={p} value={p}>{priorityLabel(p)}</option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="p-visibility">Visibility</label>
+                  <label htmlFor="p-visibility">{t("products.visibility")}</label>
                   <select id="p-visibility" value={form.visibility ?? ""} onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}>
                     {VISIBILITY_OPTIONS.map((v) => (
-                      <option key={v} value={v}>{v}</option>
+                      <option key={v} value={v}>{t(`productDetail.visibility.${v.toLowerCase()}`)}</option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="p-desc">Description</label>
+                  <label htmlFor="p-desc">{t("common.description")}</label>
                   <textarea id="p-desc" rows={3} value={form.description ?? ""} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="p-vision">Vision</label>
+                  <label htmlFor="p-vision">{t("products.vision")}</label>
                   <textarea id="p-vision" rows={2} value={form.vision ?? ""} onChange={(e) => setForm((f) => ({ ...f, vision: e.target.value }))} />
                 </div>
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="p-goal">Goal</label>
+                  <label htmlFor="p-goal">{t("products.goal")}</label>
                   <textarea id="p-goal" rows={2} value={form.goal ?? ""} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
                 </div>
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="p-metrics">Success metrics</label>
+                  <label htmlFor="p-metrics">{t("products.successMetrics")}</label>
                   <textarea id="p-metrics" rows={2} value={form.success_metrics ?? ""} onChange={(e) => setForm((f) => ({ ...f, success_metrics: e.target.value }))} />
                 </div>
                 <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="p-value">Business value</label>
+                  <label htmlFor="p-value">{t("products.businessValue")}</label>
                   <textarea id="p-value" rows={2} value={form.business_value ?? ""} onChange={(e) => setForm((f) => ({ ...f, business_value: e.target.value }))} />
                 </div>
               </div>
               {saveError ? <p className="auth-error">{saveError}</p> : null}
               <button type="submit" className="btn btn-primary" disabled={updateProduct.isPending}>
-                {updateProduct.isPending ? "Saving…" : "Save settings"}
+                {updateProduct.isPending ? t("common.saving") : t("settings.saveSettings")}
               </button>
             </form>
           <div style={{ marginTop: "1.5rem" }}>

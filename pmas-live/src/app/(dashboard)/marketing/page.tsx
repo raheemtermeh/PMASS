@@ -8,6 +8,8 @@ import {
 } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface Campaign {
   id: number;
@@ -25,6 +27,7 @@ interface Subsystem {
 }
 
 export default function MarketingPage() {
+  const { t, n } = useI18n();
   const qc = useQueryClient();
 
   const { data: campaigns = [], isLoading } = useQuery({
@@ -72,54 +75,63 @@ export default function MarketingPage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="marketing"
-        title="Marketing workboard"
-        description="Campaign tasks, todos, and status updates for your marketing team."
+        title={t("marketing.workboard.title")}
+        description={t("marketing.workboard.description")}
       />
     <ResourceManager
-      title="Marketing Campaigns"
-      description="Create and manage acquisition campaigns for your company workspace."
-      createLabel="New campaign"
-      emptyTitle="No campaigns yet"
-      emptyDescription="Add your first campaign to start tracking leads, conversion, and spend."
+      title={t("marketing.campaigns.title")}
+      description={t("marketing.campaigns.description")}
+      createLabel={t("marketing.campaigns.create")}
+      emptyTitle={t("marketing.campaigns.emptyTitle")}
+      emptyDescription={t("marketing.campaigns.emptyDescription")}
       isLoading={isLoading}
       items={campaigns}
       columns={[
-        { key: "name", label: "Name" },
+        { key: "name", label: t("marketing.fields.name") },
         {
           key: "leads",
-          label: "Leads",
-          render: (r) => <span className="font-mono">{r.leads.toLocaleString()}</span>,
+          label: t("marketing.fields.leads"),
+          render: (r) => <span className="font-mono">{n(r.leads)}</span>,
         },
         {
           key: "conversion",
-          label: "Conv.",
-          render: (r) => <span className="font-mono">{r.conversion}%</span>,
+          label: t("marketing.fields.conversionShort"),
+          render: (r) => <span className="font-mono">{t("marketing.percent", { value: n(r.conversion) })}</span>,
         },
         {
           key: "spend",
-          label: "Spend",
-          render: (r) => <span className="font-mono">${r.spend.toLocaleString()}</span>,
+          label: t("marketing.fields.spend"),
+          render: (r) => <span className="font-mono">{t("marketing.currency", { amount: n(r.spend) })}</span>,
         },
-        { key: "status", label: "Status" },
+        {
+          key: "status",
+          label: t("marketing.fields.status"),
+          render: (r) =>
+            localizedEnumLabel(
+              r.status,
+              statusTranslationKey(r.status) ?? `marketing.statuses.${r.status.toLowerCase()}`,
+              t,
+            ),
+        },
       ]}
       fields={[
-        { name: "name", label: "Campaign name", required: true },
-        { name: "leads", label: "Leads", type: "number" },
-        { name: "conversion", label: "Conversion %", type: "number", step: "0.01" },
-        { name: "spend", label: "Spend", type: "number", step: "0.01" },
+        { name: "name", label: t("marketing.fields.campaignName"), required: true },
+        { name: "leads", label: t("marketing.fields.leads"), type: "number" },
+        { name: "conversion", label: t("marketing.fields.conversion"), type: "number", step: "0.01" },
+        { name: "spend", label: t("marketing.fields.spend"), type: "number", step: "0.01" },
         {
           name: "status",
-          label: "Status",
+          label: t("marketing.fields.status"),
           type: "select",
           options: [
-            { value: "Active", label: "Active" },
-            { value: "Paused", label: "Paused" },
-            { value: "Completed", label: "Completed" },
+            { value: "Active", label: t("statuses.active") },
+            { value: "Paused", label: t("marketing.statuses.paused") },
+            { value: "Completed", label: t("statuses.completed") },
           ],
         },
         {
           name: "dependent_subsystem_id",
-          label: "Dependent subsystem",
+          label: t("marketing.fields.dependentSubsystem"),
           type: "select",
           options: subsystems.map((s) => ({ value: String(s.id), label: s.name })),
         },

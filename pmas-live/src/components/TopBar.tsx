@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -41,6 +41,12 @@ export function TopBar() {
     retry: false,
   });
 
+  // Static <head> metadata can't know the active locale, so the tab title is set here.
+  useEffect(() => {
+    const heading = route ? t(`title.${route.id}`) : t("common.appName");
+    document.title = `${heading} — ${t("common.appName")}`;
+  }, [route, t]);
+
   function onSearch(e: FormEvent) {
     e.preventDefault();
     setOpen(true);
@@ -73,7 +79,7 @@ export function TopBar() {
             {route ? t(`title.${route.id}`) : "PMAS Live"}
           </h1>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
-            {route ? t(`title.${route.id}`) : t("topbar.valueStream")}
+            {route ? t(`subtitle.${route.id}`) : t("topbar.valueStream")}
           </p>
         </div>
       </div>
@@ -105,7 +111,7 @@ export function TopBar() {
                 style={{
                   position: "absolute",
                   top: "110%",
-                  right: 0,
+                  insetInlineEnd: 0,
                   width: 280,
                   maxHeight: 280,
                   overflow: "auto",
@@ -121,7 +127,7 @@ export function TopBar() {
                     key={`${h.type}-${h.id}`}
                     type="button"
                     className="btn btn-sm"
-                    style={{ display: "block", width: "100%", textAlign: "left", borderRadius: 0 }}
+                    style={{ display: "block", width: "100%", textAlign: "start", borderRadius: 0 }}
                     onClick={() => goHit(h)}
                   >
                     <span className="font-mono" style={{ fontSize: "0.7rem" }}>

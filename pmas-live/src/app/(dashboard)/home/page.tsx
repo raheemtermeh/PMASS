@@ -562,6 +562,7 @@ function ChartPanel({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <section className={`cc-chart-panel cc-accent-${accent}${wide ? " cc-wide" : ""}`}>
       <header className="cc-chart-head">
@@ -569,7 +570,7 @@ function ChartPanel({
           <h3>{title}</h3>
           <p>{subtitle}</p>
         </div>
-        <span className="cc-live-dot" title="Live company data" />
+        <span className="cc-live-dot" title={t("home.liveCompanyData")} />
       </header>
       <div className="cc-chart-body">{children}</div>
     </section>

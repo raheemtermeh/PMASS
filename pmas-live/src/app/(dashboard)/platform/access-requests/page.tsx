@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { isPlatformRole } from "@/shared/permissions";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 interface AccessRequest {
   id: number;
@@ -31,13 +33,8 @@ interface ProvisionResult {
   admin: { email: string };
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-};
-
 export default function PlatformAccessRequestsPage() {
+  const { t, d } = useI18n();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const enabled = isPlatformRole(user?.role);
@@ -72,7 +69,7 @@ export default function PlatformAccessRequestsPage() {
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ["access-requests"] });
       setProvisionHint(
-        `Created ${res.tenant.name} (${res.tenant.slug}). Admin: ${res.admin.email}`,
+        t("accessRequests.created", { name: res.tenant.name, slug: res.tenant.slug, email: res.admin.email }),
       );
       setSelectedId(null);
       setTenantSlug("");
@@ -97,8 +94,8 @@ export default function PlatformAccessRequestsPage() {
   if (!enabled) {
     return (
       <EmptyState
-        title="Platform access only"
-        description="Only platform administrators can review access requests."
+        title={t("accessRequests.accessOnly")}
+        description={t("accessRequests.accessOnlyDescription")}
       />
     );
   }
@@ -122,11 +119,11 @@ export default function PlatformAccessRequestsPage() {
     <div className="page-stack">
       <section className="data-panel platform-hint-panel">
         <p className="text-dim" style={{ margin: 0, fontSize: "0.875rem" }}>
-          Approve a landing-page request below, or{" "}
+          {t("accessRequests.hintBefore")}{" "}
           <a href="/platform/tenants" style={{ color: "var(--color-primary)" }}>
-            add a company manually
+            {t("accessRequests.addManually")}
           </a>{" "}
-          with Company ID and admin credentials.
+          {t("accessRequests.hintAfter")}
         </p>
       </section>
 
@@ -138,7 +135,7 @@ export default function PlatformAccessRequestsPage() {
 
       <section className="data-panel">
         <div className="landing-filter-bar">
-          <h2 className="panel-title" style={{ marginBottom: 0 }}>Access Requests</h2>
+          <h2 className="panel-title" style={{ marginBottom: 0 }}>{t("accessRequests.title")}</h2>
           <div className="auth-mode-toggle">
             {(["pending", "approved", "rejected", ""] as const).map((s) => (
               <button
@@ -147,29 +144,29 @@ export default function PlatformAccessRequestsPage() {
                 className={`btn btn-sm${filter === s ? " btn-primary" : ""}`}
                 onClick={() => setFilter(s)}
               >
-                {s === "" ? "All" : STATUS_LABELS[s]}
+                {s === "" ? t("common.all") : localizedEnumLabel(s, statusTranslationKey(s), t)}
               </button>
             ))}
           </div>
         </div>
 
         {isLoading ? (
-          <p className="text-dim">Loading…</p>
+          <p className="text-dim">{t("common.loading")}</p>
         ) : requests.length === 0 ? (
           <EmptyState
-            title="No requests"
-            description="New requests from the public landing page will appear here."
+            title={t("accessRequests.noRequests")}
+            description={t("accessRequests.noRequestsDescription")}
           />
         ) : (
           <div className="table-scroll">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Company</th>
-                  <th>Contact</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
+                  <th>{t("common.company")}</th>
+                  <th>{t("accessRequests.contact")}</th>
+                  <th>{t("common.email")}</th>
+                  <th>{t("common.status")}</th>
+                  <th>{t("accessRequests.submitted")}</th>
                   <th />
                 </tr>
               </thead>
@@ -181,17 +178,17 @@ export default function PlatformAccessRequestsPage() {
                     <td className="font-mono">{r.contact_email}</td>
                     <td>
                       <span className={`status-badge status-${r.status}`}>
-                        {STATUS_LABELS[r.status]}
+                        {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
                       </span>
                     </td>
-                    <td>{new Date(r.created_at).toLocaleString()}</td>
+                    <td>{d(r.created_at, { dateStyle: "medium", timeStyle: "short" })}</td>
                     <td>
                       <button
                         type="button"
                         className="btn btn-sm"
                         onClick={() => openRequest(r)}
                       >
-                        {r.status === "pending" ? "Review" : "View"}
+                        {r.status === "pending" ? t("accessRequests.review") : t("common.view")}
                       </button>
                     </td>
                   </tr>
@@ -204,32 +201,32 @@ export default function PlatformAccessRequestsPage() {
 
       {selected && (
         <section className="data-panel">
-          <h2 className="panel-title">Details — {selected.company_name}</h2>
+          <h2 className="panel-title">{t("accessRequests.detailsTitle", { name: selected.company_name })}</h2>
           <div className="landing-detail-grid">
-            <div><span className="text-dim">Contact:</span> {selected.contact_name}</div>
-            <div><span className="text-dim">Email:</span> {selected.contact_email}</div>
+            <div><span className="text-dim">{t("accessRequests.contact")}:</span> {selected.contact_name}</div>
+            <div><span className="text-dim">{t("common.email")}:</span> {selected.contact_email}</div>
             {selected.contact_phone && (
-              <div><span className="text-dim">Phone:</span> {selected.contact_phone}</div>
+              <div><span className="text-dim">{t("common.phone")}:</span> {selected.contact_phone}</div>
             )}
             {selected.company_size && (
-              <div><span className="text-dim">Size:</span> {selected.company_size}</div>
+              <div><span className="text-dim">{t("accessRequests.size")}:</span> {selected.company_size}</div>
             )}
             {selected.industry && (
-              <div><span className="text-dim">Industry:</span> {selected.industry}</div>
+              <div><span className="text-dim">{t("accessRequests.industry")}:</span> {selected.industry}</div>
             )}
             {selected.website && (
               <div>
-                <span className="text-dim">Website:</span>{" "}
+                <span className="text-dim">{t("accessRequests.website")}:</span>{" "}
                 <a href={selected.website} target="_blank" rel="noopener noreferrer">
                   {selected.website}
                 </a>
               </div>
             )}
             {selected.country && (
-              <div><span className="text-dim">Country:</span> {selected.country}</div>
+              <div><span className="text-dim">{t("accessRequests.country")}:</span> {selected.country}</div>
             )}
             {selected.preferred_slug && (
-              <div><span className="text-dim">Preferred slug:</span> {selected.preferred_slug}</div>
+              <div><span className="text-dim">{t("accessRequests.preferredSlug")}:</span> {selected.preferred_slug}</div>
             )}
           </div>
           {selected.message && (
@@ -239,10 +236,10 @@ export default function PlatformAccessRequestsPage() {
           {selected.status === "pending" ? (
             <div className="landing-review-actions">
               <form onSubmit={handleProvision} className="user-form landing-review-form">
-                <h3>Approve and create account</h3>
+                <h3>{t("accessRequests.approveTitle")}</h3>
                 <div className="grid grid-cols-2">
                   <div className="form-group">
-                    <label>Company ID (slug)</label>
+                    <label>{t("platformTenants.companyIdSlug")}</label>
                     <input
                       value={tenantSlug}
                       onChange={(e) => setTenantSlug(e.target.value)}
@@ -251,7 +248,7 @@ export default function PlatformAccessRequestsPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Company admin password</label>
+                    <label>{t("accessRequests.companyAdminPassword")}</label>
                     <input
                       type="password"
                       value={adminPassword}
@@ -262,18 +259,16 @@ export default function PlatformAccessRequestsPage() {
                   </div>
                 </div>
                 <div className="form-group">
-                  <label>Notes (optional)</label>
+                  <label>{t("accessRequests.notesOptional")}</label>
                   <input
                     value={adminNotes}
                     onChange={(e) => setAdminNotes(e.target.value)}
-                    placeholder="For sending to the company"
+                    placeholder={t("accessRequests.notesPlaceholder")}
                   />
                 </div>
                 {provisionMutation.isError && (
                   <p className="auth-error">
-                    {provisionMutation.error instanceof Error
-                      ? provisionMutation.error.message
-                      : "Failed to provision account"}
+                    {t("accessRequests.provisionFailed")}
                   </p>
                 )}
                 <button
@@ -281,14 +276,14 @@ export default function PlatformAccessRequestsPage() {
                   className="btn btn-primary"
                   disabled={provisionMutation.isPending}
                 >
-                  {provisionMutation.isPending ? "Provisioning…" : "Approve and issue credentials"}
+                  {provisionMutation.isPending ? t("platformTenants.provisioning") : t("accessRequests.approveCredentials")}
                 </button>
               </form>
 
               <div className="user-form landing-review-form">
-                <h3>Reject request</h3>
+                <h3>{t("accessRequests.rejectTitle")}</h3>
                 <div className="form-group">
-                  <label>Reason (optional)</label>
+                  <label>{t("accessRequests.reasonOptional")}</label>
                   <textarea
                     rows={3}
                     value={rejectNotes}
@@ -297,9 +292,7 @@ export default function PlatformAccessRequestsPage() {
                 </div>
                 {rejectMutation.isError && (
                   <p className="auth-error">
-                    {rejectMutation.error instanceof Error
-                      ? rejectMutation.error.message
-                      : "Request failed"}
+                    {t("accessRequests.requestFailed")}
                   </p>
                 )}
                 <button
@@ -308,13 +301,13 @@ export default function PlatformAccessRequestsPage() {
                   disabled={rejectMutation.isPending}
                   onClick={() => rejectMutation.mutate(selected.id)}
                 >
-                  {rejectMutation.isPending ? "Rejecting…" : "Reject request"}
+                  {rejectMutation.isPending ? t("accessRequests.rejecting") : t("accessRequests.rejectRequest")}
                 </button>
               </div>
             </div>
           ) : (
             <p className="text-dim">
-              Status: {STATUS_LABELS[selected.status]}
+              {t("accessRequests.statusLine", { status: localizedEnumLabel(selected.status, statusTranslationKey(selected.status), t) })}
               {selected.admin_notes && ` — ${selected.admin_notes}`}
             </p>
           )}

@@ -181,7 +181,7 @@ export default function WelcomePage() {
       );
       applySession(res);
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "Login failed");
+      setLoginError(err instanceof Error ? err.message : t("errors.loginFailed"));
     } finally {
       setLoginLoading(false);
     }
@@ -192,7 +192,7 @@ export default function WelcomePage() {
     setPasskeyLoading(true);
     try {
       if (!isPasskeySupported()) {
-        throw new Error("Passkeys are not supported in this browser");
+        throw new Error(t("errors.passkeysUnsupported"));
       }
       const identifier = loginId.trim();
       const begin = await httpClient.post<{
@@ -224,7 +224,7 @@ export default function WelcomePage() {
       );
       applySession(res);
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "Passkey sign-in failed");
+      setLoginError(err instanceof Error ? err.message : t("errors.passkeySignInFailed"));
     } finally {
       setPasskeyLoading(false);
     }
@@ -264,7 +264,7 @@ export default function WelcomePage() {
       setCountry("");
       setMessage("");
     } catch (err) {
-      setRequestError(err instanceof Error ? err.message : "Failed to submit request");
+      setRequestError(err instanceof Error ? err.message : t("errors.submitRequestFailed"));
     } finally {
       setRequestLoading(false);
     }
@@ -273,7 +273,9 @@ export default function WelcomePage() {
   if (!showLanding) {
     return (
       <PmasLoader
-        message={token && user ? "Restoring your session…" : "Preparing PMAS Live…"}
+        message={
+          token && user ? t("welcome.restoringSession") : t("welcome.preparingApp")
+        }
       />
     );
   }
@@ -470,7 +472,7 @@ export default function WelcomePage() {
               className="btn btn-primary auth-submit"
               disabled={!loginReady || loginLoading || passkeyLoading}
             >
-              {loginLoading ? "Signing in…" : "Sign in"}
+              {loginLoading ? t("welcome.signingIn") : t("common.signIn")}
             </button>
 
             {passkeysOk ? (
@@ -505,15 +507,22 @@ export default function WelcomePage() {
                     />
                   </svg>
                   <span className="auth-passkey-copy">
-                    <strong>{passkeyLoading ? "Waiting for device…" : "Sign in with passkey"}</strong>
-                    <em>Face ID · Touch ID · Windows Hello · security key</em>
+                    <strong>
+                      {passkeyLoading ? t("welcome.waitingForDevice") : t("welcome.passkey")}
+                    </strong>
+                    <em>{t("welcome.passkeyHint")}</em>
                   </span>
                 </button>
               </div>
             ) : null}
 
             <p className="auth-footnote" style={{ marginTop: "1rem" }}>
-              Employee? <Link href={`/employee/login${tenantSlug.trim() ? `?slug=${encodeURIComponent(tenantSlug.trim().toLowerCase())}` : ""}`}>Sign in here</Link>
+              {t("welcome.employeeHint")}{" "}
+              <Link
+                href={`/employee/login${tenantSlug.trim() ? `?slug=${encodeURIComponent(tenantSlug.trim().toLowerCase())}` : ""}`}
+              >
+                {t("welcome.employeeSignInHere")}
+              </Link>
             </p>
           </form>
         </div>
@@ -522,40 +531,37 @@ export default function WelcomePage() {
       <section id="request" className="landing-section landing-section-alt">
         <div className="landing-request-wrap">
           <div className="landing-request-header">
-            <h2>Request a Company Workspace</h2>
-            <p>
-              Submit your company details. After platform admin review, you will receive
-              a Company ID and login credentials.
-            </p>
+            <h2>{t("welcome.requestWorkspace")}</h2>
+            <p>{t("welcome.requestDesc")}</p>
           </div>
           {requestSuccess ? (
             <div className="landing-success-card">
               <span className="landing-success-icon">✓</span>
-              <h3>Request submitted</h3>
-              <p>The platform team will review your request and contact you by email.</p>
+              <h3>{t("welcome.requestSubmitted")}</h3>
+              <p>{t("welcome.requestSubmittedDesc")}</p>
               <button
                 type="button"
                 className="btn btn-sm"
                 onClick={() => setRequestSuccess(false)}
               >
-                Submit another request
+                {t("welcome.submitAnother")}
               </button>
             </div>
           ) : (
             <form onSubmit={handleRequest} className="landing-request-form">
               <div className="landing-form-grid">
                 <div className="form-group">
-                  <label htmlFor="req-company">Company name *</label>
+                  <label htmlFor="req-company">{t("welcome.companyName")} *</label>
                   <input
                     id="req-company"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Acme Corp"
+                    placeholder={t("welcome.companyPlaceholder")}
                     required
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-slug">Preferred Company ID</label>
+                  <label htmlFor="req-slug">{t("welcome.preferredCompanyId")}</label>
                   <input
                     id="req-slug"
                     value={preferredSlug}
@@ -566,16 +572,16 @@ export default function WelcomePage() {
                   />
                   <p id="req-slug-status" className={`slug-status is-${slugCheck.state}`}>
                     {slugCheck.state === "checking"
-                      ? "Checking availability…"
+                      ? t("welcome.checkingAvailability")
                       : slugCheck.state === "available"
-                        ? "✓ Available"
+                        ? `✓ ${t("welcome.available")}`
                         : slugCheck.state === "taken"
                           ? slugCheck.reason
-                          : "Your workspace address — lowercase letters, numbers and dashes."}
+                          : t("welcome.workspaceAddressHint")}
                   </p>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-name">Contact name *</label>
+                  <label htmlFor="req-name">{t("welcome.contactName")} *</label>
                   <input
                     id="req-name"
                     value={contactName}
@@ -584,7 +590,7 @@ export default function WelcomePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-email">Contact email *</label>
+                  <label htmlFor="req-email">{t("welcome.contactEmail")} *</label>
                   <input
                     id="req-email"
                     type="email"
@@ -594,7 +600,7 @@ export default function WelcomePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-phone">Phone</label>
+                  <label htmlFor="req-phone">{t("welcome.phone")}</label>
                   <input
                     id="req-phone"
                     value={contactPhone}
@@ -602,31 +608,31 @@ export default function WelcomePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-size">Company size</label>
+                  <label htmlFor="req-size">{t("welcome.companySize")}</label>
                   <select
                     id="req-size"
                     value={companySize}
                     onChange={(e) => setCompanySize(e.target.value)}
                   >
-                    <option value="">Select…</option>
+                    <option value="">{t("welcome.select")}</option>
                     {COMPANY_SIZES.map((size) => (
                       <option key={size} value={size}>
-                        {size} people
+                        {size} {t("welcome.people")}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-industry">Industry</label>
+                  <label htmlFor="req-industry">{t("welcome.industry")}</label>
                   <input
                     id="req-industry"
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
-                    placeholder="Technology, manufacturing, …"
+                    placeholder={t("welcome.industryPlaceholder")}
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-website">Company website</label>
+                  <label htmlFor="req-website">{t("welcome.companyWebsite")}</label>
                   <input
                     id="req-website"
                     value={website}
@@ -636,24 +642,24 @@ export default function WelcomePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="req-country">Country</label>
+                  <label htmlFor="req-country">{t("welcome.country")}</label>
                   <input
                     id="req-country"
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    placeholder="Iran"
+                    placeholder={t("welcome.countryPlaceholder")}
                     autoComplete="country-name"
                   />
                 </div>
               </div>
               <div className="form-group">
-                <label htmlFor="req-msg">Additional notes</label>
+                <label htmlFor="req-msg">{t("welcome.additionalNotes")}</label>
                 <textarea
                   id="req-msg"
                   rows={4}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Expected users, use cases, timeline, …"
+                  placeholder={t("welcome.notesPlaceholder")}
                 />
               </div>
               {requestError && <p className="auth-error">{requestError}</p>}
@@ -662,7 +668,7 @@ export default function WelcomePage() {
                 className="btn btn-primary landing-btn-lg"
                 disabled={requestLoading || slugCheck.state === "taken"}
               >
-                {requestLoading ? "Submitting…" : "Submit request"}
+                {requestLoading ? t("welcome.submitting") : t("welcome.submitRequest")}
               </button>
             </form>
           )}
@@ -670,8 +676,8 @@ export default function WelcomePage() {
       </section>
 
       <footer className="landing-footer">
-        <p>© PMAS Live — Enterprise Product Management Platform</p>
-        <Link href="/platform/login">Platform admin sign in</Link>
+        <p>{t("welcome.footerTagline")}</p>
+        <Link href="/platform/login">{t("welcome.platformAdminSignIn")}</Link>
       </footer>
     </div>
   );

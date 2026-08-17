@@ -14,17 +14,18 @@ import type {
   TeamMembership,
 } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 
 type Tab = "structure" | "employees" | "departments" | "teams" | "membership";
 
-const STATUS_OPTIONS = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
-  { value: "ARCHIVED", label: "Archived" },
-];
-
 export default function OrganizationPage() {
+  const { t, d } = useI18n();
   const qc = useQueryClient();
+  const statusOptions = ["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => ({
+    value,
+    label: localizedEnumLabel(value, statusTranslationKey(value), t),
+  }));
   const [tab, setTab] = useState<Tab>("structure");
   const [memberTeamId, setMemberTeamId] = useState("");
   const [assignEmployeeId, setAssignEmployeeId] = useState("");
@@ -222,13 +223,13 @@ export default function OrganizationPage() {
     e.preventDefault();
     setMemberError("");
     if (!memberTeamId || !assignEmployeeId) {
-      setMemberError("Select a team and an employee.");
+      setMemberError(t("errors.selectTeamAndEmployee"));
       return;
     }
     try {
       await assignMember.mutateAsync({ employeeId: assignEmployeeId, teamId: memberTeamId });
     } catch (err) {
-      setMemberError(err instanceof Error ? err.message : "Assign failed");
+      setMemberError(err instanceof Error ? err.message : t("errors.assignFailed"));
     }
   }
 
@@ -256,7 +257,7 @@ export default function OrganizationPage() {
         <div className="panel-header">
           <div>
             <h2 className="panel-title" style={{ marginBottom: "0.35rem" }}>
-              {company?.name ?? "Company"}
+              {company?.name ?? t("common.company")}
             </h2>
             <p className="text-dim" style={{ fontSize: "0.875rem" }}>
               Tenant = Company. Define who owns responsibility before creating Products.
@@ -272,11 +273,11 @@ export default function OrganizationPage() {
         <div className="org-tab-row">
           {(
             [
-              ["structure", "Structure"],
-              ["employees", "Employees"],
-              ["departments", "Departments"],
-              ["teams", "Teams"],
-              ["membership", "Team members"],
+              ["structure", t("organization.structure")],
+              ["employees", t("organization.employees")],
+              ["departments", t("organization.departments")],
+              ["teams", t("organization.teams")],
+              ["membership", t("organization.teamMembers")],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -294,7 +295,7 @@ export default function OrganizationPage() {
       {tab === "structure" ? (
         <section className="page-stack">
           {deptLoading || teamLoading ? (
-            <p className="text-dim">Loading structure…</p>
+            <p className="text-dim">{t("organization.loadingStructure")}</p>
           ) : (
             <OrgStructureGraph
               company={company}
@@ -310,15 +311,15 @@ export default function OrganizationPage() {
 
           <section className="data-panel">
             <h3 className="panel-title" style={{ marginBottom: "0.75rem" }}>
-              List view
+              {t("organization.listView")}
             </h3>
             <div className="resource-toolbar">
               <select
                 value={jumpDept}
                 onChange={(e) => e.target.value && jumpToDepartment(e.target.value)}
-                aria-label="Quick jump to department"
+                aria-label={t("organization.jumpToDepartment")}
               >
-                <option value="">Jump to department…</option>
+                <option value="">{t("organization.jumpToDepartment")}</option>
                 {departments
                   .filter((d) => d.status !== "ARCHIVED")
                   .map((d) => (
@@ -330,9 +331,9 @@ export default function OrganizationPage() {
               <select
                 value={jumpTeam}
                 onChange={(e) => e.target.value && jumpToTeam(e.target.value)}
-                aria-label="Quick jump to team"
+                aria-label={t("organization.jumpToTeam")}
               >
-                <option value="">Jump to team…</option>
+                <option value="">{t("organization.jumpToTeam")}</option>
                 {teams
                   .filter((t) => t.status !== "ARCHIVED")
                   .map((t) => (
@@ -344,7 +345,7 @@ export default function OrganizationPage() {
             </div>
             {orgTree.length === 0 ? (
               <p className="text-dim">
-                No departments yet. Create departments and teams to build the tree.
+                {t("organization.noStructure")}
               </p>
             ) : (
               <div className="org-tree">
@@ -358,15 +359,15 @@ export default function OrganizationPage() {
                       <div>
                         <strong>{dept.name}</strong>
                         <span className="status-pill" style={{ marginLeft: "0.5rem" }}>
-                          {dept.status}
+                          {localizedEnumLabel(dept.status, statusTranslationKey(dept.status), t)}
                         </span>
                       </div>
                       <span className="text-dim" style={{ fontSize: "0.8rem" }}>
-                        Manager: {empName(dept.manager_id)}
+                        {t("common.manager")}: {empName(dept.manager_id)}
                       </span>
                     </header>
                     {deptTeams.length === 0 ? (
-                      <p className="text-dim org-tree-empty">No teams in this department.</p>
+                      <p className="text-dim org-tree-empty">{t("organization.noTeamsInDepartment")}</p>
                     ) : (
                       <ul className="org-tree-teams">
                         {deptTeams.map((team) => (
@@ -384,8 +385,10 @@ export default function OrganizationPage() {
                               ) : null}
                             </div>
                             <span className="text-dim" style={{ fontSize: "0.8rem" }}>
-                              Lead: {empName(team.lead_id)}
-                              {typeof team.capacity === "number" ? ` · Cap ${team.capacity}` : ""}
+                              {t("common.lead")}: {empName(team.lead_id)}
+                              {typeof team.capacity === "number"
+                                ? ` · ${t("common.capacity")} ${team.capacity}`
+                                : ""}
                             </span>
                           </li>
                         ))}
@@ -401,30 +404,30 @@ export default function OrganizationPage() {
 
       {tab === "employees" ? (
         <ResourceManager
-          title="Employees"
-          description="Business people in the company. Deactivate instead of deleting. Logins are managed in User Management."
-          createLabel="Add employee"
-          emptyTitle="No employees"
-          emptyDescription="Add at least one employee to own Products and manage departments."
+          title={t("organization.employees")}
+          description={t("organization.employeesHint")}
+          createLabel={t("organization.addEmployee")}
+          emptyTitle={t("organization.noEmployees")}
+          emptyDescription={t("emptyStates.noEmployees")}
           isLoading={empLoading}
           items={filteredEmployees}
-          deleteLabel="Deactivate"
+          deleteLabel={t("organization.deactivate")}
           pageSize={10}
           toolbar={
             <>
               <input
                 value={empSearch}
                 onChange={(e) => setEmpSearch(e.target.value)}
-                placeholder="Search employees…"
-                aria-label="Search employees"
+                placeholder={t("organization.searchEmployees")}
+                aria-label={t("organization.searchEmployees")}
               />
               <select
                 value={empStatus}
                 onChange={(e) => setEmpStatus(e.target.value)}
-                aria-label="Filter by status"
+                aria-label={t("filters.byStatus")}
               >
-                <option value="">All statuses</option>
-                {STATUS_OPTIONS.map((o) => (
+                <option value="">{t("common.allStatuses")}</option>
+                {statusOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -433,22 +436,22 @@ export default function OrganizationPage() {
             </>
           }
           columns={[
-            { key: "name", label: "Name", render: (r) => employeeLabel(r) },
-            { key: "job_title", label: "Job title", render: (r) => r.job_title || "—" },
-            { key: "email", label: "Email" },
-            { key: "phone", label: "Phone" },
+            { key: "name", label: t("common.name"), render: (r) => employeeLabel(r) },
+            { key: "job_title", label: t("common.jobTitle"), render: (r) => r.job_title || "—" },
+            { key: "email", label: t("common.email") },
+            { key: "phone", label: t("common.phone") },
             {
               key: "status",
-              label: "Status",
+              label: t("common.status"),
               render: (r) => <span className="status-pill">{r.status}</span>,
             },
           ]}
           fields={[
-            { name: "first_name", label: "First name", required: true },
-            { name: "last_name", label: "Last name", required: true },
-            { name: "email", label: "Email", required: true },
-            { name: "job_title", label: "Job title" },
-            { name: "phone", label: "Phone" },
+            { name: "first_name", label: t("organization.firstName"), required: true },
+            { name: "last_name", label: t("organization.lastName"), required: true },
+            { name: "email", label: t("common.email"), required: true },
+            { name: "job_title", label: t("common.jobTitle") },
+            { name: "phone", label: t("common.phone") },
           ]}
           toFormValues={(r) => ({
             first_name: r.first_name,
@@ -501,11 +504,11 @@ export default function OrganizationPage() {
 
       {tab === "departments" ? (
         <ResourceManager
-          title="Departments"
-          description="Own Product responsibility at each Stage. Manager is required. Archive instead of deleting."
-          createLabel="Add department"
-          emptyTitle="No departments"
-          emptyDescription="Create departments that will own pipeline stages."
+          title={t("organization.departments")}
+          description={t("organization.departmentsHint")}
+          createLabel={t("organization.addDepartment")}
+          emptyTitle={t("organization.noDepartments")}
+          emptyDescription={t("emptyStates.noDepartments")}
           isLoading={deptLoading}
           items={filteredDepartments}
           deleteLabel="Archive"
@@ -514,44 +517,44 @@ export default function OrganizationPage() {
             <input
               value={deptSearch}
               onChange={(e) => setDeptSearch(e.target.value)}
-              placeholder="Search departments…"
-              aria-label="Search departments"
+              placeholder={t("organization.searchDepartments")}
+              aria-label={t("filters.searchDepartments")}
             />
           }
           columns={[
-            { key: "name", label: "Name" },
+            { key: "name", label: t("common.name") },
             {
               key: "description",
-              label: "Description",
+              label: t("common.description"),
               render: (r) => {
                 const d = (r.description || "").trim();
                 if (!d) return "—";
                 return d.length > 60 ? `${d.slice(0, 60)}…` : d;
               },
             },
-            { key: "manager", label: "Manager", render: (r) => empName(r.manager_id) },
+            { key: "manager", label: t("common.manager"), render: (r) => empName(r.manager_id) },
             {
               key: "member_count",
-              label: "Members",
+              label: t("common.members"),
               render: (r) => String(r.member_count ?? 0),
             },
             {
               key: "team_count",
-              label: "Teams",
+              label: t("organization.teams"),
               render: (r) => String(r.team_count ?? 0),
             },
             {
               key: "status",
-              label: "Status",
+              label: t("common.status"),
               render: (r) => <span className="status-pill">{r.status}</span>,
             },
           ]}
           fields={[
-            { name: "name", label: "Name", required: true },
-            { name: "description", label: "Description", type: "textarea" },
+            { name: "name", label: t("common.name"), required: true },
+            { name: "description", label: t("common.description"), type: "textarea" },
             {
               name: "manager_id",
-              label: "Manager",
+              label: t("common.manager"),
               type: "select",
               required: true,
               options: empOptions,
@@ -583,11 +586,11 @@ export default function OrganizationPage() {
 
       {tab === "teams" ? (
         <ResourceManager
-          title="Teams"
-          description="Execution units under a department. Capacity feeds reporting. A team cannot be archived while it still has members, open features or open task assignments — reassign them first."
-          createLabel="Add team"
-          emptyTitle="No teams"
-          emptyDescription="Create teams after departments and employees exist."
+          title={t("organization.teams")}
+          description={t("organization.teamsHint")}
+          createLabel={t("organization.addTeam")}
+          emptyTitle={t("organization.noTeams")}
+          emptyDescription={t("emptyStates.noTeams")}
           isLoading={teamLoading}
           items={teams}
           deleteLabel="Archive"
@@ -600,16 +603,16 @@ export default function OrganizationPage() {
             ) : null
           }
           columns={[
-            { key: "name", label: "Name" },
+            { key: "name", label: t("common.name") },
             {
               key: "department",
-              label: "Department",
+              label: t("organization.department"),
               render: (r) => departments.find((d) => d.id === r.department_id)?.name ?? "—",
             },
-            { key: "lead", label: "Lead", render: (r) => empName(r.lead_id) },
+            { key: "lead", label: t("common.lead"), render: (r) => empName(r.lead_id) },
             {
               key: "members",
-              label: "Members",
+              label: t("common.members"),
               render: (r) => {
                 const count = memberCountByTeam.get(r.id) ?? 0;
                 const capacity = r.capacity ?? 0;
@@ -628,12 +631,12 @@ export default function OrganizationPage() {
             },
             {
               key: "capacity",
-              label: "Capacity",
+              label: t("common.capacity"),
               render: (r) => <span className="font-mono">{r.capacity ?? 0}</span>,
             },
             {
               key: "status",
-              label: "Status",
+              label: t("common.status"),
               render: (r) => (
                 <select
                   className="team-status-select"
@@ -642,7 +645,7 @@ export default function OrganizationPage() {
                   disabled={teamStatus.isPending}
                   onChange={(e) => teamStatus.mutate({ id: r.id, status: e.target.value })}
                 >
-                  {STATUS_OPTIONS.map((s) => (
+                  {statusOptions.map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
                     </option>
@@ -652,17 +655,17 @@ export default function OrganizationPage() {
             },
           ]}
           fields={[
-            { name: "name", label: "Name", required: true },
+            { name: "name", label: t("common.name"), required: true },
             {
               name: "department_id",
-              label: "Department",
+              label: t("organization.department"),
               type: "select",
               required: true,
               options: deptOptions,
             },
             {
               name: "lead_id",
-              label: "Team lead",
+              label: t("organization.teamLead"),
               type: "select",
               required: true,
               options: empOptions,
@@ -674,11 +677,11 @@ export default function OrganizationPage() {
             },
             {
               name: "status",
-              label: "Status",
+              label: t("common.status"),
               type: "select",
-              options: STATUS_OPTIONS,
+              options: statusOptions,
             },
-            { name: "description", label: "Description", type: "textarea" },
+            { name: "description", label: t("common.description"), type: "textarea" },
           ]}
           toFormValues={(r) => ({
             name: r.name,
@@ -716,7 +719,7 @@ export default function OrganizationPage() {
           extraActions={(row) => (
             <select
               className="btn btn-sm"
-              aria-label={`Move ${row.name} to another department`}
+              aria-label={t("organization.moveToDepartment", { name: row.name })}
               value=""
               disabled={teamMove.isPending}
               onChange={(e) => {
@@ -725,7 +728,7 @@ export default function OrganizationPage() {
                 e.target.value = "";
               }}
             >
-              <option value="">Move to…</option>
+              <option value="">{t("organization.moveTo")}</option>
               {deptOptions
                 .filter((d) => d.value !== row.department_id)
                 .map((d) => (
@@ -741,15 +744,14 @@ export default function OrganizationPage() {
       {tab === "membership" ? (
         <section className="data-panel">
           <h3 className="panel-title" style={{ marginBottom: "0.35rem" }}>
-            Team membership
+            {t("organization.teamMembership")}
           </h3>
           <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-            Each employee can belong to only one team. Team lead is stored on the team and kept in
-            membership automatically.
+            {t("organization.membershipHint")}
           </p>
 
           <div className="form-group" style={{ maxWidth: 420, marginBottom: "1rem" }}>
-            <label htmlFor="member-team">Team</label>
+            <label htmlFor="member-team">{t("common.team")}</label>
             <select
               id="member-team"
               value={memberTeamId}
@@ -758,18 +760,26 @@ export default function OrganizationPage() {
                 setMemberError("");
               }}
             >
-              <option value="">Select a team…</option>
+              <option value="">{t("organization.selectTeam")}</option>
               {teams
-                .filter((t) => t.status !== "ARCHIVED")
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {departments.find((d) => d.id === t.department_id)
-                      ? ` · ${departments.find((d) => d.id === t.department_id)!.name}`
-                      : ""}
-                    {` · ${memberCountByTeam.get(t.id) ?? 0}${t.capacity ? `/${t.capacity}` : ""} members`}
-                  </option>
-                ))}
+                .filter((team) => team.status !== "ARCHIVED")
+                .map((team) => {
+                  const dept = departments.find((d) => d.id === team.department_id);
+                  const count = memberCountByTeam.get(team.id) ?? 0;
+                  const members = team.capacity
+                    ? t("organization.membersSuffixCapacity", {
+                        count,
+                        capacity: team.capacity,
+                      })
+                    : t("organization.membersSuffix", { count });
+                  return (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {dept ? ` · ${dept.name}` : ""}
+                      {` · ${members}`}
+                    </option>
+                  );
+                })}
             </select>
           </div>
 
@@ -777,13 +787,13 @@ export default function OrganizationPage() {
             <>
               <form onSubmit={handleAssign} className="org-assign-row">
                 <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label htmlFor="assign-employee">Add employee</label>
+                  <label htmlFor="assign-employee">{t("organization.addEmployee")}</label>
                   <select
                     id="assign-employee"
                     value={assignEmployeeId}
                     onChange={(e) => setAssignEmployeeId(e.target.value)}
                   >
-                    <option value="">Select…</option>
+                    <option value="">{t("welcome.select")}</option>
                     {assignableEmployees.map((e) => (
                       <option key={e.id} value={e.id}>
                         {employeeLabel(e)}
@@ -793,8 +803,7 @@ export default function OrganizationPage() {
                   </select>
                   {assignableEmployees.length === 0 ? (
                     <p className="text-dim" style={{ fontSize: "0.78rem", marginTop: "0.35rem" }}>
-                      Every active employee already belongs to a team. Remove them from their
-                      current team first.
+                      {t("organization.allEmployeesAssigned")}
                     </p>
                   ) : null}
                 </div>
@@ -804,7 +813,9 @@ export default function OrganizationPage() {
                   disabled={assignMember.isPending}
                   style={{ alignSelf: "flex-end" }}
                 >
-                  {assignMember.isPending ? "Assigning…" : "Assign to team"}
+                  {assignMember.isPending
+                    ? t("organization.assigning")
+                    : t("organization.assignToTeam")}
                 </button>
               </form>
               {memberError ? <p className="auth-error">{memberError}</p> : null}
@@ -813,11 +824,11 @@ export default function OrganizationPage() {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Member</th>
-                      <th>Job title</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Assigned at</th>
+                      <th>{t("organization.member")}</th>
+                      <th>{t("organization.jobTitle")}</th>
+                      <th>{t("common.email")}</th>
+                      <th>{t("common.status")}</th>
+                      <th>{t("organization.assignedAt")}</th>
                       <th />
                     </tr>
                   </thead>
@@ -825,13 +836,13 @@ export default function OrganizationPage() {
                     {membersLoading ? (
                       <tr>
                         <td colSpan={6} className="text-dim">
-                          Loading members…
+                          {t("organization.loadingMembers")}
                         </td>
                       </tr>
                     ) : teamMembers.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="text-dim">
-                          No members assigned yet.
+                          {t("organization.noMembersAssigned")}
                         </td>
                       </tr>
                     ) : (
@@ -840,19 +851,27 @@ export default function OrganizationPage() {
                           <td>
                             {`${m.first_name} ${m.last_name}`.trim()}
                             {m.team_role === "LEAD" ? (
-                              <span className="status-pill" style={{ marginLeft: "0.35rem" }}>
-                                Lead
+                              <span className="status-pill" style={{ marginInlineStart: "0.35rem" }}>
+                                {t("organization.lead")}
                               </span>
                             ) : null}
                           </td>
                           <td>{m.job_title || "—"}</td>
                           <td>{m.email}</td>
                           <td>
-                            <span className="status-pill">{m.status}</span>
+                            <span className="status-pill">
+                              {localizedEnumLabel(m.status, statusTranslationKey(m.status), t)}
+                            </span>
                           </td>
                           <td className="text-dim" style={{ fontSize: "0.8rem" }}>
                             {m.assigned_at
-                              ? new Date(m.assigned_at).toLocaleString()
+                              ? d(m.assigned_at, {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
                               : "—"}
                           </td>
                           <td className="actions-cell">
@@ -866,7 +885,7 @@ export default function OrganizationPage() {
                                 })
                               }
                             >
-                              Remove
+                              {t("common.remove")}
                             </button>
                           </td>
                         </tr>
@@ -877,7 +896,7 @@ export default function OrganizationPage() {
               </div>
             </>
           ) : (
-            <p className="text-dim">Select a team to manage members.</p>
+            <p className="text-dim">{t("organization.selectTeamToManage")}</p>
           )}
         </section>
       ) : null}

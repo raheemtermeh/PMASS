@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface NotificationItem {
   id: string;
@@ -16,6 +17,7 @@ interface NotificationItem {
 }
 
 export function NotificationBell() {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const hasTenant = Boolean(user?.tenant_id);
@@ -53,7 +55,9 @@ export function NotificationBell() {
       <button
         type="button"
         className="notif-bell-btn"
-        aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
+        aria-label={`${t("notifications.notifications")}${
+          unread ? `، ${t("notifications.unreadLabel", { count: unread })}` : ""
+        }`}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -65,16 +69,16 @@ export function NotificationBell() {
       </button>
 
       {open ? (
-        <div className="notif-panel" role="dialog" aria-label="Notifications">
+        <div className="notif-panel" role="dialog" aria-label={t("notifications.notifications")}>
           <div className="notif-panel-head">
-            <strong>Notifications</strong>
+            <strong>{t("notifications.notifications")}</strong>
             <Link href="/home" onClick={() => setOpen(false)}>
-              Open dashboard
+              {t("notifications.openDashboard")}
             </Link>
           </div>
           <ul className="notif-panel-list">
             {items.length === 0 ? (
-              <li className="text-dim">No notifications yet.</li>
+              <li className="text-dim">{t("notifications.noNotifications")}</li>
             ) : (
               items.slice(0, 8).map((n) => (
                 <li key={n.id} className={n.is_read ? "is-read" : ""}>
@@ -88,7 +92,7 @@ export function NotificationBell() {
                       className="btn btn-sm"
                       onClick={() => markRead.mutate(n.id)}
                     >
-                      Read
+                      {t("notifications.markAsRead")}
                     </button>
                   ) : null}
                 </li>

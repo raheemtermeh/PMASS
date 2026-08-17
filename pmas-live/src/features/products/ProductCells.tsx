@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ListHealth } from "@/features/products/product-utils";
+import { localizedStageName, type ListHealth } from "@/features/products/product-utils";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 /** Eases a number toward its target so cells animate instead of snapping. */
 function useCountUp(target: number, durationMs = 900): number {
@@ -33,24 +34,27 @@ function useCountUp(target: number, durationMs = 900): number {
 
 export function ProgressCell({ percent }: { percent: number }) {
   const animated = useCountUp(percent);
+  const { t, n, lang } = useI18n();
 
   return (
-    <div className="pl-progress" title={`${percent}% of pipeline stages completed`}>
+    <div className="pl-progress" title={t("productCells.progressTitle", { percent })}>
       <div className="pl-progress-bar">
         <span className="pl-progress-fill" style={{ width: `${animated}%` }}>
           {percent > 0 && percent < 100 ? <i className="pl-progress-spark" /> : null}
         </span>
       </div>
-      <span className="font-mono pl-progress-value">{Math.round(animated)}%</span>
+      <span className="font-mono pl-progress-value">{n(Math.round(animated))}{lang === "fa" ? "٪" : "%"}</span>
     </div>
   );
 }
 
 export function HealthCell({ health }: { health: ListHealth }) {
+  const { t } = useI18n();
+  const label = t(`productCells.health.${health.level}`);
   return (
-    <span className={`pl-health pl-health-${health.level}`} title={health.label}>
+    <span className={`pl-health pl-health-${health.level}`} title={label}>
       <span className="pl-health-dot" aria-hidden />
-      {health.label}
+      {label}
     </span>
   );
 }
@@ -60,17 +64,18 @@ export function HealthCell({ health }: { health: ListHealth }) {
  * the pipeline. Static when the product has not entered a stage yet.
  */
 export function StageCell({ stage, hasPipeline }: { stage?: string; hasPipeline: boolean }) {
+  const { t } = useI18n();
   if (!stage) {
     return (
       <span className={hasPipeline ? "pl-stage-idle" : "pl-stage-missing"}>
-        {hasPipeline ? "Not started" : "No pipeline"}
+        {hasPipeline ? t("productCells.notStarted") : t("productCells.noPipeline")}
       </span>
     );
   }
   return (
     <span className="pl-stage-chip">
       <span className="pl-stage-flow" aria-hidden />
-      <span className="pl-stage-label">{stage}</span>
+      <span className="pl-stage-label">{localizedStageName(stage, t)}</span>
     </span>
   );
 }
@@ -95,6 +100,7 @@ export function ProductPulseStrip({ metrics }: { metrics: PulseMetric[] }) {
 
 function PulseCard({ metric, index }: { metric: PulseMetric; index: number }) {
   const animated = useCountUp(metric.value, 800);
+  const { n } = useI18n();
 
   return (
     <div
@@ -102,7 +108,7 @@ function PulseCard({ metric, index }: { metric: PulseMetric; index: number }) {
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <span className="pl-pulse-value">
-        {Math.round(animated)}
+        {n(Math.round(animated))}
         {metric.suffix ?? ""}
       </span>
       <span className="pl-pulse-label">{metric.label}</span>

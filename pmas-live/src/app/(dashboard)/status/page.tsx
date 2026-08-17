@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
 import type {
   DashboardData,
   FlowProduct,
@@ -48,12 +50,13 @@ function StageRail({ stages, activeName, nextName }: {
   activeName?: string;
   nextName?: string;
 }) {
+  const { t } = useI18n();
   if (stages.length === 0) {
-    return <p className="text-dim sb-muted">No pipeline stages yet.</p>;
+    return <p className="text-dim sb-muted">{t("statusBoard.noPipelineStages")}</p>;
   }
 
   return (
-    <ol className="sb-stage-rail" aria-label="Pipeline stages">
+    <ol className="sb-stage-rail" aria-label={t("statusBoard.pipelineStages")}>
       {stages.map((st, i) => {
         const tone = stageTone(st.status);
         const isActive = activeName === st.name || tone === "active";
@@ -63,7 +66,7 @@ function StageRail({ stages, activeName, nextName }: {
             <span className="sb-stage-index">{i + 1}</span>
             <div className="sb-stage-copy">
               <strong>{st.name}</strong>
-              <span>{st.status}</span>
+              <span>{localizedEnumLabel(st.status, statusTranslationKey(st.status), t)}</span>
             </div>
             {i < stages.length - 1 ? <span className="sb-stage-connector" aria-hidden /> : null}
           </li>
@@ -74,6 +77,7 @@ function StageRail({ stages, activeName, nextName }: {
 }
 
 export default function StatusBoardPage() {
+  const { lang, t } = useI18n();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
 
@@ -111,7 +115,7 @@ export default function StatusBoardPage() {
   }, [products, filter, query]);
 
   const refreshed = dataUpdatedAt
-    ? new Date(dataUpdatedAt).toLocaleTimeString([], {
+    ? new Date(dataUpdatedAt).toLocaleTimeString(lang === "fa" ? "fa-IR" : "en", {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
@@ -136,64 +140,64 @@ export default function StatusBoardPage() {
     <div className="page-stack status-board">
       <section className="sb-hero">
         <div>
-          <p className="command-eyebrow">Live status</p>
+          <p className="command-eyebrow">{t("statusBoard.liveStatus")}</p>
           <h2 className="sb-hero-title">
-            {dash?.flow?.company_name || "Organization"}
-            <span> status board</span>
+            {t("statusBoard.heading", {
+              name: dash?.flow?.company_name || t("statusBoard.organizationFallback"),
+            })}
           </h2>
-          <p className="sb-hero-sub">
-            Current stage, pipeline path, projects, and features for every product — read-only
-            operational view.
-          </p>
+          <p className="sb-hero-sub">{t("statusBoard.description")}</p>
         </div>
         <div className="sb-hero-meta">
-          <span className="cc-chip cyan">{summary?.active_products ?? 0} active products</span>
-          <span className="cc-chip amber">{summary?.open_features ?? 0} open features</span>
-          <span className="cc-chip emerald">{summary?.projects ?? 0} projects</span>
-          <span className="cc-chip rose">{summary?.open_tasks ?? 0} open tasks</span>
+          <span className="cc-chip cyan">{t("statusBoard.activeProducts", { count: summary?.active_products ?? 0 })}</span>
+          <span className="cc-chip amber">{t("statusBoard.openFeatures", { count: summary?.open_features ?? 0 })}</span>
+          <span className="cc-chip emerald">{t("statusBoard.projects", { count: summary?.projects ?? 0 })}</span>
+          <span className="cc-chip rose">{t("statusBoard.openTasks", { count: summary?.open_tasks ?? 0 })}</span>
           {refreshed ? (
-            <span className="cc-chip muted">{isFetching ? "Syncing…" : `Synced ${refreshed}`}</span>
+            <span className="cc-chip muted">
+              {isFetching ? t("dashboard.syncing") : t("statusBoard.synced", { time: refreshed })}
+            </span>
           ) : null}
         </div>
       </section>
 
       <div className="cc-kpi-grid">
         <div className="cc-kpi cc-kpi-cyan">
-          <span className="cc-kpi-label">Products tracked</span>
+          <span className="cc-kpi-label">{t("statusBoard.productsTracked")}</span>
           <strong className="cc-kpi-value">{products.length}</strong>
         </div>
         <div className="cc-kpi cc-kpi-emerald">
-          <span className="cc-kpi-label">Completed products</span>
+          <span className="cc-kpi-label">{t("statusBoard.completedProducts")}</span>
           <strong className="cc-kpi-value">{summary?.completed_products ?? 0}</strong>
         </div>
         <div className="cc-kpi cc-kpi-amber">
-          <span className="cc-kpi-label">Open features</span>
+          <span className="cc-kpi-label">{t("products.features")}</span>
           <strong className="cc-kpi-value">{summary?.open_features ?? 0}</strong>
         </div>
         <div className="cc-kpi cc-kpi-rose">
-          <span className="cc-kpi-label">On hold</span>
+          <span className="cc-kpi-label">{t("statusBoard.onHold")}</span>
           <strong className="cc-kpi-value">{summary?.on_hold_products ?? 0}</strong>
         </div>
       </div>
 
       <section className="data-panel">
         <div className="panel-header sb-toolbar">
-          <h3 className="panel-title">Products · pipelines · next stages</h3>
+          <h3 className="panel-title">{t("statusBoard.boardSummary")}</h3>
           <div className="sb-toolbar-controls">
             <input
               className="sb-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search product, stage, feature…"
-              aria-label="Search status board"
+              placeholder={t("statusBoard.searchPlaceholder")}
+              aria-label={t("statusBoard.searchLabel")}
             />
-            <div className="sb-filters" role="tablist" aria-label="Status filters">
+            <div className="sb-filters" role="tablist" aria-label={t("statusBoard.statusFilters")}>
               {(
                 [
-                  ["all", `All (${counts.all})`],
-                  ["active", `Active (${counts.active})`],
-                  ["no-pipeline", `No pipeline (${counts.noPipeline})`],
-                  ["blocked", `Blocked / hold (${counts.blocked})`],
+                  ["all", t("statusBoard.all", { count: counts.all })],
+                  ["active", t("statusBoard.active", { count: counts.active })],
+                  ["no-pipeline", t("statusBoard.noPipeline", { count: counts.noPipeline })],
+                  ["blocked", t("statusBoard.blockedHold", { count: counts.blocked })],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -211,19 +215,19 @@ export default function StatusBoardPage() {
           </div>
         </div>
 
-        {isLoading ? <p className="text-dim">Loading live status…</p> : null}
+        {isLoading ? <p className="text-dim">{t("statusBoard.loading")}</p> : null}
 
         {!isLoading && filtered.length === 0 ? (
           <EmptyState
-            title="Nothing to show"
+            title={t("statusBoard.nothingToShow")}
             description={
               products.length === 0
-                ? "Create a product and assign a pipeline to see live stage progress here."
-                : "No products match this filter or search."
+                ? t("statusBoard.createProductHint")
+                : t("statusBoard.noMatch")
             }
             action={
               <Link href="/products" className="btn btn-primary">
-                Go to Products
+                {t("statusBoard.goToProducts")}
               </Link>
             }
           />
@@ -244,26 +248,31 @@ export default function StatusBoardPage() {
                       <Link href={`/products/${product.id}`} className="sb-product-link">
                         {product.name}
                       </Link>
-                      <span className={`status-pill ${statusClass(product.status)}`}>{product.status}</span>
+                      <span className={`status-pill ${statusClass(product.status)}`}>
+                        {localizedEnumLabel(product.status, statusTranslationKey(product.status), t)}
+                      </span>
                     </div>
                     <p className="sb-product-meta">
                       {product.pipeline_id ? (
                         <>
-                          Pipeline: <strong>{product.pipeline_name || "Unnamed"}</strong>
-                          {product.pipeline_status ? ` · ${product.pipeline_status}` : null}
+                          {t("statusBoard.pipeline")}:{" "}
+                          <strong>{product.pipeline_name || t("statusBoard.unnamed")}</strong>
+                          {product.pipeline_status
+                            ? ` · ${localizedEnumLabel(product.pipeline_status, statusTranslationKey(product.pipeline_status), t)}`
+                            : null}
                         </>
                       ) : (
-                        <span className="text-dim">No pipeline assigned</span>
+                        <span className="text-dim">{t("statusBoard.noPipelineAssigned")}</span>
                       )}
                     </p>
                   </div>
                   <div className="sb-pointers">
                     <div>
-                      <span className="sb-pointer-label">Current stage</span>
+                      <span className="sb-pointer-label">{t("statusBoard.currentStage")}</span>
                       <strong>{pipeHint || product.active_stage || "—"}</strong>
                     </div>
                     <div>
-                      <span className="sb-pointer-label">Next stage</span>
+                      <span className="sb-pointer-label">{t("statusBoard.nextStage")}</span>
                       <strong>{product.next_stage || "—"}</strong>
                     </div>
                   </div>
@@ -278,16 +287,18 @@ export default function StatusBoardPage() {
                 <div className="sb-split">
                   <div>
                     <h4 className="sb-section-title">
-                      {product.projects.length} Projects
+                      {product.projects.length} {t("products.projects")}
                     </h4>
                     {product.projects.length === 0 ? (
-                      <p className="text-dim sb-muted">No projects yet.</p>
+                      <p className="text-dim sb-muted">{t("statusBoard.noProjects")}</p>
                     ) : (
                       <ul className="sb-item-list">
                         {product.projects.map((pr) => (
                           <li key={pr.id}>
                             <Link href={`/planning?product_id=${product.id}`}>{pr.name}</Link>
-                            <span className={`status-pill ${statusClass(pr.status)}`}>{pr.status}</span>
+                            <span className={`status-pill ${statusClass(pr.status)}`}>
+                              {localizedEnumLabel(pr.status, statusTranslationKey(pr.status), t)}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -295,10 +306,10 @@ export default function StatusBoardPage() {
                   </div>
                   <div>
                     <h4 className="sb-section-title">
-                      {features.length} Features
+                      {features.length} {t("products.features")}
                     </h4>
                     {features.length === 0 ? (
-                      <p className="text-dim sb-muted">No features yet.</p>
+                      <p className="text-dim sb-muted">{t("statusBoard.noFeatures")}</p>
                     ) : (
                       <ul className="sb-item-list">
                         {features.slice(0, 12).map((f) => (
@@ -307,8 +318,12 @@ export default function StatusBoardPage() {
                               {f.title}
                             </Link>
                             <span className="sb-feature-meta">
-                              {f.priority ? <em>{f.priority}</em> : null}
-                              <span className={`status-pill ${statusClass(f.status)}`}>{f.status}</span>
+                              {f.priority ? (
+                                <em>{localizedEnumLabel(f.priority, priorityTranslationKey(f.priority), t)}</em>
+                              ) : null}
+                              <span className={`status-pill ${statusClass(f.status)}`}>
+                                {localizedEnumLabel(f.status, statusTranslationKey(f.status), t)}
+                              </span>
                             </span>
                           </li>
                         ))}

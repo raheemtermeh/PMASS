@@ -1,0 +1,6 @@
+# Local dev only — used by deploy/start-db.ps1 (start.bat).
+# Do not deploy to the server (avoids 127.0.0.1:5432 conflicts with host Postgres).
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"

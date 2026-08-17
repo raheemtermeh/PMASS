@@ -32,7 +32,7 @@ export function MyWorkWidget({
   dragging,
   dragOver,
 }: Props) {
-  const { t } = useI18n();
+  const { t, n } = useI18n();
   const work: MyWorkSummary = data ?? {
     assigned: 0,
     due_today: 0,
@@ -62,7 +62,7 @@ export function MyWorkWidget({
           const label = (
             <>
               <span>{t(row.labelKey)}</span>
-              <strong>{count}</strong>
+              <strong>{n(count)}</strong>
             </>
           );
           return (

@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ModalPortal } from "@/components/ModalPortal";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { useI18n } from "@/core/providers/I18nProvider";
 import {
   PERMISSION_CATEGORIES,
   PERMISSION_LABELS,
@@ -64,12 +65,35 @@ function PermCategories({
   selected: Permission[];
   onToggle: (perm: Permission) => void;
 }) {
+  const { t } = useI18n();
+  const categoryLabels: Record<string, string> = {
+    products: t("products.title"),
+    projects: t("dashboard.projects"),
+    features: t("dashboard.features"),
+    tasks: t("dashboard.assignedTasks"),
+    organization: t("organization.title"),
+    administration: t("userManagement.title"),
+  };
+  const permissionLabels: Partial<Record<Permission, string>> = {
+    "product.view": t("common.view"),
+    "product.create": t("common.create"),
+    "product.update": t("common.update"),
+    "product.archive": t("statuses.archived"),
+    "project.create": t("common.create"),
+    "project.update": t("common.update"),
+    "feature.create": t("common.create"),
+    "feature.update": t("common.update"),
+    "task.create": t("common.create"),
+    users: t("userManagement.title"),
+    settings: t("settings.title"),
+  };
+
   return (
     <div className="um-perm-categories">
       {PERMISSION_CATEGORIES.map((cat) => (
         <div key={cat.id} className="um-perm-category">
           <div className="um-perm-category-head">
-            <h4>{cat.label}</h4>
+            <h4>{categoryLabels[cat.id] ?? cat.label}</h4>
             <span>
               {cat.permissions.filter((p) => selected.includes(p)).length}/
               {cat.permissions.length}
@@ -86,7 +110,7 @@ function PermCategories({
                     onChange={() => onToggle(perm)}
                   />
                   <i aria-hidden />
-                  <span>{PERMISSION_LABELS[perm]}</span>
+                  <span>{permissionLabels[perm] ?? PERMISSION_LABELS[perm]}</span>
                 </label>
               );
             })}
@@ -98,6 +122,7 @@ function PermCategories({
 }
 
 export default function AdminUsersPage() {
+  const { t } = useI18n();
   const currentUser = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const tenantId = currentUser?.tenant_id;
@@ -157,7 +182,9 @@ export default function AdminUsersPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.errors?.[0]?.message || payload?.error || "Failed to load users");
+        throw new Error(
+          payload?.errors?.[0]?.message || payload?.error || t("errors.loadUsersFailed"),
+        );
       }
       const data = (payload?.data ?? payload) as WorkspaceUser[];
       const meta = (payload?.meta ?? null) as ListMeta | null;
@@ -204,7 +231,7 @@ export default function AdminUsersPage() {
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => {
-      if (!editingUser?.user_id) throw new Error("No login account");
+      if (!editingUser?.user_id) throw new Error(t("errors.noLoginAccount"));
       return httpClient.put(`/api/v1/users/${editingUser.user_id}`, body);
     },
     onSuccess: () => {
@@ -309,8 +336,8 @@ export default function AdminUsersPage() {
   if (!tenantId) {
     return (
       <EmptyState
-        title="Company workspace required"
-        description="User management is available inside a company account. Platform admins should provision companies first."
+        title={t("nav.workspace")}
+        description={t("userManagement.tenantOnlyHint")}
       />
     );
   }
@@ -335,37 +362,43 @@ export default function AdminUsersPage() {
     setRoleFormOpen(true);
   }
 
+  function localizedStatus(value: string): string {
+    const labels: Record<string, string> = {
+      ACTIVE: t("statuses.active"),
+      INACTIVE: t("statuses.inactive"),
+      ARCHIVED: t("statuses.archived"),
+      PENDING: t("statuses.pending"),
+    };
+    return labels[value.toUpperCase()] ?? value;
+  }
+
   return (
     <div className="page-stack um-studio">
       <header className="um-hero">
         <div className="um-hero-glow" aria-hidden />
         <div className="um-hero-scan" aria-hidden />
         <div className="um-hero-copy">
-          <p className="um-kicker">Access studio</p>
-          <h2 className="um-hero-title">
-            People, roles &amp; <span>keys</span>
-          </h2>
+          <p className="um-kicker">{t("settings.access")}</p>
+          <h2 className="um-hero-title">{t("userManagement.title")}</h2>
           <p className="um-hero-sub">
-            Provision logins, shape permission sets, and keep the company roster in sync with
-            Organization — same power, clearer stage. Employees sign in at{" "}
-            <code>/employee/login</code> with the Company ID and credentials you set here.
+            {t("userManagement.heroSub", { path: "/employee/login" })}
           </p>
         </div>
-        <div className="um-hero-stats" aria-label="Roster snapshot">
+        <div className="um-hero-stats" aria-label={t("organization.employees")}>
           <div className="um-stat">
-            <span>People</span>
+            <span>{t("dashboard.people")}</span>
             <strong>{rosterStats.people}</strong>
           </div>
           <div className="um-stat">
-            <span>Live logins</span>
+            <span>{t("statuses.active")} {t("common.signIn")}</span>
             <strong>{rosterStats.activeLogin}</strong>
           </div>
           <div className="um-stat">
-            <span>Roles</span>
+            <span>{t("userManagement.role")}</span>
             <strong>{rosterStats.roles}</strong>
           </div>
           <div className="um-stat um-stat-accent">
-            <span>Draft grants</span>
+            <span>{t("statuses.draft")} {t("settings.access")}</span>
             <strong>{rosterStats.grants}</strong>
           </div>
         </div>
@@ -375,16 +408,15 @@ export default function AdminUsersPage() {
         <div className="um-panel-rail" aria-hidden />
         <div className="um-panel-head">
           <div>
-            <p className="um-kicker">Provision</p>
-            <h2 className="um-panel-title">Create employee login</h2>
-            <p className="um-panel-sub">
-              Creates an Organization employee and a login account linked together. Pick a Role to
-              pre-select permissions, then adjust manually if needed.
-            </p>
+            <p className="um-kicker">{t("common.create")}</p>
+            <h2 className="um-panel-title">{t("organization.createEmployee")}</h2>
+            <p className="um-panel-sub">{t("userManagement.createHint")}</p>
           </div>
           <div className="um-badge-stack">
-            <span className="um-soft-badge">Employee + login</span>
-            <span className="um-soft-badge um-soft-badge-cyan">Role → grants</span>
+            <span className="um-soft-badge">{t("role.employee")} + {t("common.signIn")}</span>
+            <span className="um-soft-badge um-soft-badge-cyan">
+              {t("userManagement.role")} → {t("settings.access")}
+            </span>
           </div>
         </div>
 
@@ -397,15 +429,15 @@ export default function AdminUsersPage() {
         >
           <div className="um-create-grid">
             <div className="form-group">
-              <label htmlFor="u-name">Full name</label>
+              <label htmlFor="u-name">{t("userManagement.fullName")}</label>
               <input id="u-name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label htmlFor="u-email">Email</label>
+              <label htmlFor="u-email">{t("userManagement.email")}</label>
               <input id="u-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label htmlFor="u-pass">Password</label>
+              <label htmlFor="u-pass">{t("common.password")}</label>
               <input
                 id="u-pass"
                 type="password"
@@ -416,18 +448,18 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="form-group">
-              <label htmlFor="u-job">Job title</label>
+              <label htmlFor="u-job">{t("common.jobTitle")}</label>
               <input id="u-job" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
             </div>
             <div className="form-group um-span-2">
-              <label htmlFor="u-role">Role</label>
+              <label htmlFor="u-role">{t("userManagement.role")}</label>
               <select
                 id="u-role"
                 value={roleId}
                 onChange={(e) => setRoleId(e.target.value)}
                 required
               >
-                <option value="">Select role…</option>
+                <option value="">{t("organization.selectRole")}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -439,7 +471,7 @@ export default function AdminUsersPage() {
 
           <fieldset className="um-perm-fieldset">
             <legend>
-              Permissions <span>from role — editable</span>
+              {t("settings.access")} <span>— {t("common.edit")}</span>
             </legend>
             <PermCategories
               selected={selectedPerms}
@@ -449,13 +481,15 @@ export default function AdminUsersPage() {
 
           {createMutation.isError ? (
             <p className="auth-error">
-              {createMutation.error instanceof Error ? createMutation.error.message : "Create failed"}
+              {createMutation.error instanceof Error
+                ? createMutation.error.message
+                : t("errors.createFailed")}
             </p>
           ) : null}
 
           <div className="um-form-actions">
             <button type="submit" className="btn btn-primary um-cta" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating…" : "Create employee"}
+              {createMutation.isPending ? t("common.processing") : t("organization.createEmployee")}
             </button>
           </div>
         </form>
@@ -464,8 +498,8 @@ export default function AdminUsersPage() {
       <section className="um-panel">
         <div className="um-panel-head um-panel-head-row">
           <div>
-            <p className="um-kicker">Roster</p>
-            <h2 className="um-panel-title">Company people</h2>
+            <p className="um-kicker">{t("organization.employees")}</p>
+            <h2 className="um-panel-title">{t("organization.employees")}</h2>
           </div>
           <div className="um-filters">
             <label className="um-search">
@@ -476,8 +510,8 @@ export default function AdminUsersPage() {
                   setQ(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Search name, email, title…"
-                aria-label="Search users"
+                placeholder={t("userManagement.searchUsers")}
+                aria-label={t("userManagement.searchUsers")}
               />
             </label>
             <select
@@ -486,12 +520,12 @@ export default function AdminUsersPage() {
                 setStatus(e.target.value);
                 setPage(1);
               }}
-              aria-label="Filter by status"
+              aria-label={t("userManagement.status")}
             >
-              <option value="">All statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
-              <option value="ARCHIVED">Archived</option>
+              <option value="">{t("common.allStatuses")}</option>
+              <option value="ACTIVE">{t("statuses.active")}</option>
+              <option value="INACTIVE">{t("statuses.inactive")}</option>
+              <option value="ARCHIVED">{t("statuses.archived")}</option>
             </select>
             <select
               value={roleFilter}
@@ -499,9 +533,9 @@ export default function AdminUsersPage() {
                 setRoleFilter(e.target.value);
                 setPage(1);
               }}
-              aria-label="Filter by role"
+              aria-label={t("userManagement.role")}
             >
-              <option value="">All roles</option>
+              <option value="">{t("common.all")} {t("userManagement.role")}</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
@@ -514,18 +548,18 @@ export default function AdminUsersPage() {
         {rowActionError ? <p className="auth-error">{rowActionError}</p> : null}
 
         {usersLoading ? (
-          <p className="text-dim um-loading">Loading users…</p>
+          <p className="text-dim um-loading">{t("common.loading")}</p>
         ) : users.length === 0 ? (
           <EmptyState
-            title="No people yet"
-            description="Create an employee here or in Organization — both lists stay in sync."
+            title={t("userManagement.noUsers")}
+            description={t("emptyStates.noEmployees")}
           />
         ) : (
           <>
             <div className="um-roster">
               {users.map((row, index) => {
                 const roleLabel =
-                  row.role_name || (row.system_role === "tenant_admin" ? "Company Admin" : "—");
+                  row.role_name || (row.system_role === "tenant_admin" ? t("role.companyAdmin") : "—");
                 const loginState = !row.has_login
                   ? "none"
                   : row.is_active
@@ -548,35 +582,37 @@ export default function AdminUsersPage() {
                       </div>
                       <span className={`um-login-pill is-${loginState}`}>
                         {loginState === "none"
-                          ? "No login"
+                          ? `${t("common.no")} ${t("common.signIn")}`
                           : loginState === "active"
-                            ? "Login on"
-                            : "Login off"}
+                            ? `${t("common.signIn")} · ${t("statuses.active")}`
+                            : `${t("common.signIn")} · ${t("statuses.inactive")}`}
                       </span>
                     </div>
 
                     <div className="um-person-meta">
                       <div>
-                        <span>Title</span>
+                        <span>{t("common.title")}</span>
                         <strong>{row.job_title || "—"}</strong>
                       </div>
                       <div>
-                        <span>Role</span>
+                        <span>{t("userManagement.role")}</span>
                         <strong>{roleLabel}</strong>
                       </div>
                       <div>
-                        <span>Status</span>
+                        <span>{t("userManagement.status")}</span>
                         <strong>
-                          <span className="status-pill">{row.status}</span>
+                          <span className="status-pill">{localizedStatus(row.status)}</span>
                         </strong>
                       </div>
                       <div>
-                        <span>Access</span>
+                        <span>{t("settings.access")}</span>
                         <strong>
                           {row.system_role === "tenant_admin"
-                            ? "All permissions"
+                            ? t("userManagement.allPermissions")
                             : row.permissions?.length
-                              ? `${row.permissions.length} grants`
+                              ? t("userManagement.grantsCount", {
+                                  count: row.permissions.length,
+                                })
                               : "—"}
                         </strong>
                       </div>
@@ -586,7 +622,7 @@ export default function AdminUsersPage() {
                       {row.has_login && row.user_id ? (
                         <>
                           <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
-                            Edit
+                            {t("common.edit")}
                           </button>
                           <button
                             type="button"
@@ -599,7 +635,7 @@ export default function AdminUsersPage() {
                               setPasswordMutation.mutate({ id: row.user_id!, password: next });
                             }}
                           >
-                            Set password
+                            {t("profile.changePassword")}
                           </button>
                           <button
                             type="button"
@@ -611,7 +647,7 @@ export default function AdminUsersPage() {
                               })
                             }
                           >
-                            {row.is_active ? "Deactivate" : "Activate"}
+                            {row.is_active ? t("organization.deactivate") : t("statuses.active")}
                           </button>
                           <button
                             type="button"
@@ -619,8 +655,8 @@ export default function AdminUsersPage() {
                             disabled={row.user_id === currentUser?.id}
                             title={
                               row.user_id === currentUser?.id
-                                ? "You cannot remove your own login"
-                                : "Deletes the login. The employee stays in Organization."
+                                ? t("userManagement.cannotRemoveOwnLogin")
+                                : t("userManagement.deleteLoginHint")
                             }
                             onClick={() => {
                               if (
@@ -633,7 +669,7 @@ export default function AdminUsersPage() {
                               removeLoginMutation.mutate(row.user_id!);
                             }}
                           >
-                            Remove login
+                            {t("common.remove")} {t("common.signIn")}
                           </button>
                         </>
                       ) : (
@@ -648,7 +684,7 @@ export default function AdminUsersPage() {
                             enableLoginMutation.mutate({ row, password });
                           }}
                         >
-                          Enable login
+                          {t("common.active")} {t("common.signIn")}
                         </button>
                       )}
                     </div>
@@ -665,10 +701,11 @@ export default function AdminUsersPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  Previous
+                  {t("common.previous")}
                 </button>
                 <span className="text-dim">
-                  Page {meta.page} / {meta.total_pages} · {meta.total_items} people
+                  {t("common.page")} {meta.page} / {meta.total_pages} · {meta.total_items}{" "}
+                  {t("dashboard.people")}
                 </span>
                 <button
                   type="button"
@@ -676,7 +713,7 @@ export default function AdminUsersPage() {
                   disabled={page >= meta.total_pages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  Next
+                  {t("common.next")}
                 </button>
               </div>
             ) : null}
@@ -687,12 +724,12 @@ export default function AdminUsersPage() {
       <section className="um-panel um-panel-roles">
         <div className="um-panel-head um-panel-head-row">
           <div>
-            <p className="um-kicker">Blueprints</p>
-            <h2 className="um-panel-title">Roles</h2>
-            <p className="um-panel-sub">Reusable access kits applied when provisioning people.</p>
+            <p className="um-kicker">{t("userManagement.role")}</p>
+            <h2 className="um-panel-title">{t("userManagement.role")}</h2>
+            <p className="um-panel-sub">{t("userManagement.presetsHint")}</p>
           </div>
           <button type="button" className="btn btn-primary um-cta" onClick={() => openRoleEdit()}>
-            New role
+            {t("common.create")} {t("userManagement.role")}
           </button>
         </div>
 
@@ -710,17 +747,17 @@ export default function AdminUsersPage() {
                   {role.is_system ? "System" : "Custom"}
                 </span>
               </div>
-              <p className="um-role-desc">{role.description || "No description"}</p>
+              <p className="um-role-desc">{role.description || t("common.description")}</p>
               <div className="um-role-meter" aria-hidden>
                 <i style={{ width: `${Math.min(100, (role.permissions?.length ?? 0) * 6)}%` }} />
               </div>
               <div className="um-role-foot">
                 <span>
-                  <strong>{role.permissions?.length ?? 0}</strong> permissions
+                  <strong>{role.permissions?.length ?? 0}</strong> {t("settings.access")}
                 </span>
                 <div className="um-person-actions">
                   <button type="button" className="btn btn-sm" onClick={() => openRoleEdit(role)}>
-                    Edit
+                    {t("common.edit")}
                   </button>
                   {!role.is_system ? (
                     <button
@@ -732,7 +769,7 @@ export default function AdminUsersPage() {
                         }
                       }}
                     >
-                      Delete
+                      {t("common.delete")}
                     </button>
                   ) : null}
                 </div>
@@ -744,25 +781,35 @@ export default function AdminUsersPage() {
 
       {editingUser ? (
         <ModalPortal>
-        <div className="modal-backdrop active um-modal" role="dialog" aria-modal="true">
+        <div
+          className="modal-backdrop active um-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${t("common.edit")} ${editingUser.full_name}`}
+        >
           <div className="modal-content um-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header um-modal-header">
               <div>
-                <p className="um-kicker">Identity</p>
-                <h3 className="modal-title">Edit {editingUser.full_name}</h3>
+                <p className="um-kicker">{t("profile.identity")}</p>
+                <h3 className="modal-title">{t("common.edit")} {editingUser.full_name}</h3>
               </div>
-              <button type="button" className="modal-close" onClick={() => setEditingUser(null)}>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label={t("common.close")}
+                onClick={() => setEditingUser(null)}
+              >
                 ×
               </button>
             </div>
             <div className="modal-body auth-form">
               <div className="um-create-grid">
                 <div className="form-group">
-                  <label htmlFor="edit-name">Full name</label>
+                  <label htmlFor="edit-name">{t("userManagement.fullName")}</label>
                   <input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="edit-job">Job title</label>
+                  <label htmlFor="edit-job">{t("common.jobTitle")}</label>
                   <input
                     id="edit-job"
                     value={editJobTitle}
@@ -770,7 +817,7 @@ export default function AdminUsersPage() {
                   />
                 </div>
                 <div className="form-group um-span-2">
-                  <label htmlFor="edit-role">Role</label>
+                  <label htmlFor="edit-role">{t("userManagement.role")}</label>
                   <select
                     id="edit-role"
                     value={editRoleId}
@@ -791,12 +838,13 @@ export default function AdminUsersPage() {
               </div>
               <fieldset className="um-perm-fieldset">
                 <legend>
-                  Permissions
+                  {t("settings.access")}
                   {editDiff.total > 0 ? (
                     <span className="um-diff-badge">
                       {editDiff.added.length > 0 ? `+${editDiff.added.length}` : ""}
                       {editDiff.added.length > 0 && editDiff.removed.length > 0 ? " / " : ""}
-                      {editDiff.removed.length > 0 ? `−${editDiff.removed.length}` : ""} vs role
+                      {editDiff.removed.length > 0 ? `−${editDiff.removed.length}` : ""}{" "}
+                      {t("userManagement.vsRole")}
                     </span>
                   ) : null}
                 </legend>
@@ -804,8 +852,7 @@ export default function AdminUsersPage() {
                   <p className="um-perm-hint">
                     {editDiff.total > 0 ? (
                       <>
-                        Customized for this person. Their extra grants and removals are kept when
-                        the role itself is edited later.{" "}
+                        {t("userManagement.customizedHint")}{" "}
                         <button
                           type="button"
                           className="um-linkish"
@@ -814,11 +861,11 @@ export default function AdminUsersPage() {
                             if (role) setEditPerms(role.permissions as Permission[]);
                           }}
                         >
-                          Reset to role defaults
+                          {t("userManagement.resetToRoleDefaults")}
                         </button>
                       </>
                     ) : (
-                      "Exactly matches the role defaults — future role edits apply automatically."
+                      t("userManagement.matchesRoleDefaults")
                     )}
                   </p>
                 ) : null}
@@ -829,7 +876,7 @@ export default function AdminUsersPage() {
               </fieldset>
               <div className="modal-footer">
                 <button type="button" className="btn" onClick={() => setEditingUser(null)}>
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
@@ -844,7 +891,7 @@ export default function AdminUsersPage() {
                     })
                   }
                 >
-                  Save
+                  {t("common.save")}
                 </button>
               </div>
             </div>
@@ -855,20 +902,36 @@ export default function AdminUsersPage() {
 
       {roleFormOpen ? (
         <ModalPortal>
-        <div className="modal-backdrop active um-modal" role="dialog" aria-modal="true">
+        <div
+          className="modal-backdrop active um-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            editingRole
+              ? `${t("common.edit")} ${t("userManagement.role")}`
+              : `${t("common.create")} ${t("userManagement.role")}`
+          }
+        >
           <div className="modal-content um-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header um-modal-header">
               <div>
-                <p className="um-kicker">Blueprint</p>
-                <h3 className="modal-title">{editingRole ? "Edit role" : "New role"}</h3>
+                <p className="um-kicker">{t("userManagement.role")}</p>
+                <h3 className="modal-title">
+                  {editingRole ? t("common.edit") : t("common.create")} {t("userManagement.role")}
+                </h3>
               </div>
-              <button type="button" className="modal-close" onClick={() => setRoleFormOpen(false)}>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label={t("common.close")}
+                onClick={() => setRoleFormOpen(false)}
+              >
                 ×
               </button>
             </div>
             <div className="modal-body auth-form">
               <div className="form-group">
-                <label htmlFor="role-name">Name</label>
+                <label htmlFor="role-name">{t("common.name")}</label>
                 <input
                   id="role-name"
                   value={roleName}
@@ -878,16 +941,14 @@ export default function AdminUsersPage() {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="role-desc">Description</label>
+                <label htmlFor="role-desc">{t("common.description")}</label>
                 <input id="role-desc" value={roleDesc} onChange={(e) => setRoleDesc(e.target.value)} />
               </div>
               <fieldset className="um-perm-fieldset">
-                <legend>Default permissions</legend>
+                <legend>{t("settings.access")}</legend>
                 {editingRole && roleMemberCount > 0 ? (
                   <p className="um-perm-hint">
-                    Saving updates {roleMemberCount}{" "}
-                    {roleMemberCount === 1 ? "person" : "people"} on this page who hold this role.
-                    Their individually added or removed permissions stay untouched.
+                    {t("userManagement.roleSaveImpact", { count: roleMemberCount })}
                   </p>
                 ) : null}
                 <PermCategories
@@ -899,12 +960,12 @@ export default function AdminUsersPage() {
                 <p className="auth-error">
                   {saveRoleMutation.error instanceof Error
                     ? saveRoleMutation.error.message
-                    : "Saving the role failed"}
+                    : t("errors.roleSaveFailed")}
                 </p>
               ) : null}
               <div className="modal-footer">
                 <button type="button" className="btn" onClick={() => setRoleFormOpen(false)}>
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
@@ -912,7 +973,7 @@ export default function AdminUsersPage() {
                   disabled={saveRoleMutation.isPending || !roleName.trim()}
                   onClick={() => saveRoleMutation.mutate()}
                 >
-                  Save role
+                  {t("common.save")} {t("userManagement.role")}
                 </button>
               </div>
             </div>

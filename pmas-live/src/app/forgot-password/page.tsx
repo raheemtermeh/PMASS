@@ -71,7 +71,7 @@ function ForgotPasswordForm() {
         setExpiresMins(res.expires_in_minutes ?? 60);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(err instanceof Error ? err.message : t("errors.requestFailed"));
     } finally {
       setLoading(false);
     }

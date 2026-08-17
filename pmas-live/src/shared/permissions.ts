@@ -56,11 +56,47 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   legalhr: "Legacy · Legal & HR",
 };
 
+const PERMISSION_LABEL_KEYS: Record<Permission, string> = {
+  "product.view": "permissions.actions.viewProducts",
+  "product.create": "permissions.actions.createProducts",
+  "product.update": "permissions.actions.updateProducts",
+  "product.archive": "permissions.actions.archiveProducts",
+  "project.create": "permissions.actions.createProjects",
+  "project.update": "permissions.actions.updateProjects",
+  "feature.create": "permissions.actions.createFeatures",
+  "feature.update": "permissions.actions.updateFeatures",
+  "task.create": "permissions.actions.createTasks",
+  "task.assign": "permissions.actions.assignTasks",
+  "task.complete": "permissions.actions.completeTasks",
+  "department.manage": "permissions.actions.manageDepartments",
+  "team.manage": "permissions.actions.manageTeams",
+  "employee.manage": "permissions.actions.manageEmployees",
+  users: "permissions.actions.manageUsers",
+  settings: "permissions.actions.manageSettings",
+  executive: "permissions.actions.legacyExecutive",
+  uiux: "permissions.actions.legacyUiux",
+  engineering: "permissions.actions.legacyEngineering",
+  infrastructure: "permissions.actions.legacyInfrastructure",
+  marketing: "permissions.actions.legacyMarketing",
+  "graph-view": "permissions.actions.legacyGraph",
+  finance: "permissions.actions.legacyFinance",
+  legalhr: "permissions.actions.legacyLegalHr",
+};
+
+/** Translation key for a permission label; safe for use by client or server modules. */
+export function permissionLabelKey(permission: Permission): string {
+  return PERMISSION_LABEL_KEYS[permission];
+}
+
 export type PermissionCategory = {
   id: string;
   label: string;
   permissions: Permission[];
 };
+
+export function permissionCategoryLabelKey(categoryID: string): string {
+  return `permissions.categories.${categoryID}`;
+}
 
 /** Grouped permissions for User Management UI. */
 export const PERMISSION_CATEGORIES: PermissionCategory[] = [

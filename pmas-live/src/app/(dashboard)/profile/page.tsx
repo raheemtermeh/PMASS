@@ -12,6 +12,7 @@ import { COUNTRY_DIAL_CODES, splitPhone, joinPhone } from "@/shared/phone";
 import { readAvatarFile } from "@/shared/avatar";
 import { resolveSignOutPath } from "@/shared/auth-portals";
 import { sanitizeDisplayText } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface PasskeyRow {
   id: string;
@@ -24,12 +25,6 @@ type ProfileTab = "identity" | "security" | "passkeys";
 
 const BIO_MAX = 1000;
 
-const TABS: { id: ProfileTab; label: string; hint: string }[] = [
-  { id: "identity", label: "Identity", hint: "Name, phone, bio" },
-  { id: "security", label: "Security", hint: "Password" },
-  { id: "passkeys", label: "Passkeys", hint: "Passwordless" },
-];
-
 function splitName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { first: "", last: "" };
@@ -37,17 +32,20 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
-function roleLabel(role: string): string {
-  if (role === "platform_admin" || role === "super_admin") return "Platform Admin";
-  if (role === "tenant_admin") return "Company Admin";
-  return "Employee";
-}
-
 export default function ProfilePage() {
+  const { t, lang } = useI18n();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const setSession = useAuthStore((s) => s.setSession);
   const clearSession = useAuthStore((s) => s.clearSession);
+  const tabs = useMemo<{ id: ProfileTab; label: string; hint: string }[]>(
+    () => [
+      { id: "identity", label: t("profile.identity"), hint: t("profile.identityHint") },
+      { id: "security", label: t("profile.security"), hint: t("profile.password") },
+      { id: "passkeys", label: t("profile.passkeys"), hint: t("profile.passwordless") },
+    ],
+    [t],
+  );
 
   const initial = useMemo(() => {
     if (!user) return { first: "", last: "" };
@@ -127,7 +125,7 @@ export default function ProfilePage() {
     (avatar ?? "") !== (user.avatar_url ?? "");
 
   const memberSince = user.created_at
-    ? new Date(user.created_at).toLocaleDateString(undefined, {
+    ? new Date(user.created_at).toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -138,7 +136,7 @@ export default function ProfilePage() {
     e.preventDefault();
     setError("");
     if (!firstName.trim() || !lastName.trim()) {
-      setError("First name and last name are required.");
+      setError(t("errors.nameRequired"));
       return;
     }
 
@@ -153,12 +151,12 @@ export default function ProfilePage() {
         avatar_url: avatar ?? "",
       };
 
-      if (!token) throw new Error("Session expired. Please sign in again.");
+      if (!token) throw new Error(t("errors.sessionExpired"));
       const updated = await httpClient.put<AuthUser>("/api/v1/auth/me", body);
       setSession(token, updated);
-      showToast("Profile updated successfully.");
+      showToast(t("profile.profileUpdated"));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save profile";
+      const msg = err instanceof Error ? err.message : t("errors.saveProfileFailed");
       setError(msg);
       showToast(msg, "error");
     } finally {
@@ -172,7 +170,7 @@ export default function ProfilePage() {
     try {
       setAvatar(await readAvatarFile(file));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not read that image";
+      const msg = err instanceof Error ? err.message : t("errors.readImageFailed");
       setError(msg);
       showToast(msg, "error");
     } finally {
@@ -184,11 +182,11 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwError("");
     if (!currentPassword.trim() || !newPassword.trim()) {
-      setPwError("Current and new password are required.");
+      setPwError(t("errors.passwordsRequired"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPwError("Password confirmation does not match.");
+      setPwError(t("reset.passwordsMismatch"));
       return;
     }
 
@@ -201,12 +199,12 @@ export default function ProfilePage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      showToast("Password changed. Please sign in again.");
+      showToast(t("profile.passwordChanged"));
       const signOutPath = resolveSignOutPath(user?.role);
       clearSession();
       router.replace(signOutPath);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to change password";
+      const msg = err instanceof Error ? err.message : t("errors.changePasswordFailed");
       setPwError(msg);
       showToast(msg, "error");
     } finally {
@@ -219,7 +217,7 @@ export default function ProfilePage() {
     setPkError("");
     setPkSuccess("");
     if (!passkeysOk) {
-      setPkError("Passkeys are not supported in this browser.");
+      setPkError(t("errors.passkeysUnsupported"));
       return;
     }
     setPkBusy(true);
@@ -235,24 +233,24 @@ export default function ProfilePage() {
         name: pkName.trim() || "Passkey",
       });
       setPkName("");
-      setPkSuccess("Passkey added. You can use it on the sign-in screen.");
+      setPkSuccess(t("profile.passkeyAdded"));
       void qc.invalidateQueries({ queryKey: ["passkeys"] });
     } catch (err) {
-      setPkError(err instanceof Error ? err.message : "Failed to add passkey");
+      setPkError(err instanceof Error ? err.message : t("errors.addPasskeyFailed"));
     } finally {
       setPkBusy(false);
     }
   }
 
   async function onDeletePasskey(id: string, name: string) {
-    if (!window.confirm(`Remove passkey “${name}”?`)) return;
+    if (!window.confirm(t("profile.removePasskeyConfirm", { name }))) return;
     setPkError("");
     try {
       await httpClient.delete(`/api/v1/auth/passkeys/${id}`);
-      setPkSuccess("Passkey removed.");
+      setPkSuccess(t("profile.passkeyRemoved"));
       void qc.invalidateQueries({ queryKey: ["passkeys"] });
     } catch (err) {
-      setPkError(err instanceof Error ? err.message : "Failed to remove passkey");
+      setPkError(err instanceof Error ? err.message : t("errors.removePasskeyFailed"));
     }
   }
 
@@ -290,11 +288,11 @@ export default function ProfilePage() {
                 className="atelier-chip-btn"
                 onClick={() => avatarInputRef.current?.click()}
               >
-                {avatar ? "Replace" : "Upload"}
+                {t("profile.changeProfilePicture")}
               </button>
               {avatar ? (
                 <button type="button" className="atelier-chip-btn is-ghost" onClick={() => setAvatar(null)}>
-                  Delete
+                  {t("profile.removeProfilePicture")}
                 </button>
               ) : null}
             </div>
@@ -303,7 +301,7 @@ export default function ProfilePage() {
           <div className="atelier-hero-copy">
             <p className="atelier-kicker">
               <span className="atelier-live-dot" aria-hidden />
-              Your profile
+              {t("profile.title")}
             </p>
             <h1 className="atelier-title">{displayName}</h1>
             <p className="atelier-sub">
@@ -311,40 +309,46 @@ export default function ProfilePage() {
               {jobTitle ? ` · ${sanitizeDisplayText(jobTitle)}` : ""}
             </p>
             <div className="profile-badges">
-              <span className="profile-badge">{roleLabel(user.role)}</span>
+              <span className="profile-badge">
+                {user.role === "platform_admin" || user.role === "super_admin"
+                  ? t("role.platformAdmin")
+                  : user.role === "tenant_admin"
+                    ? t("role.companyAdmin")
+                    : t("role.employee")}
+              </span>
               {user.tenant?.name ? (
                 <span className="profile-badge profile-badge-muted">
                   {sanitizeDisplayText(user.tenant.name)}
                 </span>
               ) : (
-                <span className="profile-badge profile-badge-muted">Platform</span>
+                <span className="profile-badge profile-badge-muted">{t("nav.platform")}</span>
               )}
               <span className={`profile-badge ${user.is_active ? "profile-badge-ok" : "profile-badge-bad"}`}>
                 <span className="atelier-live-dot is-inline" aria-hidden />
-                {user.is_active ? "Active" : "Inactive"}
+                {user.is_active ? t("statuses.active") : t("statuses.inactive")}
               </span>
             </div>
           </div>
 
           <div className="atelier-hero-stats">
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Company ID</span>
+              <span className="atelier-stat-label">{t("welcome.companyId")}</span>
               <strong className="font-mono">{user.tenant?.slug ?? "platform"}</strong>
             </div>
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Member since</span>
+              <span className="atelier-stat-label">{t("profile.memberSince")}</span>
               <strong>{memberSince}</strong>
             </div>
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Passkeys</span>
+              <span className="atelier-stat-label">{t("profile.passkeys")}</span>
               <strong>{passkeys.length}</strong>
             </div>
           </div>
         </div>
       </section>
 
-      <nav className="atelier-tabs" aria-label="Profile sections">
-        {TABS.map((item) => (
+      <nav className="atelier-tabs" aria-label={t("profile.title")}>
+        {tabs.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -364,15 +368,17 @@ export default function ProfilePage() {
             <form className="atelier-card atelier-enter" onSubmit={onSubmit} style={{ ["--i" as string]: 0 }}>
               <header className="atelier-card-head">
                 <div>
-                  <h2>Personal details</h2>
-                  <p>How you appear across PMAS Live.</p>
+                  <h2>{t("profile.personalInformation")}</h2>
+                  <p>{t("profile.identityIntro")}</p>
                 </div>
-                {isDirty ? <span className="atelier-dirty">Unsaved changes</span> : null}
+                {isDirty ? (
+                  <span className="atelier-dirty">{t("profile.unsavedChanges")}</span>
+                ) : null}
               </header>
 
               <div className="atelier-form-grid">
                 <div className="form-group">
-                  <label htmlFor="first-name">First name</label>
+                  <label htmlFor="first-name">{t("profile.firstName")}</label>
                   <input
                     id="first-name"
                     value={firstName}
@@ -383,7 +389,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="last-name">Last name</label>
+                  <label htmlFor="last-name">{t("profile.lastName")}</label>
                   <input
                     id="last-name"
                     value={lastName}
@@ -394,22 +400,22 @@ export default function ProfilePage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="job-title">Job title</label>
+                  <label htmlFor="job-title">{t("common.jobTitle")}</label>
                   <input
                     id="job-title"
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="Product Manager"
+                    placeholder={t("profile.jobTitlePlaceholder")}
                     maxLength={255}
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="phone">Phone</label>
+                  <label htmlFor="phone">{t("profile.phone")}</label>
                   <div className="phone-field">
                     <select
                       value={dialCode}
                       onChange={(e) => setDialCode(e.target.value)}
-                      aria-label="Country dial code"
+                      aria-label={t("welcome.country")}
                     >
                       {COUNTRY_DIAL_CODES.map((c) => (
                         <option key={c.code + c.country} value={c.code}>
@@ -430,7 +436,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="form-group atelier-span-2">
                   <div className="label-row">
-                    <label htmlFor="bio">Bio</label>
+                    <label htmlFor="bio">{t("profile.bio")}</label>
                     <span className={`char-counter${bio.length > BIO_MAX - 50 ? " is-near-limit" : ""}`}>
                       {bio.length} / {BIO_MAX}
                     </span>
@@ -441,7 +447,7 @@ export default function ProfilePage() {
                     onChange={(e) => setBio(e.target.value)}
                     rows={4}
                     maxLength={BIO_MAX}
-                    placeholder="Short intro about your role and focus areas"
+                    placeholder={t("profile.bioPlaceholder")}
                   />
                   <div className="atelier-bio-meter" aria-hidden>
                     <span style={{ width: `${Math.min(100, (bio.length / BIO_MAX) * 100)}%` }} />
@@ -453,7 +459,7 @@ export default function ProfilePage() {
 
               <div className="atelier-actions">
                 <button type="submit" className="btn btn-primary atelier-save" disabled={busy || !isDirty}>
-                  {busy ? "Saving…" : isDirty ? "Save profile" : "No changes"}
+                  {busy ? t("common.saving") : isDirty ? t("common.saveChanges") : t("common.done")}
                 </button>
               </div>
             </form>
@@ -463,10 +469,8 @@ export default function ProfilePage() {
             <form className="atelier-card atelier-enter" onSubmit={onChangePassword} style={{ ["--i" as string]: 0 }}>
               <header className="atelier-card-head">
                 <div>
-                  <h2>Password</h2>
-                  <p>
-                    Changing your password signs out every session, including this one.
-                  </p>
+                  <h2>{t("profile.password")}</h2>
+                  <p>{t("profile.passwordChangeHint")}</p>
                 </div>
                 <span className="atelier-shield" aria-hidden>◈</span>
               </header>
@@ -475,7 +479,7 @@ export default function ProfilePage() {
                 <div className="atelier-span-2">
                   <PasswordField
                     id="current-password"
-                    label="Current password"
+                    label={t("profile.currentPassword")}
                     value={currentPassword}
                     onChange={setCurrentPassword}
                     autoComplete="current-password"
@@ -483,15 +487,15 @@ export default function ProfilePage() {
                 </div>
                 <PasswordField
                   id="new-password"
-                  label="New password"
+                  label={t("profile.newPassword")}
                   value={newPassword}
                   onChange={setNewPassword}
                   autoComplete="new-password"
-                  hint="At least 12 characters with upper, lower, digit and symbol."
+                  hint={t("reset.passwordHint")}
                 />
                 <PasswordField
                   id="confirm-password"
-                  label="Confirm new password"
+                  label={t("profile.confirmPassword")}
                   value={confirmPassword}
                   onChange={setConfirmPassword}
                   autoComplete="new-password"
@@ -506,7 +510,7 @@ export default function ProfilePage() {
                   className="btn btn-primary"
                   disabled={pwBusy || !currentPassword || !newPassword || !confirmPassword}
                 >
-                  {pwBusy ? "Changing…" : "Change password"}
+                  {pwBusy ? t("common.processing") : t("profile.changePassword")}
                 </button>
               </div>
             </form>
@@ -516,19 +520,19 @@ export default function ProfilePage() {
             <section className="atelier-card atelier-enter" style={{ ["--i" as string]: 0 }}>
               <header className="atelier-card-head">
                 <div>
-                  <h2>Passkeys</h2>
-                  <p>Face ID, Touch ID, Windows Hello, or a hardware key — no password needed.</p>
+                  <h2>{t("profile.passkeys")}</h2>
+                  <p>{t("welcome.passkeyHint")}</p>
                 </div>
               </header>
 
               {!passkeysOk ? (
                 <div className="atelier-empty">
                   <span aria-hidden>⌀</span>
-                  <p>This browser does not support passkeys.</p>
+                  <p>{t("profile.passkeysUnsupported")}</p>
                 </div>
               ) : (
                 <>
-                  {pkLoading ? <p className="text-dim">Loading passkeys…</p> : null}
+                  {pkLoading ? <p className="text-dim">{t("common.loading")}</p> : null}
 
                   {passkeys.length > 0 ? (
                     <ul className="atelier-passkey-list">
@@ -542,9 +546,12 @@ export default function ProfilePage() {
                           <div className="atelier-passkey-meta">
                             <strong>{sanitizeDisplayText(pk.name)}</strong>
                             <span>
-                              Added {new Date(pk.created_at).toLocaleDateString()}
+                              {t("common.createdAt")}{" "}
+                              {new Date(pk.created_at).toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US")}
                               {pk.last_used_at
-                                ? ` · Last used ${new Date(pk.last_used_at).toLocaleDateString()}`
+                                ? ` · ${new Date(pk.last_used_at).toLocaleDateString(
+                                    lang === "fa" ? "fa-IR" : "en-US",
+                                  )}`
                                 : ""}
                             </span>
                           </div>
@@ -553,7 +560,7 @@ export default function ProfilePage() {
                             className="btn btn-sm btn-danger"
                             onClick={() => void onDeletePasskey(pk.id, pk.name)}
                           >
-                            Remove
+                            {t("common.remove")}
                           </button>
                         </li>
                       ))}
@@ -567,7 +574,7 @@ export default function ProfilePage() {
 
                   <form onSubmit={onAddPasskey} className="atelier-passkey-form">
                     <div className="form-group">
-                      <label htmlFor="passkey-name">Label (optional)</label>
+                      <label htmlFor="passkey-name">{t("common.name")}</label>
                       <input
                         id="passkey-name"
                         value={pkName}
@@ -580,7 +587,9 @@ export default function ProfilePage() {
                     {pkSuccess ? <p className="profile-success">{pkSuccess}</p> : null}
                     <div className="atelier-actions">
                       <button type="submit" className="btn btn-primary" disabled={pkBusy}>
-                        {pkBusy ? "Waiting for device…" : "Add passkey"}
+                        {pkBusy
+                          ? t("welcome.waitingForDevice")
+                          : `${t("common.add")} ${t("profile.passkeys")}`}
                       </button>
                     </div>
                   </form>
@@ -594,29 +603,35 @@ export default function ProfilePage() {
           <section className="atelier-card atelier-card-glass atelier-enter" style={{ ["--i" as string]: 1 }}>
             <header className="atelier-card-head">
               <div>
-                <h2>Account card</h2>
-                <p>Read-only identity facts.</p>
+                <h2>{t("profile.accountInformation")}</h2>
+                <p>{t("profile.readOnlyFacts")}</p>
               </div>
             </header>
             <dl className="atelier-dl">
               <div>
-                <dt>Email</dt>
+                <dt>{t("profile.email")}</dt>
                 <dd>{sanitizeDisplayText(user.email)}</dd>
               </div>
               <div>
-                <dt>Role</dt>
-                <dd>{roleLabel(user.role)}</dd>
+                <dt>{t("profile.role")}</dt>
+                <dd>
+                  {user.role === "platform_admin" || user.role === "super_admin"
+                    ? t("role.platformAdmin")
+                    : user.role === "tenant_admin"
+                      ? t("role.companyAdmin")
+                      : t("role.employee")}
+                </dd>
               </div>
               <div>
-                <dt>Company</dt>
+                <dt>{t("common.company")}</dt>
                 <dd>{user.tenant?.name ? sanitizeDisplayText(user.tenant.name) : "—"}</dd>
               </div>
               <div>
-                <dt>Company ID</dt>
+                <dt>{t("welcome.companyId")}</dt>
                 <dd className="font-mono">{user.tenant?.slug ?? "platform"}</dd>
               </div>
               <div>
-                <dt>Member since</dt>
+                <dt>{t("profile.memberSince")}</dt>
                 <dd>{memberSince}</dd>
               </div>
             </dl>
@@ -625,18 +640,16 @@ export default function ProfilePage() {
           <section className="atelier-card atelier-pulse-card atelier-enter" style={{ ["--i" as string]: 2 }}>
             <p className="atelier-kicker">
               <span className="atelier-live-dot" aria-hidden />
-              Session
+              {t("profile.session")}
             </p>
-            <p className="atelier-pulse-copy">
-              Your session stays live while you work. Changing your password ends every device at once.
-            </p>
+            <p className="atelier-pulse-copy">{t("profile.sessionCopy")}</p>
           </section>
         </aside>
       </div>
 
       {isDirty && tab === "identity" ? (
         <div className="atelier-dock" role="status">
-          <span>You have unsaved profile changes</span>
+          <span>{t("profile.unsavedProfileChanges")}</span>
           <button
             type="button"
             className="btn btn-primary btn-sm"
@@ -646,7 +659,7 @@ export default function ProfilePage() {
               form?.requestSubmit();
             }}
           >
-            {busy ? "Saving…" : "Save now"}
+            {busy ? t("common.saving") : t("common.saveChanges")}
           </button>
         </div>
       ) : null}

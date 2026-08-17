@@ -31,7 +31,7 @@ export function AiSummaryWidget({
       dragOver={dragOver}
     >
       <div className="cc-ai-placeholder">
-        <p>{t("dashboard.comingSoon")}</p>
+        <p>{t("ai.subtitle")}</p>
         <ul className="text-dim">
           <li>{t("dashboard.aiHint1")}</li>
           <li>{t("dashboard.aiHint2")}</li>

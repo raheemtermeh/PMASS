@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, num, optInt, optStr } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface Subsystem {
   id: number;
@@ -28,6 +29,7 @@ interface GraphEdge {
 }
 
 export default function GraphViewPage() {
+  const { t, n } = useI18n();
   const qc = useQueryClient();
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
@@ -85,42 +87,42 @@ export default function GraphViewPage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="graph-view"
-        title="Graph workboard"
-        description="Topology tasks, todos, and status updates for network mapping."
+        title={t("graphView.workboard.title")}
+        description={t("graphView.workboard.description")}
       />
       <ResourceManager
-        title="Team Members"
-        description="People and capacity assigned to subsystems in your topology."
-        createLabel="Add member"
-        emptyTitle="No team members"
-        emptyDescription="Add people to map ownership and capacity on the graph."
+        title={t("graphView.members.title")}
+        description={t("graphView.members.description")}
+        createLabel={t("graphView.members.create")}
+        emptyTitle={t("graphView.members.emptyTitle")}
+        emptyDescription={t("graphView.members.emptyDescription")}
         isLoading={membersLoading}
         items={members}
         columns={[
-          { key: "name", label: "Name" },
-          { key: "role", label: "Role" },
+          { key: "name", label: t("graphView.fields.name") },
+          { key: "role", label: t("graphView.fields.role") },
           {
             key: "subsystem_id",
-            label: "Subsystem",
+            label: t("graphView.fields.subsystem"),
             render: (r) => (r.subsystem_id ? subsystemName(r.subsystem_id) : "—"),
           },
           {
             key: "capacity_weight",
-            label: "Capacity",
-            render: (r) => <span className="font-mono">{r.capacity_weight}</span>,
+            label: t("graphView.fields.capacity"),
+            render: (r) => <span className="font-mono">{n(r.capacity_weight)}</span>,
           },
         ]}
         fields={[
-          { name: "name", label: "Name", required: true },
-          { name: "role", label: "Role", required: true },
-          { name: "avatar_url", label: "Avatar initials", placeholder: "SJ" },
+          { name: "name", label: t("graphView.fields.name"), required: true },
+          { name: "role", label: t("graphView.fields.role"), required: true },
+          { name: "avatar_url", label: t("graphView.fields.avatarInitials"), placeholder: t("graphView.placeholders.initials") },
           {
             name: "subsystem_id",
-            label: "Subsystem",
+            label: t("graphView.fields.subsystem"),
             type: "select",
             options: subsystems.map((s) => ({ value: String(s.id), label: s.name })),
           },
-          { name: "capacity_weight", label: "Capacity weight", type: "number", step: "0.01" },
+          { name: "capacity_weight", label: t("graphView.fields.capacityWeight"), type: "number", step: "0.01" },
         ]}
         toFormValues={(r) => ({
           name: r.name,
@@ -156,55 +158,55 @@ export default function GraphViewPage() {
       />
 
       <ResourceManager
-        title="Dependency Edges"
-        description="Connect subsystems to model cross-team dependencies and impact cascades."
-        createLabel="Add edge"
-        emptyTitle="No graph edges"
-        emptyDescription="Link subsystems to visualize dependency flow."
+        title={t("graphView.edges.title")}
+        description={t("graphView.edges.description")}
+        createLabel={t("graphView.edges.create")}
+        emptyTitle={t("graphView.edges.emptyTitle")}
+        emptyDescription={t("graphView.edges.emptyDescription")}
         isLoading={edgesLoading}
         items={edges}
         columns={[
           {
             key: "source_id",
-            label: "From",
+            label: t("graphView.fields.from"),
             render: (r) => subsystemName(r.source_id),
           },
           {
             key: "target_id",
-            label: "To",
+            label: t("graphView.fields.to"),
             render: (r) => subsystemName(r.target_id),
           },
-          { key: "edge_type", label: "Type" },
+          { key: "edge_type", label: t("graphView.fields.type"), render: (r) => t(`graphView.edgeTypes.${r.edge_type}`) },
           {
             key: "weight",
-            label: "Weight",
-            render: (r) => <span className="font-mono">{r.weight}</span>,
+            label: t("graphView.fields.weight"),
+            render: (r) => <span className="font-mono">{n(r.weight)}</span>,
           },
         ]}
         fields={[
           {
             name: "source_id",
-            label: "Source subsystem",
+            label: t("graphView.fields.sourceSubsystem"),
             type: "select",
             required: true,
             options: subsystems.map((s) => ({ value: String(s.id), label: s.name })),
           },
           {
             name: "target_id",
-            label: "Target subsystem",
+            label: t("graphView.fields.targetSubsystem"),
             type: "select",
             required: true,
             options: subsystems.map((s) => ({ value: String(s.id), label: s.name })),
           },
           {
             name: "edge_type",
-            label: "Edge type",
+            label: t("graphView.fields.edgeType"),
             type: "select",
             options: [
-              { value: "subsystem_dependency", label: "Subsystem dependency" },
+              { value: "subsystem_dependency", label: t("graphView.edgeTypes.subsystem_dependency") },
             ],
           },
-          { name: "weight", label: "Weight", type: "number", step: "0.01" },
+          { name: "weight", label: t("graphView.fields.weight"), type: "number", step: "0.01" },
         ]}
         toFormValues={(r) => ({
           source_id: String(r.source_id),

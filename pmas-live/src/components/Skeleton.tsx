@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/core/providers/I18nProvider";
+
 interface SkeletonTableProps {
   /** Number of header cells to mirror from the real table. */
   columns: number;
@@ -13,11 +15,12 @@ interface SkeletonTableProps {
  * not jump when the real rows arrive.
  */
 export function SkeletonTable({ columns, rows = 6, withActions = true }: SkeletonTableProps) {
+  const { t } = useI18n();
   const cells = columns + (withActions ? 1 : 0);
 
   return (
     <div className="skeleton-table" role="status" aria-live="polite" aria-busy="true">
-      <span className="sr-only">Loading records…</span>
+      <span className="sr-only">{t("loader.records")}</span>
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <div
           className="skeleton-row"

@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTheme } from "@/core/providers/ThemeProvider";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 import type { Company, Department, Team } from "@/features/vsm/types";
 
@@ -41,6 +43,8 @@ interface PosMap {
   scale?: number;
 }
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
 function statusColor(status: string): string {
   const s = status.toUpperCase();
   if (["ACTIVE", "LIVE"].includes(s)) return "#22d3ee";
@@ -48,11 +52,19 @@ function statusColor(status: string): string {
   return "#a78bfa";
 }
 
+function localizedOrgStatus(status: string, t: Translate): string {
+  const key =
+    statusTranslationKey(status) ??
+    (status.trim().toUpperCase() === "LIVE" ? "graphView.org.statuses.live" : null);
+  return localizedEnumLabel(status, key, t);
+}
+
 function buildDefault(
   company: Company | null | undefined,
   departments: Department[],
   teams: Team[],
   empName: (id?: string | null) => string,
+  t: Translate,
 ): { nodes: GraphNode[]; edges: { id: string; from: string; to: string }[] } {
   const nodes: GraphNode[] = [];
   const edges: { id: string; from: string; to: string }[] = [];
@@ -60,9 +72,9 @@ function buildDefault(
   nodes.push({
     id: "company",
     kind: "company",
-    label: company?.name || "Company",
+    label: company?.name || t("graphView.org.company"),
     status: "LIVE",
-    meta: "Organization root",
+    meta: t("graphView.org.organizationRoot"),
     entityId: company?.id ?? "company",
     x: 40,
     y: 160,
@@ -78,7 +90,7 @@ function buildDefault(
       kind: "department",
       label: dept.name,
       status: dept.status,
-      meta: `Manager: ${empName(dept.manager_id)}`,
+      meta: t("graphView.org.manager", { name: empName(dept.manager_id) }),
       entityId: dept.id,
       x: 280,
       y,
@@ -95,7 +107,7 @@ function buildDefault(
         kind: "team",
         label: team.name,
         status: team.status,
-        meta: `Lead: ${empName(team.lead_id)}`,
+        meta: t("graphView.org.lead", { name: empName(team.lead_id) }),
         entityId: team.id,
         departmentId: dept.id,
         x: 520 + (ti % 2) * 16,
@@ -122,6 +134,7 @@ export function OrgStructureGraph({
   onMoveTeam,
   highlightId,
 }: Props) {
+  const { t } = useI18n();
   const { theme } = useTheme();
   const light = theme === "light";
   const layoutKey = `org-structure:${company?.id ?? "default"}`;
@@ -134,8 +147,8 @@ export function OrgStructureGraph({
   const [msg, setMsg] = useState("");
 
   const built = useMemo(
-    () => buildDefault(company, departments, teams, empName),
-    [company, departments, teams, empName],
+    () => buildDefault(company, departments, teams, empName, t),
+    [company, departments, teams, empName, t],
   );
 
   const [nodes, setNodes] = useState<GraphNode[]>(built.nodes);
@@ -276,17 +289,17 @@ export function OrgStructureGraph({
     }
 
     setBusy(true);
-    setMsg(`Moving “${teamNode.label}” → ${dept.label}…`);
+    setMsg(t("graphView.org.moving", { team: teamNode.label, department: dept.label }));
     try {
       await onMoveTeam(teamNode.entityId, dept.entityId);
-      setMsg(`Saved: “${teamNode.label}” now under ${dept.label}`);
+      setMsg(t("graphView.org.saved", { team: teamNode.label, department: dept.label }));
       setNodes((prev) =>
         prev.map((n) =>
           n.id === teamNode.id ? { ...n, departmentId: dept.entityId } : n,
         ),
       );
     } catch {
-      setMsg("Move failed — try again");
+      setMsg(t("graphView.org.moveFailed"));
     } finally {
       setBusy(false);
     }
@@ -305,27 +318,27 @@ export function OrgStructureGraph({
     <section className="viz-board org-viz">
       <header className="viz-board-toolbar">
         <div>
-          <p className="command-eyebrow">Organization graph</p>
-          <h3>Company · Department · Team</h3>
+          <p className="command-eyebrow">{t("graphView.org.eyebrow")}</p>
+          <h3>{t("graphView.org.title")}</h3>
           <span className="cc-flow-hint">
-            Drag teams onto a department to reassign · pan / zoom · layout auto-saves
-            {saving ? " · Saving…" : ""}
-            {busy ? " · Syncing…" : ""}
+            {t("graphView.org.hint")}
+            {saving ? ` · ${t("graphView.org.saving")}` : ""}
+            {busy ? ` · ${t("graphView.org.syncing")}` : ""}
           </span>
         </div>
         <div className="cc-flow-actions">
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.min(1.8, s + 0.1))}>
-            Zoom +
+            {t("graphView.org.zoomIn")}
           </button>
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.max(0.35, s - 0.1))}>
-            Zoom −
+            {t("graphView.org.zoomOut")}
           </button>
           <button
             type="button"
             className={`btn btn-sm${editMode ? " cc-flow-edit-on" : ""}`}
             onClick={() => setEditMode((v) => !v)}
           >
-            {editMode ? "Editing…" : "Edit layout"}
+            {editMode ? t("graphView.org.editing") : t("graphView.org.editLayout")}
           </button>
           <button
             type="button"
@@ -335,7 +348,7 @@ export function OrgStructureGraph({
               persist(built.nodes);
             }}
           >
-            Reset
+            {t("graphView.org.reset")}
           </button>
         </div>
       </header>
@@ -357,8 +370,8 @@ export function OrgStructureGraph({
         <div className="viz-board-grid" aria-hidden />
         {empty ? (
           <div className="cc-flow-empty">
-            <strong>No departments yet</strong>
-            <span>Create departments and teams, then arrange them visually here.</span>
+            <strong>{t("graphView.org.emptyTitle")}</strong>
+            <span>{t("graphView.org.emptyDescription")}</span>
           </div>
         ) : (
           <svg
@@ -448,7 +461,8 @@ export function OrgStructureGraph({
                     {n.label.length > 18 ? `${n.label.slice(0, 18)}…` : n.label}
                   </text>
                   <text x={26} y={n.h / 2 + 12} className="cc-flow-status">
-                    {n.kind.toUpperCase()} · {n.status}
+                    {t(`graphView.org.kinds.${n.kind}`)} ·{" "}
+                    {localizedOrgStatus(n.status, t)}
                   </text>
                 </g>
               );
@@ -465,9 +479,9 @@ export function OrgStructureGraph({
           </span>
         ) : (
           <>
-            <span><i style={{ background: "#22d3ee" }} /> Active</span>
-            <span><i style={{ background: "#a78bfa" }} /> Team</span>
-            <span><i style={{ background: "#94a3b8" }} /> Inactive</span>
+            <span><i style={{ background: "#22d3ee" }} /> {t("statuses.active")}</span>
+            <span><i style={{ background: "#a78bfa" }} /> {t("graphView.org.kinds.team")}</span>
+            <span><i style={{ background: "#94a3b8" }} /> {t("statuses.inactive")}</span>
           </>
         )}
       </footer>

@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTheme } from "@/core/providers/ThemeProvider";
+import { useI18n } from "@/core/providers/I18nProvider";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 
 export interface KanbanColumn {
@@ -69,13 +70,14 @@ function defaultCardPos(colIndex: number, cardIndex: number) {
  */
 export function StatusKanbanBoard({
   layoutKey,
-  title = "Visual board",
-  hint = "Edit layout · drag cards between lanes · pan / zoom",
+  title,
+  hint,
   columns,
   cards,
   onStatusChange,
   onOpen,
 }: Props) {
+  const { t, n } = useI18n();
   const { theme } = useTheme();
   const light = theme === "light";
   const { layout, ready, saving, saveLayout } = useUILayout<PosMap>(layoutKey);
@@ -263,26 +265,26 @@ export function StatusKanbanBoard({
     <section className="viz-board">
       <header className="viz-board-toolbar">
         <div>
-          <p className="command-eyebrow">Live board</p>
-          <h3>{title}</h3>
+          <p className="command-eyebrow">{t("workboard.kanban.liveBoard")}</p>
+          <h3>{title ?? t("workboard.kanban.defaultTitle")}</h3>
           <span className="cc-flow-hint">
-            {hint}
-            {saving ? " · Saving…" : ""}
+            {hint ?? t("workboard.kanban.defaultHint")}
+            {saving ? ` · ${t("workboard.kanban.saving")}` : ""}
           </span>
         </div>
         <div className="cc-flow-actions">
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.min(1.8, s + 0.1))}>
-            Zoom +
+            {t("workboard.kanban.zoomIn")}
           </button>
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.max(0.35, s - 0.1))}>
-            Zoom −
+            {t("workboard.kanban.zoomOut")}
           </button>
           <button
             type="button"
             className={`btn btn-sm${editMode ? " cc-flow-edit-on" : ""}`}
             onClick={() => setEditMode((v) => !v)}
           >
-            {editMode ? "Editing…" : "Edit layout"}
+            {editMode ? t("workboard.kanban.editing") : t("workboard.kanban.editLayout")}
           </button>
         </div>
       </header>
@@ -336,7 +338,9 @@ export function StatusKanbanBoard({
                   {col.label}
                 </text>
                 <text x={12} y={38} className="viz-lane-count">
-                  {(cardsByStatus.get(col.id) ?? []).length} items
+                  {t("workboard.kanban.itemsCount", {
+                    count: n((cardsByStatus.get(col.id) ?? []).length),
+                  })}
                 </text>
               </g>
             );

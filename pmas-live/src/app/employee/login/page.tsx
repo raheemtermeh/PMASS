@@ -16,10 +16,12 @@ import { getPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
 import { setLastAuthPortal } from "@/shared/auth-portals";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function EmployeeLoginForm() {
+  const { t } = useI18n();
   const router = useRouter();
   const search = useSearchParams();
   const hydrated = useAuthHydrated();
@@ -73,7 +75,7 @@ function EmployeeLoginForm() {
       const identifier = loginId.trim();
       const slug = tenantSlug.trim().toLowerCase();
       if (!slug) {
-        setError("Company ID is required.");
+        setError(t("employeeLogin.companyIdRequired"));
         return;
       }
       const res = await httpClient.post<{ token: string; refresh_token?: string; user: AuthUser }>(
@@ -90,8 +92,8 @@ function EmployeeLoginForm() {
         false,
       );
       applySession(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError(t("employeeLogin.loginFailed"));
     } finally {
       setLoading(false);
     }
@@ -102,7 +104,8 @@ function EmployeeLoginForm() {
     setPasskeyLoading(true);
     try {
       if (!isPasskeySupported()) {
-        throw new Error("Passkeys are not supported in this browser");
+        setError(t("employeeLogin.passkeyUnsupported"));
+        return;
       }
       const identifier = loginId.trim();
       const slug = tenantSlug.trim().toLowerCase();
@@ -134,15 +137,15 @@ function EmployeeLoginForm() {
         false,
       );
       applySession(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Passkey sign-in failed");
+    } catch {
+      setError(t("employeeLogin.passkeyFailed"));
     } finally {
       setPasskeyLoading(false);
     }
   }
 
   if (!ready) {
-    return <PmasLoader message="Loading…" />;
+    return <PmasLoader message={t("common.loading")} />;
   }
 
   const loginReady = Boolean(tenantSlug.trim() && loginId.trim() && password);
@@ -154,27 +157,27 @@ function EmployeeLoginForm() {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <h1>Employee Sign In</h1>
+          <h1>{t("employeeLogin.title")}</h1>
         </div>
         <p className="auth-subtitle">
-          Enter your Company ID and the credentials your company admin provided.
+          {t("employeeLogin.subtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form auth-login-card">
           <div className="auth-login-fields">
             <div className="form-group">
-              <label htmlFor="emp-slug">Company ID</label>
+              <label htmlFor="emp-slug">{t("welcome.companyId")}</label>
               <input
                 id="emp-slug"
                 value={tenantSlug}
                 onChange={(e) => setTenantSlug(e.target.value)}
-                placeholder="acme-corp"
+                placeholder={t("platformTenants.slugPlaceholder")}
                 required
                 autoComplete="organization"
               />
             </div>
             <div className="form-group">
-              <label htmlFor="emp-login">Email or username</label>
+              <label htmlFor="emp-login">{t("welcome.emailOrUsername")}</label>
               <input
                 id="emp-login"
                 value={loginId}
@@ -185,7 +188,7 @@ function EmployeeLoginForm() {
             </div>
             <PasswordField
               id="emp-password"
-              label="Password"
+              label={t("common.password")}
               value={password}
               onChange={setPassword}
               required
@@ -201,8 +204,8 @@ function EmployeeLoginForm() {
                 onChange={(e) => setRememberMe(e.target.checked)}
               />
               <span className="auth-remember-text">
-                <strong>Remember me</strong>
-                <em>Stay signed in for 30 days</em>
+                <strong>{t("welcome.rememberMe")}</strong>
+                <em>{t("welcome.staySignedIn")}</em>
               </span>
             </label>
             <Link
@@ -215,7 +218,7 @@ function EmployeeLoginForm() {
               }`}
               className="auth-forgot-link"
             >
-              Forgot password?
+              {t("welcome.forgotPassword")}
             </Link>
           </div>
 
@@ -226,13 +229,13 @@ function EmployeeLoginForm() {
             className="btn btn-primary auth-submit"
             disabled={!loginReady || loading || passkeyLoading}
           >
-            {loading ? "Signing in…" : "Sign in to workspace"}
+            {loading ? t("welcome.signingIn") : t("employeeLogin.submit")}
           </button>
 
           {passkeysOk ? (
             <div className="auth-passkey-block">
               <div className="auth-passkey-divider" aria-hidden>
-                <span>or</span>
+                <span>{t("platformLogin.or")}</span>
               </div>
               <button
                 type="button"
@@ -261,8 +264,8 @@ function EmployeeLoginForm() {
                   />
                 </svg>
                 <span className="auth-passkey-copy">
-                  <strong>{passkeyLoading ? "Waiting for device…" : "Sign in with passkey"}</strong>
-                  <em>Face ID · Touch ID · Windows Hello · security key</em>
+                  <strong>{passkeyLoading ? t("welcome.waitingForDevice") : t("welcome.passkey")}</strong>
+                  <em>{t("welcome.passkeyHint")}</em>
                 </span>
               </button>
             </div>
@@ -270,9 +273,9 @@ function EmployeeLoginForm() {
         </form>
 
         <p className="auth-footnote">
-          Company Admin? <Link href="/welcome#login">Sign in here</Link>
+          {t("employeeLogin.companyAdminQuestion")} <Link href="/welcome#login">{t("welcome.employeeSignInHere")}</Link>
           {" · "}
-          <Link href="/platform/login">Platform admin</Link>
+          <Link href="/platform/login">{t("employeeLogin.platformAdmin")}</Link>
         </p>
       </div>
     </div>
@@ -280,8 +283,9 @@ function EmployeeLoginForm() {
 }
 
 export default function EmployeeLoginPage() {
+  const { t } = useI18n();
   return (
-    <Suspense fallback={<PmasLoader message="Loading…" />}>
+    <Suspense fallback={<PmasLoader message={t("common.loading")} />}>
       <EmployeeLoginForm />
     </Suspense>
   );

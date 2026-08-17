@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ModalPortal } from "@/components/ModalPortal";
 import { SkeletonTable } from "@/components/Skeleton";
 import { sanitizeDisplayText } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 export type FieldType = "text" | "number" | "select" | "textarea" | "password" | "date";
 
@@ -76,11 +77,10 @@ export function ResourceManager<T extends { id: string | number }>({
   isLoading,
   emptyTitle,
   emptyDescription,
-  createLabel = "Add",
+  createLabel,
   hideEdit,
   hideDelete,
-  deleteLabel = "Delete",
-  deleteConfirmVerb,
+  deleteLabel,
   toolbar,
   pageSize,
   quickCreate,
@@ -90,6 +90,7 @@ export function ResourceManager<T extends { id: string | number }>({
   toFormValues,
   extraActions,
 }: ResourceManagerProps<T>) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<T | null>(null);
   const [values, setValues] = useState<Record<string, string>>(blankValues(fields));
@@ -104,7 +105,8 @@ export function ResourceManager<T extends { id: string | number }>({
   const safeItems = Array.isArray(items) ? items : [];
   const activeFields = editing ? fields : createFields ?? fields;
   const quickField = quickCreate?.fieldName ?? "title";
-  const confirmVerb = deleteConfirmVerb ?? deleteLabel.toLowerCase();
+  const resolvedCreateLabel = createLabel ?? t("common.add");
+  const resolvedDeleteLabel = deleteLabel ?? t("common.delete");
 
   const paged = useMemo(() => {
     if (!pageSize || pageSize <= 0) return { rows: safeItems, totalPages: 1 };
@@ -138,12 +140,12 @@ export function ResourceManager<T extends { id: string | number }>({
     setError("");
     try {
       if (editing) {
-        if (!onUpdate) throw new Error("Update not supported");
+        if (!onUpdate) throw new Error(t("errors.updateNotSupported"));
         await onUpdate(editing.id, values);
       } else await onCreate(values);
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : t("errors.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -163,7 +165,7 @@ export function ResourceManager<T extends { id: string | number }>({
       });
       setQuickTitle("");
     } catch (err) {
-      setQuickError(err instanceof Error ? err.message : "Create failed");
+      setQuickError(err instanceof Error ? err.message : t("errors.createFailed"));
     } finally {
       setQuickBusy(false);
     }
@@ -176,14 +178,14 @@ export function ResourceManager<T extends { id: string | number }>({
         (row as { name?: string }).name ??
         `#${row.id}`,
     );
-    if (!window.confirm(`${deleteLabel} “${label}”? This will ${confirmVerb} the record.`)) {
+    if (!window.confirm(`${resolvedDeleteLabel} «${label}»؟`)) {
       return;
     }
     setDeleteError("");
     try {
       await onDelete(row.id);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : `${deleteLabel} failed`);
+      setDeleteError(err instanceof Error ? err.message : `${resolvedDeleteLabel} failed`);
     }
   }
 
@@ -198,7 +200,7 @@ export function ResourceManager<T extends { id: string | number }>({
             {description ? <p className="text-dim" style={{ fontSize: "0.875rem" }}>{description}</p> : null}
           </div>
           <button type="button" className="btn btn-primary" onClick={openCreate}>
-            {createLabel}
+            {resolvedCreateLabel}
           </button>
         </div>
 
@@ -223,7 +225,7 @@ export function ResourceManager<T extends { id: string | number }>({
               className="btn btn-primary"
               disabled={quickCreate.disabled || quickBusy || !quickTitle.trim()}
             >
-              {quickBusy ? "Adding…" : "Add"}
+              {quickBusy ? t("common.adding") : t("common.add")}
             </button>
           </form>
         ) : null}
@@ -265,7 +267,7 @@ export function ResourceManager<T extends { id: string | number }>({
                         {extraActions?.(row)}
                         {!hideEdit && onUpdate ? (
                           <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
-                            Edit
+                            {t("common.edit")}
                           </button>
                         ) : null}
                         {!hideDelete && onDelete ? (
@@ -274,7 +276,7 @@ export function ResourceManager<T extends { id: string | number }>({
                             className="btn btn-sm btn-danger"
                             onClick={() => void handleDelete(row)}
                           >
-                            {deleteLabel}
+                            {resolvedDeleteLabel}
                           </button>
                         ) : null}
                       </td>
@@ -291,10 +293,11 @@ export function ResourceManager<T extends { id: string | number }>({
                   disabled={currentPage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  Previous
+                  {t("common.previous")}
                 </button>
                 <span className="text-dim">
-                  Page {currentPage} / {totalPages} · {safeItems.length} items
+                  {t("common.page")} {currentPage} {t("common.of")} {totalPages} ·{" "}
+                  {safeItems.length} {t("common.items")}
                 </span>
                 <button
                   type="button"
@@ -302,7 +305,7 @@ export function ResourceManager<T extends { id: string | number }>({
                   disabled={currentPage >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
-                  Next
+                  {t("common.next")}
                 </button>
               </div>
             ) : null}
@@ -320,7 +323,7 @@ export function ResourceManager<T extends { id: string | number }>({
         >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">{editing ? "Edit" : createLabel}</h3>
+              <h3 className="modal-title">{editing ? t("common.edit") : resolvedCreateLabel}</h3>
               <button type="button" className="modal-close" onClick={() => setOpen(false)}>
                 ×
               </button>
@@ -328,7 +331,7 @@ export function ResourceManager<T extends { id: string | number }>({
             <form onSubmit={handleSubmit} className="modal-body auth-form">
               {!editing && createFields && createFields.length < fields.length ? (
                 <p className="text-dim" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem" }}>
-                  Quick create — you can fill more details after with Edit.
+                  {t("common.quickCreateHint")}
                 </p>
               ) : null}
               <div className="grid grid-cols-2">
@@ -348,7 +351,7 @@ export function ResourceManager<T extends { id: string | number }>({
                           setValues((v) => ({ ...v, [field.name]: e.target.value }))
                         }
                       >
-                        <option value="">Select…</option>
+                        <option value="">{t("common.select")}…</option>
                         {field.options?.map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}
@@ -385,10 +388,10 @@ export function ResourceManager<T extends { id: string | number }>({
               {error && <p className="auth-error">{error}</p>}
               <div className="modal-footer">
                 <button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={busy}>
-                  {busy ? "Saving…" : "Save"}
+                  {busy ? t("common.saving") : t("common.save")}
                 </button>
               </div>
             </form>

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 type ToastTone = "success" | "error" | "info";
 
@@ -20,6 +21,7 @@ const ToastContext = createContext<ToastApi | null>(null);
 const DISMISS_AFTER_MS = 4000;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [mounted, setMounted] = useState(false);
 
@@ -50,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     className="toast-close"
-                    aria-label="Dismiss notification"
+                    aria-label={t("toast.dismiss")}
                     onClick={() => setToasts((c) => c.filter((t) => t.id !== toast.id))}
                   >
                     ×

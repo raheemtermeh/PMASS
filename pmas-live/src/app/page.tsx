@@ -7,13 +7,15 @@ import { useAuthHydrated, useAuthStore } from "@/core/auth/auth-store";
 import { PmasLoader } from "@/components/PmasLoader";
 import { firstAllowedPath } from "@/shared/routes";
 import { sanitizeInternalPath } from "@/shared/security";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 export default function HomePage() {
+  const { t } = useI18n();
   const router = useRouter();
   const hydrated = useAuthHydrated();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
-  const [message, setMessage] = useState("Starting PMAS Live…");
+  const [message, setMessage] = useState(() => t("loading.starting"));
 
   useEffect(() => {
     if (!hydrated) return;
@@ -21,7 +23,7 @@ export default function HomePage() {
     // A restored session goes straight to the workspace — the landing page is
     // never rendered in between, so there is no /welcome flash.
     if (token && user) {
-      setMessage("Restoring your session…");
+      setMessage(t("auth.restoring"));
       router.replace(
         sanitizeInternalPath(
           firstAllowedPath(user.role, user.permissions, Boolean(user.tenant_id)),
@@ -32,7 +34,7 @@ export default function HomePage() {
 
     let cancelled = false;
     async function resolveEntry() {
-      setMessage("Checking workspace status…");
+      setMessage(t("loading.checking"));
       try {
         const status = await httpClient.get<{ needs_bootstrap: boolean }>(
           "/api/v1/auth/status",

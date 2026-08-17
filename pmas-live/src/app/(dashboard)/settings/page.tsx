@@ -7,6 +7,7 @@ import { PasswordField } from "@/components/PasswordField";
 import { useToast } from "@/components/Toast";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
+import { useI18n } from "@/core/providers/I18nProvider";
 import type { Company } from "@/features/vsm/types";
 import {
   PERMISSION_CATEGORIES,
@@ -23,12 +24,6 @@ interface Credential {
 
 type SettingsTab = "workspace" | "vault" | "access";
 
-const TABS: { id: SettingsTab; label: string; hint: string }[] = [
-  { id: "workspace", label: "Workspace", hint: "Company profile" },
-  { id: "vault", label: "Vault", hint: "Integration secrets" },
-  { id: "access", label: "Access", hint: "Your permissions" },
-];
-
 function companyInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "CO";
@@ -43,9 +38,15 @@ function statusTone(status: string): string {
 }
 
 export default function SettingsPage() {
+  const { t, setLang } = useI18n();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const user = useAuthStore((s) => s.user);
+  const tabs: { id: SettingsTab; label: string; hint: string }[] = [
+    { id: "workspace", label: t("settings.workspace"), hint: t("settings.workspaceHint") },
+    { id: "vault", label: t("settings.vault"), hint: t("settings.vaultHint") },
+    { id: "access", label: t("settings.access"), hint: t("settings.accessHint") },
+  ];
 
   const permissionChips =
     user &&
@@ -100,7 +101,8 @@ export default function SettingsPage() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["vsm-company"] });
-      showToast("Company settings saved.");
+      if (language === "fa" || language === "en") setLang(language);
+      showToast(t("settings.settingsUpdated"));
     },
     onError: (e: Error) => showToast(e.message, "error"),
   });
@@ -119,7 +121,7 @@ export default function SettingsPage() {
       setCredName("");
       setCredValue("");
       setCredDesc("");
-      showToast("Credential stored in vault.");
+      showToast(t("settings.credentialAdded"));
     },
     onError: (e: Error) => showToast(e.message, "error"),
   });
@@ -128,7 +130,7 @@ export default function SettingsPage() {
     mutationFn: (id: number) => httpClient.delete(`/api/v1/credentials?id=${id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["credentials"] });
-      showToast("Credential removed.");
+      showToast(t("settings.credentialDeleted"));
     },
     onError: (e: Error) => showToast(e.message, "error"),
   });
@@ -143,24 +145,66 @@ export default function SettingsPage() {
     saveMutation.mutate({ name: credName, value: credValue, description: credDesc });
   }
 
-  const displayName = name || company?.name || "Company";
+  const displayName = name || company?.name || t("common.company");
   const initials = companyInitials(displayName);
+  const statusLabel =
+    status === "ACTIVE"
+      ? t("statuses.active")
+      : status === "ON_HOLD"
+        ? t("statuses.onHold")
+        : status === "ARCHIVED"
+          ? t("statuses.archived")
+          : status.replace("_", " ");
   const groupedPerms = useMemo(() => {
     const owned = new Set(permissionChips);
+    const categoryKeys: Record<string, string> = {
+      products: "products.title",
+      projects: "planning.projects",
+      features: "planning.features",
+      tasks: "planning.tasks",
+      organization: "organization.title",
+      administration: "settings.general",
+    };
+    const permissionKeys: Partial<Record<Permission, string>> = {
+      "product.view": "common.view",
+      "product.create": "common.create",
+      "product.update": "common.update",
+      "product.archive": "statuses.archived",
+      "project.create": "common.create",
+      "project.update": "common.update",
+      "feature.create": "common.create",
+      "feature.update": "common.update",
+      "task.create": "common.create",
+      "task.assign": "planning.assignee",
+      "task.complete": "statuses.completed",
+      "department.manage": "organization.departments",
+      "team.manage": "organization.teams",
+      "employee.manage": "organization.employees",
+      users: "userManagement.title",
+      settings: "settings.companySettings",
+      executive: "nav.executive",
+      uiux: "nav.uiux",
+      engineering: "nav.engineering",
+      infrastructure: "nav.infrastructure",
+      marketing: "nav.marketing",
+      "graph-view": "nav.graph-view",
+      finance: "nav.finance",
+      legalhr: "nav.legalhr",
+    };
     const groups = PERMISSION_CATEGORIES.map((cat) => ({
-      label: cat.label,
+      label: t(categoryKeys[cat.id] ?? "settings.access"),
       items: cat.permissions
         .filter((p) => owned.has(p))
-        .map((p) => PERMISSION_LABELS[p] ?? p),
+        .map((p) => (permissionKeys[p] ? t(permissionKeys[p]) : PERMISSION_LABELS[p] ?? p)),
     })).filter((g) => g.items.length > 0);
 
     const categorized = new Set(PERMISSION_CATEGORIES.flatMap((c) => c.permissions));
     const extras = permissionChips
       .filter((p) => !categorized.has(p))
-      .map((p) => PERMISSION_LABELS[p] ?? p);
-    if (extras.length) groups.push({ label: "Other", items: extras });
+      .map((p) => (permissionKeys[p] ? t(permissionKeys[p]) : PERMISSION_LABELS[p] ?? p));
+    if (extras.length) groups.push({ label: t("settings.access"), items: extras });
     return groups;
-  }, [permissionChips]);
+  }, [permissionChips, t]);
 
   return (
     <div className="atelier settings-page">
@@ -187,16 +231,16 @@ export default function SettingsPage() {
           <div className="atelier-hero-copy">
             <p className="atelier-kicker">
               <span className="atelier-live-dot" aria-hidden />
-              Workspace settings
+              {t("settings.companySettings")}
             </p>
             <h1 className="atelier-title">{displayName}</h1>
             <p className="atelier-sub">
-              Tune how your company looks, which secrets integrations can use, and what you can access.
+              {t("quickActions.companySettingsHint")}
             </p>
             <div className="profile-badges">
               <span className={`profile-badge atelier-status ${statusTone(status)}`}>
                 <span className="atelier-live-dot is-inline" aria-hidden />
-                {status.replace("_", " ")}
+                {statusLabel}
               </span>
               <span className="profile-badge profile-badge-muted">{language.toUpperCase()}</span>
               <span className="profile-badge profile-badge-muted">{timezone}</span>
@@ -205,23 +249,23 @@ export default function SettingsPage() {
 
           <div className="atelier-hero-stats">
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Credentials</span>
+              <span className="atelier-stat-label">{t("settings.credentials")}</span>
               <strong>{credentials.length}</strong>
             </div>
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Permissions</span>
+              <span className="atelier-stat-label">{t("settings.accessHint")}</span>
               <strong>{permissionChips.length}</strong>
             </div>
             <div className="atelier-stat">
-              <span className="atelier-stat-label">Locale</span>
+              <span className="atelier-stat-label">{t("settings.language")}</span>
               <strong>{language.toUpperCase()}</strong>
             </div>
           </div>
         </div>
       </section>
 
-      <nav className="atelier-tabs" aria-label="Settings sections">
-        {TABS.map((item) => (
+      <nav className="atelier-tabs" aria-label={t("settings.title")}>
+        {tabs.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -232,7 +276,7 @@ export default function SettingsPage() {
             <span className="atelier-tab-label">{item.label}</span>
             <span className="atelier-tab-hint">{item.hint}</span>
             {item.id === "workspace" && companyDirty ? (
-              <span className="atelier-tab-dot" aria-label="Unsaved changes" />
+              <span className="atelier-tab-dot" aria-label={t("common.saveChanges")} />
             ) : null}
           </button>
         ))}
@@ -242,10 +286,10 @@ export default function SettingsPage() {
         <form className="atelier-card atelier-enter" onSubmit={handleCompany} style={{ ["--i" as string]: 0 }}>
           <header className="atelier-card-head">
             <div>
-              <h2>Company profile</h2>
-              <p>Name, logo, language, timezone and workspace status.</p>
+              <h2>{t("settings.workspaceHint")}</h2>
+              <p>{t("quickActions.companySettingsHint")}</p>
             </div>
-            {companyDirty ? <span className="atelier-dirty">Unsaved changes</span> : null}
+            {companyDirty ? <span className="atelier-dirty">{t("common.saveChanges")}</span> : null}
           </header>
 
           {companyLoading ? (
@@ -259,7 +303,7 @@ export default function SettingsPage() {
             <>
               <div className="atelier-form-grid">
                 <div className="form-group">
-                  <label htmlFor="co-name">Company name</label>
+                  <label htmlFor="co-name">{t("settings.companyName")}</label>
                   <input
                     id="co-name"
                     value={name}
@@ -268,7 +312,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="co-logo">Logo URL</label>
+                  <label htmlFor="co-logo">{t("settings.logoUrl")}</label>
                   <input
                     id="co-logo"
                     value={logoURL}
@@ -277,14 +321,14 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="co-lang">Language</label>
+                  <label htmlFor="co-lang">{t("settings.language")}</label>
                   <select id="co-lang" value={language} onChange={(e) => setLanguage(e.target.value)}>
-                    <option value="en">English</option>
-                    <option value="fa">Persian</option>
+                    <option value="en">{t("lang.english")}</option>
+                    <option value="fa">{t("lang.persian")}</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="co-tz">Timezone</label>
+                  <label htmlFor="co-tz">{t("settings.timezone")}</label>
                   <select id="co-tz" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
                     <option value="UTC">UTC</option>
                     <option value="Asia/Tehran">Asia/Tehran</option>
@@ -293,11 +337,11 @@ export default function SettingsPage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="co-status">Company status</label>
+                  <label htmlFor="co-status">{t("common.status")}</label>
                   <select id="co-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                    <option value="ACTIVE">Active</option>
-                    <option value="ON_HOLD">On hold</option>
-                    <option value="ARCHIVED">Archived</option>
+                    <option value="ACTIVE">{t("statuses.active")}</option>
+                    <option value="ON_HOLD">{t("statuses.onHold")}</option>
+                    <option value="ARCHIVED">{t("statuses.archived")}</option>
                   </select>
                 </div>
               </div>
@@ -312,10 +356,10 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <div>
-                  <p className="atelier-preview-label">Live preview</p>
+                  <p className="atelier-preview-label">{t("common.view")}</p>
                   <strong>{displayName}</strong>
                   <p className="text-dim">
-                    {language.toUpperCase()} · {timezone} · {status.replace("_", " ")}
+                    {language.toUpperCase()} · {timezone} · {statusLabel}
                   </p>
                 </div>
               </div>
@@ -326,7 +370,11 @@ export default function SettingsPage() {
                   className="btn btn-primary"
                   disabled={saveCompany.isPending || !companyDirty}
                 >
-                  {saveCompany.isPending ? "Saving…" : companyDirty ? "Save company settings" : "No changes"}
+                  {saveCompany.isPending
+                    ? t("common.saving")
+                    : companyDirty
+                      ? t("settings.saveSettings")
+                      : t("common.done")}
                 </button>
               </div>
             </>
@@ -343,38 +391,38 @@ export default function SettingsPage() {
           >
             <header className="atelier-card-head">
               <div>
-                <h2>Add credential</h2>
-                <p>Store integration secrets for this workspace. Values are masked in the list.</p>
+                <h2>{t("settings.addCredential")}</h2>
+                <p>{t("settings.vaultHint")}</p>
               </div>
               <span className="atelier-shield" aria-hidden>⬢</span>
             </header>
 
             <div className="atelier-form-grid">
               <div className="form-group">
-                <label htmlFor="cred-name">Name</label>
+                <label htmlFor="cred-name">{t("settings.credentialName")}</label>
                 <input
                   id="cred-name"
                   value={credName}
                   onChange={(e) => setCredName(e.target.value)}
                   required
-                  placeholder="Stripe API key"
+                  placeholder={t("settings.apiKey")}
                 />
               </div>
               <PasswordField
                 id="cred-value"
-                label="Secret value"
+                label={t("settings.credentialValue")}
                 value={credValue}
                 onChange={setCredValue}
                 required
                 autoComplete="off"
               />
               <div className="form-group atelier-span-2">
-                <label htmlFor="cred-desc">Description</label>
+                <label htmlFor="cred-desc">{t("common.description")}</label>
                 <input
                   id="cred-desc"
                   value={credDesc}
                   onChange={(e) => setCredDesc(e.target.value)}
-                  placeholder="Used by billing webhook"
+                  placeholder={t("common.description")}
                 />
               </div>
             </div>
@@ -385,7 +433,7 @@ export default function SettingsPage() {
                 className="btn btn-primary"
                 disabled={saveMutation.isPending || !credName.trim() || !credValue}
               >
-                {saveMutation.isPending ? "Saving…" : "Save credential"}
+                {saveMutation.isPending ? t("common.saving") : t("settings.saveSettings")}
               </button>
             </div>
           </form>
@@ -393,8 +441,8 @@ export default function SettingsPage() {
           <section className="atelier-card atelier-enter" style={{ ["--i" as string]: 1 }}>
             <header className="atelier-card-head">
               <div>
-                <h2>Credential vault</h2>
-                <p>{credentials.length} secret{credentials.length === 1 ? "" : "s"} stored.</p>
+                <h2>{t("settings.credentials")}</h2>
+                <p>{t("settings.vaultHint")}</p>
               </div>
             </header>
 
@@ -404,7 +452,7 @@ export default function SettingsPage() {
                 <span />
               </div>
             ) : credentials.length === 0 ? (
-              <EmptyState title="No credentials" description="Optional vault for integration secrets." />
+              <EmptyState title={t("emptyStates.noData")} description={t("settings.vaultHint")} />
             ) : (
               <ul className="atelier-vault-list">
                 {credentials.map((c, index) => (
@@ -429,7 +477,7 @@ export default function SettingsPage() {
                           setRevealed((prev) => ({ ...prev, [c.id]: !prev[c.id] }))
                         }
                       >
-                        {revealed[c.id] ? "Hide" : "Reveal"}
+                        {revealed[c.id] ? t("dashboard.hide") : t("dashboard.show")}
                       </button>
                       <button
                         type="button"
@@ -437,7 +485,7 @@ export default function SettingsPage() {
                         onClick={() => deleteMutation.mutate(c.id)}
                         disabled={deleteMutation.isPending}
                       >
-                        Delete
+                        {t("common.delete")}
                       </button>
                     </div>
                   </li>
@@ -452,10 +500,9 @@ export default function SettingsPage() {
         <section className="atelier-card atelier-enter" style={{ ["--i" as string]: 0 }}>
           <header className="atelier-card-head">
             <div>
-              <h2>Your access</h2>
+              <h2>{t("settings.accessHint")}</h2>
               <p>
-                Panels and actions enabled for your account. Ask a company admin in User
-                Management to change these.
+                {t("settings.access")} · {t("userManagement.title")}
               </p>
             </div>
             <span className="atelier-count-pill">{permissionChips.length}</span>
@@ -464,7 +511,7 @@ export default function SettingsPage() {
           {permissionChips.length === 0 ? (
             <div className="atelier-empty">
               <span aria-hidden>⌀</span>
-              <p>No explicit permissions on this account.</p>
+              <p>{t("emptyStates.noData")}</p>
             </div>
           ) : (
             <div className="atelier-perm-groups">
@@ -491,14 +538,14 @@ export default function SettingsPage() {
 
       {companyDirty && tab === "workspace" ? (
         <div className="atelier-dock" role="status">
-          <span>Company settings have unsaved changes</span>
+          <span>{t("common.saveChanges")}</span>
           <button
             type="button"
             className="btn btn-primary btn-sm"
             disabled={saveCompany.isPending}
             onClick={() => saveCompany.mutate()}
           >
-            {saveCompany.isPending ? "Saving…" : "Save now"}
+            {saveCompany.isPending ? t("common.saving") : t("settings.saveSettings")}
           </button>
         </div>
       ) : null}

@@ -73,6 +73,20 @@ compose() {
 
 # Compose v1 named containers "<project>_<service>_<n>"; v2 uses "<project>-<service>-<n>".
 # Leftover v1 containers keep holding port 3185, so drop them once after the switch.
+remove_stale_compose_containers() {
+  # Failed recreate leaves hash-prefixed orphans (e.g. 7a5779c96abf_pmass-db-1).
+  local pattern='^[0-9a-f]+_pmass-(db|api|web|gateway|loki|promtail)-[0-9]+$'
+  local names
+  names="$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "$pattern" || true)"
+  [[ -z "$names" ]] && return 0
+  echo "      removing stale compose recreate containers:"
+  while read -r name; do
+    [[ -z "$name" ]] && continue
+    echo "        - $name"
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  done <<< "$names"
+}
+
 remove_legacy_v1_containers() {
   local project pattern names
   project="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
@@ -184,6 +198,7 @@ echo
 echo "[2/6] free dangling docker layers (safe prune)"
 docker image prune -f >/dev/null 2>&1 || true
 remove_legacy_v1_containers
+remove_stale_compose_containers
 # Drop legacy standalone grafana container if it exists (Grafana is local-only now)
 docker ps -a --format '{{.Names}}' 2>/dev/null | grep -i grafana | while read -r name; do
   case "$name" in
@@ -207,6 +222,8 @@ docker tag termeh-pmas-web:latest "termeh-pmas-web:${sha}"
 
 echo
 echo "[5/6] restart stack (db api web gateway + loki promtail if configured)"
+compose down --remove-orphans >/dev/null 2>&1 || true
+remove_stale_compose_containers
 compose up -d --remove-orphans
 
 echo

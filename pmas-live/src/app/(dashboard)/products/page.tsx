@@ -22,19 +22,8 @@ import {
 } from "@/features/products/product-utils";
 import type { Employee, Product, ProductSummary } from "@/features/vsm/types";
 import { employeeLabel } from "@/features/vsm/types";
-
-const PRIORITY_OPTIONS = [
-  { value: "CRITICAL", label: "Critical" },
-  { value: "HIGH", label: "High" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "LOW", label: "Low" },
-];
-
-const VISIBILITY_OPTIONS = [
-  { value: "ORGANIZATION", label: "Organization" },
-  { value: "PRIVATE", label: "Private" },
-  { value: "PUBLIC", label: "Public" },
-];
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
 
 const STATUS_OPTIONS = [
   "DRAFT",
@@ -47,7 +36,17 @@ const STATUS_OPTIONS = [
 ];
 
 export default function ProductsPage() {
+  const { t } = useI18n();
   const qc = useQueryClient();
+  const priorityOptions = ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => ({
+    value,
+    label: localizedEnumLabel(value, priorityTranslationKey(value), t),
+  }));
+  const visibilityOptions = [
+    { value: "ORGANIZATION", label: t("products.organizationVisibility") },
+    { value: "PRIVATE", label: t("products.privateVisibility") },
+    { value: "PUBLIC", label: t("products.publicVisibility") },
+  ];
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -166,12 +165,12 @@ export default function ProductsPage() {
         )
       : 0;
     return [
-      { label: "In view", value: scope.length, tone: "neutral" },
-      { label: "Active", value: active, tone: "good" },
-      { label: "At risk", value: atRisk, tone: atRisk > 0 ? "bad" : "neutral" },
-      { label: "Avg progress", value: avgProgress, suffix: "%", tone: "warn" },
+      { label: t("products.inView"), value: scope.length, tone: "neutral" },
+      { label: t("common.active"), value: active, tone: "good" },
+      { label: t("products.atRisk"), value: atRisk, tone: atRisk > 0 ? "bad" : "neutral" },
+      { label: t("products.averageProgress"), value: avgProgress, suffix: "%", tone: "warn" },
     ];
-  }, [visibleProducts, summaryById]);
+  }, [visibleProducts, summaryById, t]);
 
   const filtersActive =
     Boolean(search.trim()) ||
@@ -190,26 +189,26 @@ export default function ProductsPage() {
 
   // Execution model is only offered at creation — Rule 3 locks it afterwards.
   const editFields: FieldDef[] = [
-    { name: "name", label: "Name", required: true },
-    { name: "code", label: "Code (unique per company)" },
-    { name: "owner_id", label: "Owner (employee)", type: "select", required: true, options: employeeOptions },
-    { name: "manager_id", label: "Manager (employee)", type: "select", required: true, options: employeeOptions },
-    { name: "category", label: "Category" },
-    { name: "product_type", label: "Product type" },
-    { name: "priority", label: "Priority", type: "select", options: PRIORITY_OPTIONS },
-    { name: "visibility", label: "Visibility", type: "select", options: VISIBILITY_OPTIONS },
-    { name: "description", label: "Description", type: "textarea" },
-    { name: "vision", label: "Vision", type: "textarea" },
-    { name: "goal", label: "Goal", type: "textarea" },
-    { name: "success_metrics", label: "Success metrics", type: "textarea" },
-    { name: "business_value", label: "Business value", type: "textarea" },
+    { name: "name", label: t("common.name"), required: true },
+    { name: "code", label: t("products.code") },
+    { name: "owner_id", label: t("products.productOwner"), type: "select", required: true, options: employeeOptions },
+    { name: "manager_id", label: t("products.productManager"), type: "select", required: true, options: employeeOptions },
+    { name: "category", label: t("products.category") },
+    { name: "product_type", label: t("products.productType") },
+    { name: "priority", label: t("products.priority"), type: "select", options: priorityOptions },
+    { name: "visibility", label: t("products.visibility"), type: "select", options: visibilityOptions },
+    { name: "description", label: t("common.description"), type: "textarea" },
+    { name: "vision", label: t("products.vision"), type: "textarea" },
+    { name: "goal", label: t("products.goal"), type: "textarea" },
+    { name: "success_metrics", label: t("products.successMetrics"), type: "textarea" },
+    { name: "business_value", label: t("products.businessValue"), type: "textarea" },
   ];
 
   const createFieldDefs: FieldDef[] = [
     ...editFields.slice(0, 4),
     {
       name: "execution_model",
-      label: "Execution model (locked after create)",
+      label: t("products.executionModel"),
       type: "select",
       required: true,
       options: [
@@ -228,22 +227,30 @@ export default function ProductsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, code, category…"
-          aria-label="Search products"
+          placeholder={t("products.searchPlaceholder")}
+          aria-label={t("filters.searchProducts")}
         />
       </label>
 
-      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status">
-        <option value="">All statuses</option>
+      <select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        aria-label={t("filters.byStatus")}
+      >
+        <option value="">{t("common.allStatuses")}</option>
         {STATUS_OPTIONS.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {localizedEnumLabel(s, statusTranslationKey(s), t)}
           </option>
         ))}
       </select>
 
-      <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} aria-label="Filter by owner">
-        <option value="">All owners</option>
+      <select
+        value={ownerFilter}
+        onChange={(e) => setOwnerFilter(e.target.value)}
+        aria-label={t("filters.byOwner")}
+      >
+        <option value="">{t("products.allOwners")}</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>
             {employeeLabel(e)}
@@ -251,8 +258,12 @@ export default function ProductsPage() {
         ))}
       </select>
 
-      <select value={managerFilter} onChange={(e) => setManagerFilter(e.target.value)} aria-label="Filter by manager">
-        <option value="">All managers</option>
+      <select
+        value={managerFilter}
+        onChange={(e) => setManagerFilter(e.target.value)}
+        aria-label={t("filters.byManager")}
+      >
+        <option value="">{t("products.allManagers")}</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>
             {employeeLabel(e)}
@@ -263,9 +274,9 @@ export default function ProductsPage() {
       <select
         value={categoryFilter}
         onChange={(e) => setCategoryFilter(e.target.value)}
-        aria-label="Filter by category"
+        aria-label={t("filters.byCategory")}
       >
-        <option value="">All categories</option>
+        <option value="">{t("products.allCategories")}</option>
         {categories.map((c) => (
           <option key={c} value={c}>
             {c}
@@ -276,10 +287,10 @@ export default function ProductsPage() {
       <select
         value={priorityFilter}
         onChange={(e) => setPriorityFilter(e.target.value)}
-        aria-label="Filter by priority"
+        aria-label={t("filters.byPriority")}
       >
-        <option value="">All priorities</option>
-        {PRIORITY_OPTIONS.map((p) => (
+        <option value="">{t("products.allPriorities")}</option>
+        {priorityOptions.map((p) => (
           <option key={p.value} value={p.value}>
             {p.label}
           </option>
@@ -289,7 +300,7 @@ export default function ProductsPage() {
       <select
         value={sort}
         onChange={(e) => setSort(e.target.value as ProductSortValue)}
-        aria-label="Sort products"
+        aria-label={t("filters.sortProducts")}
         className="pl-sort"
       >
         {PRODUCT_SORT_OPTIONS.map((o) => (
@@ -305,17 +316,17 @@ export default function ProductsPage() {
           checked={showArchived}
           onChange={(e) => setShowArchived(e.target.checked)}
         />
-        Show archived
+        {t("products.showArchived")}
       </label>
 
       {filtersActive ? (
         <button type="button" className="btn btn-sm" onClick={resetFilters}>
-          Clear
+          {t("common.clear")}
         </button>
       ) : null}
 
       <span className="pl-result-count text-dim">
-        {visibleProducts.length} of {products.length}
+        {visibleProducts.length} {t("common.of")} {products.length}
       </span>
     </div>
   );
@@ -325,14 +336,14 @@ export default function ProductsPage() {
       {isLoading ? null : <ProductPulseStrip metrics={pulseMetrics} />}
 
       <ResourceManager
-        title="Products"
-        description="Product is the aggregate root. Lifecycle: Draft → Ready → Active → Completed → Archived. Execution model is locked after create; products are archived, never deleted."
-        createLabel="New product"
-        emptyTitle={filtersActive ? "No matches" : "No products yet"}
+        title={t("products.title")}
+        description={t("products.aggregateHint")}
+        createLabel={t("products.newProduct")}
+        emptyTitle={filtersActive ? t("common.noResults") : t("products.noProducts")}
         emptyDescription={
           filtersActive
-            ? "No product matches the current search and filters. Clear them to see the full list."
-            : "Create a Product after you have at least one Employee to own it. Then open it to attach a Pipeline and start execution."
+            ? t("emptyStates.noResults")
+            : t("emptyStates.noProducts")
         }
         isLoading={isLoading}
         items={visibleProducts}
@@ -342,7 +353,7 @@ export default function ProductsPage() {
         columns={[
           {
             key: "name",
-            label: "Product",
+            label: t("products.product"),
             render: (r) => (
               <div className="pl-name-cell">
                 <Link href={`/products/${r.id}`} className="pl-name-link">
@@ -354,7 +365,7 @@ export default function ProductsPage() {
           },
           {
             key: "current_stage",
-            label: "Current stage",
+            label: t("products.currentStage"),
             render: (r) => (
               <StageCell
                 stage={summaryById.get(r.id)?.current_stage}
@@ -364,40 +375,48 @@ export default function ProductsPage() {
           },
           {
             key: "health",
-            label: "Health",
+            label: t("products.health"),
             render: (r) => <HealthCell health={listHealth(r, summaryById.get(r.id))} />,
           },
           {
             key: "progress",
-            label: "Progress",
+            label: t("products.progress"),
             render: (r) => <ProgressCell percent={summaryById.get(r.id)?.progress ?? 0} />,
           },
           {
             key: "status",
-            label: "Status",
-            render: (r) => <span className="status-pill">{r.status}</span>,
+            label: t("common.status"),
+            render: (r) => (
+              <span className="status-pill">
+                {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+              </span>
+            ),
           },
-          { key: "priority", label: "Priority", render: (r) => r.priority || "—" },
-          { key: "owner", label: "Owner", render: (r) => employeeName(r.owner_id) },
-          { key: "manager", label: "Manager", render: (r) => employeeName(r.manager_id) },
+          {
+            key: "priority",
+            label: t("products.priority"),
+            render: (r) => localizedEnumLabel(r.priority, priorityTranslationKey(r.priority), t),
+          },
+          { key: "owner", label: t("common.owner"), render: (r) => employeeName(r.owner_id) },
+          { key: "manager", label: t("common.manager"), render: (r) => employeeName(r.manager_id) },
           {
             key: "last_activity",
-            label: "Last activity",
+            label: t("products.lastActivity"),
             render: (r) => (
               <span className="text-dim">{relativeTime(summaryById.get(r.id)?.last_activity_at)}</span>
             ),
           },
           {
             key: "created_at",
-            label: "Created",
+            label: t("common.createdAt"),
             render: (r) => <span className="font-mono">{formatProductDate(r.created_at)}</span>,
           },
           {
             key: "archived",
-            label: "Archived",
+            label: t("products.archived"),
             render: (r) =>
               r.status === "ARCHIVED" ? (
-                <span className="status-pill">Archived</span>
+                <span className="status-pill">{t("statuses.archived")}</span>
               ) : (
                 <span className="text-dim">—</span>
               ),

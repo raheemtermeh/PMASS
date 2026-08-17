@@ -244,6 +244,45 @@ def git_pull_on_server(ssh: paramiko.SSHClient) -> int:
     return run(ssh, cmd, timeout=300)
 
 
+def connect_ssh(password: str, attempts: int = 4) -> paramiko.SSHClient:
+    """Connect over SSH; retry transient DNS/network failures (Windows getaddrinfo)."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(
+                HOST,
+                port=PORT,
+                username=USER,
+                password=password,
+                timeout=30,
+                allow_agent=False,
+                look_for_keys=False,
+                banner_timeout=60,
+                auth_timeout=60,
+            )
+            if attempt > 1:
+                print(f"[INFO] SSH connected on attempt {attempt}/{attempts}", flush=True)
+            return ssh
+        except Exception as exc:
+            last_exc = exc
+            try:
+                ssh.close()
+            except Exception:
+                pass
+            if attempt >= attempts:
+                break
+            wait = min(2 * attempt, 8)
+            print(
+                f"[WARN] SSH connect attempt {attempt}/{attempts} failed: {exc}",
+                flush=True,
+            )
+            print(f"       retrying in {wait}s...", flush=True)
+            time.sleep(wait)
+    raise last_exc or RuntimeError("SSH connect failed")
+
+
 def main() -> int:
     apply_settings()
 
@@ -261,20 +300,8 @@ def main() -> int:
         print("[ERROR] empty password")
         return 1
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        ssh.connect(
-            HOST,
-            port=PORT,
-            username=USER,
-            password=password,
-            timeout=30,
-            allow_agent=False,
-            look_for_keys=False,
-            banner_timeout=60,
-            auth_timeout=60,
-        )
+        ssh = connect_ssh(password)
     except Exception as exc:
         print(f"[ERROR] SSH connect failed: {exc}")
         return 1

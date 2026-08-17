@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/core/providers/ThemeProvider";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 import type { FlowGraph, FlowProduct } from "./types";
+import { useI18n } from "@/core/providers/I18nProvider";
+import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
+import { localizedStageName } from "@/features/products/product-utils";
 
 type NodeKind = "company" | "product" | "stage" | "project";
 
@@ -49,14 +52,14 @@ function statusColor(status: string): string {
   return "#a78bfa";
 }
 
-function defaultLayout(products: FlowProduct[], companyLabel: string): { nodes: GraphNode[]; edges: GraphEdge[] } {
+function defaultLayout(products: FlowProduct[], companyLabel: string, t: (key: string) => string): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
 
   nodes.push({
     id: "company",
     kind: "company",
-    label: companyLabel || "Company",
+    label: companyLabel || t("common.company"),
     status: "LIVE",
     x: 36,
     y: 140,
@@ -88,7 +91,7 @@ function defaultLayout(products: FlowProduct[], companyLabel: string): { nodes: 
       nodes.push({
         id: sid,
         kind: "stage",
-        label: st.name,
+        label: localizedStageName(st.name, t),
         status: st.status,
         x: sx,
         y: y + 4,
@@ -144,6 +147,7 @@ function loadLegacyPositions(companyKey: string): Record<string, { x: number; y:
 
 export function LifecycleFlowGraph({ flow, companyName }: Props) {
   const router = useRouter();
+  const { t } = useI18n();
   const { theme } = useTheme();
   const light = theme === "light";
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -163,13 +167,13 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
   } | null>(null);
 
   const companyKey = companyName || flow.company_name || "default";
-  const companyLabel = companyName || flow.company_name || "Company";
+  const companyLabel = companyName || flow.company_name || t("common.company");
   const layoutKey = `lifecycle-flow:${companyKey}`;
   const { layout, ready, saving, saveLayout, saveLayoutNow } = useUILayout<LayoutBlob>(layoutKey);
 
   const built = useMemo(
-    () => defaultLayout(flow.products ?? [], companyLabel),
-    [flow.products, companyLabel],
+    () => defaultLayout(flow.products ?? [], companyLabel, t),
+    [flow.products, companyLabel, t],
   );
 
   const [nodes, setNodes] = useState<GraphNode[]>(built.nodes);
@@ -308,34 +312,36 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
   }, [nodes]);
 
   const empty = (flow.products ?? []).length === 0;
+  const nodeStatusLabel = (status: string) =>
+    status === "LIVE" ? t("lifecycle.live") : localizedEnumLabel(status, statusTranslationKey(status), t);
 
   return (
     <section className="cc-flow-box">
       <header className="cc-flow-toolbar">
         <div>
-          <p className="command-eyebrow">Lifecycle graph</p>
-          <h3>Product · Project · Stage</h3>
+          <p className="command-eyebrow">{t("lifecycle.graph")}</p>
+          <h3>{t("lifecycle.entities")}</h3>
           <span className="cc-flow-hint">
-            Live company data · drag to pan · scroll to zoom · layout syncs to server
-            {saving ? " · Saving…" : ""}
+            {t("lifecycle.hint")}
+            {saving ? ` · ${t("common.saving")}` : ""}
           </span>
         </div>
         <div className="cc-flow-actions">
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.min(2.2, s + 0.12))}>
-            Zoom +
+            {t("lifecycle.zoomIn")}
           </button>
           <button type="button" className="btn btn-sm" onClick={() => setScale((s) => Math.max(0.3, s - 0.12))}>
-            Zoom −
+            {t("lifecycle.zoomOut")}
           </button>
           <button type="button" className="btn btn-sm" onClick={fitView}>
-            Fit
+            {t("lifecycle.fit")}
           </button>
           <button
             type="button"
             className={`btn btn-sm${editMode ? " cc-flow-edit-on" : ""}`}
             onClick={() => setEditMode((v) => !v)}
           >
-            {editMode ? "Editing…" : "Edit layout"}
+            {editMode ? t("lifecycle.editing") : t("lifecycle.editLayout")}
           </button>
           <button
             type="button"
@@ -351,7 +357,7 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
               window.setTimeout(fitView, 20);
             }}
           >
-            Reset
+            {t("lifecycle.reset")}
           </button>
         </div>
       </header>
@@ -371,10 +377,10 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
         <div className="cc-flow-grid" aria-hidden />
         {empty ? (
           <div className="cc-flow-empty">
-            <strong>No products yet</strong>
-            <span>Create a product to see its pipeline stages and projects here.</span>
+            <strong>{t("lifecycle.noProducts")}</strong>
+            <span>{t("lifecycle.noProductsHint")}</span>
             <button type="button" className="btn btn-sm" onClick={() => router.push("/products")}>
-              Open products
+              {t("lifecycle.openProducts")}
             </button>
           </div>
         ) : (
@@ -483,7 +489,7 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
                     {n.label.length > 16 ? `${n.label.slice(0, 16)}…` : n.label}
                   </text>
                   <text x={26} y={n.h / 2 + 12} className="cc-flow-status">
-                    {n.kind.toUpperCase()} · {n.status}
+                    {t(`lifecycle.kinds.${n.kind}`)} · {nodeStatusLabel(n.status)}
                   </text>
                 </g>
               );
@@ -497,27 +503,27 @@ export function LifecycleFlowGraph({ flow, companyName }: Props) {
           <div>
             <strong>{selectedNode.label}</strong>
             <span>
-              {selectedNode.kind} · {selectedNode.status}
+              {t(`lifecycle.kinds.${selectedNode.kind}`)} · {nodeStatusLabel(selectedNode.status)}
             </span>
           </div>
           <div className="cc-flow-inspector-actions">
             {selectedNode.href ? (
               <button type="button" className="btn btn-sm" onClick={() => router.push(selectedNode.href!)}>
-                Open / Edit
+                {t("lifecycle.openEdit")}
               </button>
             ) : null}
             <button type="button" className="btn btn-sm" onClick={() => setSelected(null)}>
-              Close
+              {t("common.close")}
             </button>
           </div>
         </footer>
       ) : (
         <footer className="cc-flow-legend">
-          <span><i style={{ background: "#22d3ee" }} /> Active</span>
-          <span><i style={{ background: "#34d399" }} /> Completed</span>
-          <span><i style={{ background: "#fbbf24" }} /> Draft / Pending</span>
-          <span><i style={{ background: "#fb7185" }} /> Rejected</span>
-          <span><i style={{ background: "#a78bfa" }} /> Project</span>
+          <span><i style={{ background: "#22d3ee" }} /> {t("statuses.active")}</span>
+          <span><i style={{ background: "#34d399" }} /> {t("statuses.completed")}</span>
+          <span><i style={{ background: "#fbbf24" }} /> {t("lifecycle.draftPending")}</span>
+          <span><i style={{ background: "#fb7185" }} /> {t("statuses.rejected")}</span>
+          <span><i style={{ background: "#a78bfa" }} /> {t("planning.project")}</span>
         </footer>
       )}
     </section>

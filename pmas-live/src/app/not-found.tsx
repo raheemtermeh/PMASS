@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { firstAllowedPath } from "@/shared/routes";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 const GLYPHS = "01<>{}[]/\\#$%&@*";
 
@@ -31,6 +32,7 @@ function ScrambleDigit({ value, delay }: { value: string; delay: number }) {
 }
 
 export default function NotFound() {
+  const { t } = useI18n();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -82,7 +84,7 @@ export default function NotFound() {
       <section className="nf-card">
         <p className="nf-kicker">
           <span className="nf-dot" aria-hidden />
-          Signal lost · Route not found
+          {t("notFound.kicker")}
         </p>
 
         <h1 className="nf-code" aria-label="404">
@@ -94,33 +96,32 @@ export default function NotFound() {
           <ScrambleDigit value="4" delay={320} />
         </h1>
 
-        <h2 className="nf-title">This route drifted off the pipeline</h2>
+        <h2 className="nf-title">{t("notFound.title")}</h2>
         <p className="nf-sub">
-          The page you requested does not exist, was archived, or you may not have access to it.
-          Everything else in your workspace is still running normally.
+          {t("notFound.description")}
         </p>
 
         <div className="nf-actions">
           <Link href={homeHref} className="btn btn-primary nf-primary">
-            Back to workspace
+            {t("notFound.backToWorkspace")}
           </Link>
           <button type="button" className="btn nf-ghost" onClick={() => router.back()}>
-            Go back
+            {t("notFound.goBack")}
           </button>
         </div>
 
         <ul className="nf-hints">
           <li>
-            <span>Check the address</span>
-            <p>A stale bookmark or a copied link with an outdated ID.</p>
+            <span>{t("notFound.checkAddress")}</span>
+            <p>{t("notFound.checkAddressDescription")}</p>
           </li>
           <li>
-            <span>Permission scoped</span>
-            <p>Some sections only appear for roles that own them.</p>
+            <span>{t("notFound.permissionScoped")}</span>
+            <p>{t("notFound.permissionScopedDescription")}</p>
           </li>
           <li>
-            <span>Item archived</span>
-            <p>Soft-deleted records disappear from their old URLs.</p>
+            <span>{t("notFound.itemArchived")}</span>
+            <p>{t("notFound.itemArchivedDescription")}</p>
           </li>
         </ul>
       </section>

@@ -4,6 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager, optInt, optStr } from "@/components/ResourceManager";
 import { SectionWorkBoard } from "@/components/SectionWorkBoard";
 import { httpClient } from "@/core/api/http-client";
+import { useI18n } from "@/core/providers/I18nProvider";
+import {
+  localizedEnumLabel,
+  priorityTranslationKey,
+  statusTranslationKey,
+} from "@/lib/localized-labels";
 
 interface OperationalItem {
   id: number;
@@ -24,6 +30,7 @@ interface Subsystem {
 }
 
 export default function ExecutivePage() {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["operations-items"],
@@ -80,75 +87,90 @@ export default function ExecutivePage() {
     <div className="page-stack">
       <SectionWorkBoard
         section="executive"
-        title="Executive workboard"
-        description="Leadership tasks, todos, and status checkpoints for the company."
+        title={t("executive.workboard.title")}
+        description={t("executive.workboard.description")}
       />
     <ResourceManager
-      title="Executive Operations"
-      description="Track blockers, tasks, and operational tickets across your portfolio."
-      createLabel="New item"
-      emptyTitle="No operational items"
-      emptyDescription="Create blockers and tasks to drive Executive telemetry for your company."
+      title={t("executive.operations.title")}
+      description={t("executive.operations.description")}
+      createLabel={t("executive.operations.create")}
+      emptyTitle={t("executive.operations.emptyTitle")}
+      emptyDescription={t("executive.operations.emptyDescription")}
       isLoading={isLoading}
       items={items}
       columns={[
-        { key: "ticket_code", label: "Ticket", render: (r) => <span className="font-mono">{r.ticket_code}</span> },
-        { key: "title", label: "Title" },
-        { key: "type", label: "Type" },
-        { key: "severity", label: "Severity" },
-        { key: "status", label: "Status" },
-        { key: "assigned_to", label: "Owner", render: (r) => r.assigned_to ?? "—" },
+        { key: "ticket_code", label: t("executive.fields.ticket"), render: (r) => <span className="font-mono">{r.ticket_code}</span> },
+        { key: "title", label: t("executive.fields.title") },
+        { key: "type", label: t("executive.fields.type"), render: (r) => t(`executive.types.${r.type}`) },
+        {
+          key: "severity",
+          label: t("executive.fields.severity"),
+          render: (r) =>
+            localizedEnumLabel(r.severity, priorityTranslationKey(r.severity), t),
+        },
+        {
+          key: "status",
+          label: t("executive.fields.status"),
+          render: (r) =>
+            localizedEnumLabel(
+              r.status,
+              statusTranslationKey(r.status) ??
+                `executive.statuses.${r.status.toLowerCase()}`,
+              t,
+            ),
+        },
+        { key: "assigned_to", label: t("executive.fields.owner"), render: (r) => r.assigned_to ?? "—" },
       ]}
       fields={[
-        { name: "ticket_code", label: "Ticket code", required: true, placeholder: "BLK-101" },
-        { name: "title", label: "Title", required: true },
-        { name: "description", label: "Description", type: "textarea" },
+        { name: "ticket_code", label: t("executive.fields.ticketCode"), required: true, placeholder: t("executive.placeholders.ticketCode") },
+        { name: "title", label: t("executive.fields.title"), required: true },
+        { name: "description", label: t("executive.fields.description"), type: "textarea" },
         {
           name: "type",
-          label: "Type",
+          label: t("executive.fields.type"),
           type: "select",
           required: true,
           options: [
-            { value: "blocker", label: "Blocker" },
-            { value: "task", label: "Task" },
-            { value: "issue", label: "Issue" },
-            { value: "handoff", label: "Handoff" },
+            { value: "blocker", label: t("executive.types.blocker") },
+            { value: "task", label: t("executive.types.task") },
+            { value: "issue", label: t("executive.types.issue") },
+            { value: "handoff", label: t("executive.types.handoff") },
           ],
         },
         {
           name: "severity",
-          label: "Severity",
+          label: t("executive.fields.severity"),
           type: "select",
           required: true,
           options: [
-            { value: "Critical", label: "Critical" },
-            { value: "High", label: "High" },
-            { value: "Medium", label: "Medium" },
-            { value: "Low", label: "Low" },
+            { value: "Critical", label: t("priorities.critical") },
+            { value: "High", label: t("priorities.high") },
+            { value: "Medium", label: t("priorities.medium") },
+            { value: "Low", label: t("priorities.low") },
           ],
         },
         {
           name: "status",
-          label: "Status",
+          label: t("executive.fields.status"),
           type: "select",
           required: true,
           options: [
-            { value: "Blocked", label: "Blocked" },
-            { value: "In Progress", label: "In Progress" },
-            { value: "Backlog", label: "Backlog" },
-            { value: "Active", label: "Active" },
-            { value: "Completed", label: "Completed" },
-            { value: "Resolved", label: "Resolved" },
+            { value: "Blocked", label: t("statuses.blocked") },
+            { value: "In Progress", label: t("statuses.inProgress") },
+            { value: "Backlog", label: t("statuses.backlog") },
+            { value: "Active", label: t("statuses.active") },
+            { value: "Completed", label: t("statuses.completed") },
+            { value: "Resolved", label: t("executive.statuses.resolved") },
           ],
         },
         {
           name: "origin_subsystem_id",
-          label: "Subsystem",
+          label: t("executive.fields.subsystem"),
           type: "select",
           options: subsystems.map((s) => ({ value: String(s.id), label: s.name })),
         },
-        { name: "assigned_to", label: "Assigned to" },
-        { name: "linked_pr", label: "Linked PR" },
+        { name: "assigned_to", label: t("executive.fields.assignedTo") },
+        { name: "linked_pr", label: t("executive.fields.linkedPr") },
       ]}
       toFormValues={(r) => ({
         ticket_code: r.ticket_code,
@@ -169,7 +191,7 @@ export default function ExecutivePage() {
             disabled={resolveMut.isPending}
             onClick={() => void resolveMut.mutateAsync(r.ticket_code)}
           >
-            Resolve
+            {t("executive.resolve")}
           </button>
         ) : null
       }

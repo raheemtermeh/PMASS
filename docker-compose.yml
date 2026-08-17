@@ -10,10 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Localhost-only publish so host processes (start.bat → go run) can connect.
-    # Not reachable from other machines / the public internet.
-    ports:
-      - "127.0.0.1:5432:5432"
+    # Host publish for local dev only — see docker-compose.local.yml (start.bat).
+    # Server stack uses internal hostname db:5432; no host port bind needed.
     command:
       - postgres
       - -c

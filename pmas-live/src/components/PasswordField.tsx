@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useI18n } from "@/core/providers/I18nProvider";
 
 interface PasswordFieldProps {
   id?: string;
@@ -27,6 +28,7 @@ export function PasswordField({
   minLength,
   hint,
 }: PasswordFieldProps) {
+  const { t } = useI18n();
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const [visible, setVisible] = useState(false);
@@ -49,9 +51,9 @@ export function PasswordField({
           type="button"
           className="password-toggle"
           onClick={() => setVisible((v) => !v)}
-          aria-label={visible ? "Hide password" : "Show password"}
+          aria-label={visible ? t("password.hide") : t("password.show")}
           aria-pressed={visible}
-          title={visible ? "Hide password" : "Show password"}
+          title={visible ? t("password.hide") : t("password.show")}
         >
           {visible ? <EyeOffIcon /> : <EyeIcon />}
         </button>

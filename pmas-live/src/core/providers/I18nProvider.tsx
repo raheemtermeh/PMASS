@@ -10,12 +10,20 @@ import {
   type ReactNode,
 } from "react";
 import { LOCALE_DIR, translations, type Dict, type Lang } from "@/i18n/translations";
+import { formatDate, formatNumber, toPersianDigits } from "@/i18n/numbers";
 
 export interface I18nContextValue {
   lang: Lang;
   dir: "ltr" | "rtl";
   setLang: (lang: Lang) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
+  /** Locale-aware number (Persian digits under fa). */
+  n: (value: number | null | undefined, options?: Intl.NumberFormatOptions) => string;
+  /** Locale-aware date (Jalali calendar under fa). */
+  d: (
+    value: string | number | Date | null | undefined,
+    options?: Intl.DateTimeFormatOptions,
+  ) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -36,20 +44,24 @@ export function lookup(dict: Dict, path: string): string | null {
   return null;
 }
 
-function interpolate(template: string, vars?: Record<string, string | number>): string {
+function interpolate(
+  template: string,
+  lang: Lang,
+  vars?: Record<string, string | number>,
+): string {
   if (!vars) return template;
   return template.replace(/\{(\w+)\}/g, (_m, key) => {
     const value = vars[key];
-    return value != null ? String(value) : _m;
+    if (value == null) return _m;
+    if (typeof value === "number") return formatNumber(value, lang);
+    return lang === "fa" ? toPersianDigits(value) : value;
   });
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     let initial: Lang = "en";
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -82,16 +94,31 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const t = useCallback(
     (key: string, vars?: Record<string, string | number>) => {
       const found = lookup(translations[lang], key);
-      return found != null ? interpolate(found, vars) : key;
+      const fallback = lang === "en" ? null : lookup(translations.en, key);
+      return interpolate(found ?? fallback ?? key, lang, vars);
     },
+    [lang],
+  );
+
+  const n = useCallback(
+    (value: number | null | undefined, options?: Intl.NumberFormatOptions) =>
+      formatNumber(value, lang, options),
+    [lang],
+  );
+
+  const d = useCallback(
+    (
+      value: string | number | Date | null | undefined,
+      options?: Intl.DateTimeFormatOptions,
+    ) => formatDate(value, lang, options),
     [lang],
   );
 
   const dir = LOCALE_DIR[lang];
 
   const value = useMemo(
-    () => ({ lang, dir, setLang, t }),
-    [lang, dir, setLang, t],
+    () => ({ lang, dir, setLang, t, n, d }),
+    [lang, dir, setLang, t, n, d],
   );
 
   // Render children immediately so pages hydrate; direction is set in an effect.

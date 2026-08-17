@@ -16,6 +16,12 @@ import {
   YAxis,
 } from "recharts";
 import { useTheme } from "@/core/providers/ThemeProvider";
+import { useI18n } from "@/core/providers/I18nProvider";
+import {
+  localizedEnumLabel,
+  priorityTranslationKey,
+  statusTranslationKey,
+} from "@/lib/localized-labels";
 import { CHART_PALETTE, type DayCount, type NamedCount } from "./types";
 
 function useChartChrome() {
@@ -48,10 +54,11 @@ function useChartChrome() {
 }
 
 function ChartEmpty({ label }: { label: string }) {
+  const { t } = useI18n();
   return (
     <div className="cc-chart-empty">
       <span>{label}</span>
-      <small>Live company data — charts fill as you create records</small>
+      <small>{t("charts.emptyHint")}</small>
     </div>
   );
 }
@@ -62,8 +69,12 @@ function hasValues(items: NamedCount[] | DayCount[]): boolean {
 
 export function ProductsStatusChart({ data }: { data: NamedCount[] }) {
   const chrome = useChartChrome();
-  if (!hasValues(data)) return <ChartEmpty label="No products yet" />;
-  const rows = data.map((d) => ({ name: d.name, value: Number(d.count) }));
+  const { t, n } = useI18n();
+  if (!hasValues(data)) return <ChartEmpty label={t("charts.noProducts")} />;
+  const rows = data.map((item) => ({
+    name: localizedEnumLabel(item.name, statusTranslationKey(item.name), t),
+    value: Number(item.count),
+  }));
   return (
     <ResponsiveContainer width="100%" height={240}>
       <PieChart>
@@ -83,7 +94,7 @@ export function ProductsStatusChart({ data }: { data: NamedCount[] }) {
             <Cell key={rows[i].name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
           ))}
         </Pie>
-        <Tooltip contentStyle={chrome.tooltip} />
+        <Tooltip contentStyle={chrome.tooltip} formatter={(value) => [n(Number(value)), t("charts.products")]} />
         <Legend wrapperStyle={chrome.legend} />
       </PieChart>
     </ResponsiveContainer>
@@ -92,16 +103,20 @@ export function ProductsStatusChart({ data }: { data: NamedCount[] }) {
 
 export function TasksStatusChart({ data }: { data: NamedCount[] }) {
   const chrome = useChartChrome();
-  if (!hasValues(data)) return <ChartEmpty label="No tasks yet" />;
-  const rows = data.map((d) => ({ name: d.name, count: Number(d.count) }));
+  const { t, n } = useI18n();
+  if (!hasValues(data)) return <ChartEmpty label={t("charts.noTasks")} />;
+  const rows = data.map((item) => ({
+    name: localizedEnumLabel(item.name, statusTranslationKey(item.name), t),
+    count: Number(item.count),
+  }));
   return (
     <ResponsiveContainer width="100%" height={240}>
       <BarChart data={rows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
         <CartesianGrid stroke={chrome.grid} vertical={false} />
         <XAxis dataKey="name" tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} />
-        <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+        <YAxis allowDecimals={false} tickFormatter={(value) => n(Number(value))} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} formatter={(value) => [n(Number(value)), t("charts.tasks")]} />
+        <Bar dataKey="count" name={t("charts.tasks")} radius={[8, 8, 0, 0]}>
           {rows.map((_, i) => (
             <Cell key={rows[i].name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
           ))}
@@ -113,16 +128,20 @@ export function TasksStatusChart({ data }: { data: NamedCount[] }) {
 
 export function TasksPriorityChart({ data }: { data: NamedCount[] }) {
   const chrome = useChartChrome();
-  if (!hasValues(data)) return <ChartEmpty label="No priority data yet" />;
-  const rows = data.map((d) => ({ name: d.name, count: Number(d.count) }));
+  const { t, n } = useI18n();
+  if (!hasValues(data)) return <ChartEmpty label={t("charts.noPriorityData")} />;
+  const rows = data.map((item) => ({
+    name: localizedEnumLabel(item.name, priorityTranslationKey(item.name), t),
+    count: Number(item.count),
+  }));
   return (
     <ResponsiveContainer width="100%" height={240}>
       <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
         <CartesianGrid stroke={chrome.grid} horizontal={false} />
-        <XAxis type="number" allowDecimals={false} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <XAxis type="number" allowDecimals={false} tickFormatter={(value) => n(Number(value))} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="name" width={72} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} />
-        <Bar dataKey="count" radius={[0, 8, 8, 0]}>
+        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} formatter={(value) => [n(Number(value)), t("charts.tasks")]} />
+        <Bar dataKey="count" name={t("charts.tasks")} radius={[0, 8, 8, 0]}>
           {rows.map((_, i) => (
             <Cell key={rows[i].name} fill={CHART_PALETTE[(i + 2) % CHART_PALETTE.length]} />
           ))}
@@ -134,13 +153,14 @@ export function TasksPriorityChart({ data }: { data: NamedCount[] }) {
 
 export function ActivityTrendChart({ data }: { data: DayCount[] }) {
   const chrome = useChartChrome();
-  if (!data.length) return <ChartEmpty label="No activity yet" />;
+  const { t, n, d } = useI18n();
+  if (!data.length) return <ChartEmpty label={t("charts.noActivity")} />;
   const rows = data.map((d) => ({
-    day: d.day.slice(5),
+    day: d.day,
     count: Number(d.count),
   }));
   const total = rows.reduce((sum, r) => sum + r.count, 0);
-  if (total === 0) return <ChartEmpty label="No activity in the last 14 days" />;
+  if (total === 0) return <ChartEmpty label={t("charts.noRecentActivity")} />;
   return (
     <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={rows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -151,10 +171,10 @@ export function ActivityTrendChart({ data }: { data: DayCount[] }) {
           </linearGradient>
         </defs>
         <CartesianGrid stroke={chrome.grid} vertical={false} />
-        <XAxis dataKey="day" tick={{ fill: chrome.tick, fontSize: 10 }} axisLine={false} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={chrome.tooltip} />
-        <Area type="monotone" dataKey="count" stroke={chrome.stroke} strokeWidth={2.5} fill="url(#ccActivityFill)" />
+        <XAxis dataKey="day" tickFormatter={(value) => d(String(value), { month: "short", day: "numeric" })} tick={{ fill: chrome.tick, fontSize: 10 }} axisLine={false} tickLine={false} />
+        <YAxis allowDecimals={false} tickFormatter={(value) => n(Number(value))} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={chrome.tooltip} labelFormatter={(value) => d(String(value), { dateStyle: "medium" })} formatter={(value) => [n(Number(value)), t("charts.activities")]} />
+        <Area type="monotone" dataKey="count" name={t("charts.activities")} stroke={chrome.stroke} strokeWidth={2.5} fill="url(#ccActivityFill)" />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -166,7 +186,8 @@ export function DepartmentLoadChart({
   data: { department_name: string; product_count: number }[];
 }) {
   const chrome = useChartChrome();
-  if (!data.length) return <ChartEmpty label="No departments yet" />;
+  const { t, n } = useI18n();
+  if (!data.length) return <ChartEmpty label={t("charts.noDepartments")} />;
   const rows = data.map((d) => ({
     name: d.department_name,
     count: Number(d.product_count),
@@ -176,9 +197,9 @@ export function DepartmentLoadChart({
       <BarChart data={rows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
         <CartesianGrid stroke={chrome.grid} vertical={false} />
         <XAxis dataKey="name" tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} interval={0} angle={-18} textAnchor="end" height={48} />
-        <YAxis allowDecimals={false} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} />
-        <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+        <YAxis allowDecimals={false} tickFormatter={(value) => n(Number(value))} tick={{ fill: chrome.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={chrome.tooltip} cursor={{ fill: chrome.cursor }} formatter={(value) => [n(Number(value)), t("charts.products")]} />
+        <Bar dataKey="count" name={t("charts.products")} radius={[8, 8, 0, 0]}>
           {rows.map((_, i) => (
             <Cell key={rows[i].name} fill={CHART_PALETTE[(i + 1) % CHART_PALETTE.length]} />
           ))}
@@ -190,7 +211,8 @@ export function DepartmentLoadChart({
 
 export function StagesStatusChart({ data }: { data: NamedCount[] }) {
   const chrome = useChartChrome();
-  if (!hasValues(data)) return <ChartEmpty label="No pipeline stages yet" />;
+  const { t, n } = useI18n();
+  if (!hasValues(data)) return <ChartEmpty label={t("charts.noStages")} />;
   const rows = data.map((d) => ({ name: d.name, value: Number(d.count) }));
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -210,7 +232,7 @@ export function StagesStatusChart({ data }: { data: NamedCount[] }) {
             <Cell key={rows[i].name} fill={CHART_PALETTE[(i + 3) % CHART_PALETTE.length]} />
           ))}
         </Pie>
-        <Tooltip contentStyle={chrome.tooltip} />
+        <Tooltip contentStyle={chrome.tooltip} formatter={(value) => [n(Number(value)), t("charts.records")]} />
         <Legend wrapperStyle={chrome.legend} />
       </PieChart>
     </ResponsiveContainer>
