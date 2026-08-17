@@ -125,7 +125,7 @@ export default function OrganizationPage() {
     onSuccess: refreshTeams,
   });
   const teamMove = useMutation({
-    mutationFn: ({ id, departmentId }: { id: string; departmentId: string }) =>
+    mutationFn: ({ id, departmentId }: { id: string; departmentId: string | null }) =>
       httpClient.post(`/api/v1/teams/${id}/move`, { department_id: departmentId }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-teams"] }),
   });
@@ -176,6 +176,10 @@ export default function OrganizationPage() {
         teams: teams.filter((t) => t.department_id === dept.id && t.status !== "ARCHIVED"),
       }));
   }, [departments, teams]);
+  const independentTeams = useMemo(
+    () => teams.filter((team) => !team.department_id && team.status !== "ARCHIVED"),
+    [teams],
+  );
 
   /** employee id → team id they already belong to (one team per employee). */
   const teamByEmployee = useMemo(() => {
@@ -343,7 +347,7 @@ export default function OrganizationPage() {
                   ))}
               </select>
             </div>
-            {orgTree.length === 0 ? (
+            {orgTree.length === 0 && independentTeams.length === 0 ? (
               <p className="text-dim">
                 {t("organization.noStructure")}
               </p>
@@ -396,6 +400,45 @@ export default function OrganizationPage() {
                     )}
                   </article>
                 ))}
+                {independentTeams.length > 0 ? (
+                  <article className="org-tree-dept">
+                    <header className="org-tree-dept-head">
+                      <div>
+                        <strong>{t("organization.independentTeams")}</strong>
+                        <span className="status-pill" style={{ marginLeft: "0.5rem" }}>
+                          {independentTeams.length}
+                        </span>
+                      </div>
+                      <span className="text-dim" style={{ fontSize: "0.8rem" }}>
+                        {t("organization.independentTeamsHint")}
+                      </span>
+                    </header>
+                    <ul className="org-tree-teams">
+                      {independentTeams.map((team) => (
+                        <li
+                          key={team.id}
+                          id={`team-list-${team.id}`}
+                          className={highlightId === team.id ? "is-highlight" : undefined}
+                        >
+                          <div>
+                            <strong>{team.name}</strong>
+                            {team.description ? (
+                              <p className="text-dim" style={{ fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                                {team.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <span className="text-dim" style={{ fontSize: "0.8rem" }}>
+                            {t("common.lead")}: {empName(team.lead_id)}
+                            {typeof team.capacity === "number"
+                              ? ` · ${t("common.capacity")} ${team.capacity}`
+                              : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ) : null}
               </div>
             )}
           </section>
@@ -607,7 +650,10 @@ export default function OrganizationPage() {
             {
               key: "department",
               label: t("organization.department"),
-              render: (r) => departments.find((d) => d.id === r.department_id)?.name ?? "—",
+              render: (r) =>
+                r.department_id
+                  ? departments.find((d) => d.id === r.department_id)?.name ?? "—"
+                  : t("organization.independentTeam"),
             },
             { key: "lead", label: t("common.lead"), render: (r) => empName(r.lead_id) },
             {
@@ -660,7 +706,7 @@ export default function OrganizationPage() {
               name: "department_id",
               label: t("organization.department"),
               type: "select",
-              required: true,
+              emptyOptionLabel: t("organization.noDepartmentIndependent"),
               options: deptOptions,
             },
             {
@@ -685,7 +731,7 @@ export default function OrganizationPage() {
           ]}
           toFormValues={(r) => ({
             name: r.name,
-            department_id: r.department_id,
+            department_id: r.department_id ?? "",
             lead_id: r.lead_id ?? "",
             capacity: String(r.capacity ?? 0),
             status: r.status,
@@ -694,7 +740,7 @@ export default function OrganizationPage() {
           onCreate={async (v) => {
             await teamCreate.mutateAsync({
               name: v.name,
-              department_id: v.department_id,
+              department_id: v.department_id || null,
               lead_id: v.lead_id,
               capacity: Number(v.capacity) || 0,
               status: v.status,
@@ -724,11 +770,17 @@ export default function OrganizationPage() {
               disabled={teamMove.isPending}
               onChange={(e) => {
                 if (!e.target.value) return;
-                teamMove.mutate({ id: row.id, departmentId: e.target.value });
+                teamMove.mutate({
+                  id: row.id,
+                  departmentId: e.target.value === "__independent__" ? null : e.target.value,
+                });
                 e.target.value = "";
               }}
             >
               <option value="">{t("organization.moveTo")}</option>
+              {row.department_id ? (
+                <option value="__independent__">{t("organization.makeIndependent")}</option>
+              ) : null}
               {deptOptions
                 .filter((d) => d.value !== row.department_id)
                 .map((d) => (

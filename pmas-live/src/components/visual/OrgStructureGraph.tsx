@@ -19,13 +19,13 @@ interface Props {
   departments: Department[];
   teams: Team[];
   empName: (id?: string | null) => string;
-  onMoveTeam: (teamId: string, departmentId: string) => void | Promise<void>;
+  onMoveTeam: (teamId: string, departmentId: string | null) => void | Promise<void>;
   highlightId?: string;
 }
 
 interface GraphNode {
   id: string;
-  kind: "company" | "department" | "team";
+  kind: "company" | "department" | "group" | "team";
   label: string;
   status: string;
   meta: string;
@@ -118,6 +118,42 @@ function buildDefault(
       edges.push({ id: `e-t-${team.id}`, from: did, to: tid });
     });
   });
+
+  const independentTeams = teams.filter((team) => !team.department_id);
+  if (independentTeams.length > 0) {
+    const groupID = "independent-group";
+    const y = 36 + departments.length * 120;
+    nodes.push({
+      id: groupID,
+      kind: "group",
+      label: t("graphView.org.independentTeams"),
+      status: "ACTIVE",
+      meta: t("graphView.org.independentTeamsHint"),
+      entityId: groupID,
+      x: 280,
+      y,
+      w: 170,
+      h: 54,
+    });
+    edges.push({ id: "e-c-independent", from: "company", to: groupID });
+
+    independentTeams.forEach((team, ti) => {
+      const tid = `team:${team.id}`;
+      nodes.push({
+        id: tid,
+        kind: "team",
+        label: team.name,
+        status: team.status,
+        meta: t("graphView.org.lead", { name: empName(team.lead_id) }),
+        entityId: team.id,
+        x: 520 + (ti % 2) * 16,
+        y: y - 8 + ti * 48,
+        w: 150,
+        h: 44,
+      });
+      edges.push({ id: `e-t-${team.id}`, from: groupID, to: tid });
+    });
+  }
 
   return { nodes, edges };
 }
@@ -312,7 +348,7 @@ export function OrgStructureGraph({
   }, [nodes]);
 
   const selectedNode = nodes.find((n) => n.id === selected) ?? null;
-  const empty = departments.length === 0;
+  const empty = departments.length === 0 && teams.length === 0;
 
   return (
     <section className="viz-board org-viz">
@@ -446,11 +482,15 @@ export function OrgStructureGraph({
                           ? "rgba(3,105,161,0.14)"
                           : n.kind === "department"
                             ? "#ffffff"
+                            : n.kind === "group"
+                              ? "#f8fafc"
                             : "#f1f5f9"
                         : n.kind === "company"
                           ? "rgba(99,102,241,0.22)"
                           : n.kind === "department"
                             ? "rgba(15,23,42,0.94)"
+                            : n.kind === "group"
+                              ? "rgba(15,23,42,0.82)"
                             : "rgba(30,27,46,0.94)"
                     }
                     stroke={isSel ? (light ? "#0369a1" : "#f8fafc") : color}

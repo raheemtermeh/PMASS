@@ -16,6 +16,7 @@ export interface FieldDef {
   required?: boolean;
   placeholder?: string;
   options?: { value: string; label: string }[];
+  emptyOptionLabel?: string;
   step?: string;
 }
 
@@ -351,7 +352,9 @@ export function ResourceManager<T extends { id: string | number }>({
                           setValues((v) => ({ ...v, [field.name]: e.target.value }))
                         }
                       >
-                        <option value="">{t("common.select")}…</option>
+                        <option value="">
+                          {field.emptyOptionLabel ?? `${t("common.select")}…`}
+                        </option>
                         {field.options?.map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}

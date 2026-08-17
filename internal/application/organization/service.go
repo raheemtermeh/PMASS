@@ -162,7 +162,7 @@ func (s *Service) ArchiveDepartment(ctx context.Context, companyID, id uuid.UUID
 }
 
 type CreateTeamInput struct {
-	DepartmentID uuid.UUID
+	DepartmentID *uuid.UUID
 	LeadID       uuid.UUID
 	Name         string
 	Description  string
@@ -171,8 +171,13 @@ type CreateTeamInput struct {
 }
 
 func (s *Service) CreateTeam(ctx context.Context, companyID uuid.UUID, in CreateTeamInput) (*organization.Team, error) {
-	if _, err := s.dept.FindByID(ctx, companyID, in.DepartmentID); err != nil {
-		return nil, err
+	if in.DepartmentID != nil {
+		if *in.DepartmentID == uuid.Nil {
+			return nil, organization.ErrDepartmentRequired
+		}
+		if _, err := s.dept.FindByID(ctx, companyID, *in.DepartmentID); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := s.emp.FindByID(ctx, companyID, in.LeadID); err != nil {
 		return nil, err
@@ -260,10 +265,16 @@ func (s *Service) UpdateTeam(ctx context.Context, companyID, teamID uuid.UUID, n
 	return t, nil
 }
 
-// MoveTeamBetweenDepartments relocates a team under another department in the same company.
-func (s *Service) MoveTeamBetweenDepartments(ctx context.Context, companyID, teamID, departmentID uuid.UUID) (*organization.Team, error) {
-	if _, err := s.dept.FindByID(ctx, companyID, departmentID); err != nil {
-		return nil, err
+// AssignTeamDepartment attaches a team to a department in the same company, or
+// makes it independent when departmentID is nil.
+func (s *Service) AssignTeamDepartment(ctx context.Context, companyID, teamID uuid.UUID, departmentID *uuid.UUID) (*organization.Team, error) {
+	if departmentID != nil {
+		if *departmentID == uuid.Nil {
+			return nil, organization.ErrDepartmentRequired
+		}
+		if _, err := s.dept.FindByID(ctx, companyID, *departmentID); err != nil {
+			return nil, err
+		}
 	}
 	t, err := s.team.FindByID(ctx, companyID, teamID)
 	if err != nil {

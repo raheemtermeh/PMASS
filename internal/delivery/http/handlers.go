@@ -140,12 +140,12 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			DepartmentID uuid.UUID `json:"department_id"`
-			LeadID       uuid.UUID `json:"lead_id"`
-			Name         string    `json:"name"`
-			Description  string    `json:"description"`
-			Capacity     int       `json:"capacity"`
-			Status       string    `json:"status"`
+			DepartmentID *uuid.UUID `json:"department_id"`
+			LeadID       uuid.UUID  `json:"lead_id"`
+			Name         string     `json:"name"`
+			Description  string     `json:"description"`
+			Capacity     int        `json:"capacity"`
+			Status       string     `json:"status"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -221,13 +221,13 @@ func (h *OrgHandler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			DepartmentID uuid.UUID `json:"department_id"`
+			DepartmentID *uuid.UUID `json:"department_id"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		t, err := h.Svc.MoveTeamBetweenDepartments(r.Context(), companyID, id, body.DepartmentID)
+		t, err := h.Svc.AssignTeamDepartment(r.Context(), companyID, id, body.DepartmentID)
 		if err != nil {
 			WriteErr(w, err)
 			return

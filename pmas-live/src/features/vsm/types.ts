@@ -24,7 +24,7 @@ export interface Department {
 export interface Team {
   id: string;
   company_id: string;
-  department_id: string;
+  department_id?: string | null;
   lead_id?: string | null;
   name: string;
   description: string;

@@ -74,13 +74,13 @@ func (c *Company) Delete() error {
 
 type Department struct {
 	shared.BaseModel
-	CompanyID     uuid.UUID  `json:"company_id"`
-	ManagerID     *uuid.UUID `json:"manager_id"`
-	Name          string     `json:"name"`
-	Description   string     `json:"description"`
-	Status        string     `json:"status"`
-	MemberCount   int64      `json:"member_count,omitempty"`
-	TeamCount     int64      `json:"team_count,omitempty"`
+	CompanyID   uuid.UUID  `json:"company_id"`
+	ManagerID   *uuid.UUID `json:"manager_id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	MemberCount int64      `json:"member_count,omitempty"`
+	TeamCount   int64      `json:"team_count,omitempty"`
 }
 
 func NewDepartment(companyID uuid.UUID, name string, managerID uuid.UUID) (*Department, error) {
@@ -148,7 +148,7 @@ func (d *Department) SetStatus(status string) error {
 type Team struct {
 	shared.BaseModel
 	CompanyID    uuid.UUID  `json:"company_id"`
-	DepartmentID uuid.UUID  `json:"department_id"`
+	DepartmentID *uuid.UUID `json:"department_id"`
 	LeadID       *uuid.UUID `json:"lead_id"`
 	Name         string     `json:"name"`
 	Description  string     `json:"description"`
@@ -156,12 +156,12 @@ type Team struct {
 	Status       string     `json:"status"`
 }
 
-func NewTeam(companyID, departmentID, leadID uuid.UUID, name, description string, capacity int) (*Team, error) {
+func NewTeam(companyID uuid.UUID, departmentID *uuid.UUID, leadID uuid.UUID, name, description string, capacity int) (*Team, error) {
 	name = strings.TrimSpace(name)
 	if companyID == uuid.Nil {
 		return nil, ErrCompanyRequired
 	}
-	if departmentID == uuid.Nil {
+	if departmentID != nil && *departmentID == uuid.Nil {
 		return nil, ErrDepartmentRequired
 	}
 	if leadID == uuid.Nil {
@@ -304,15 +304,15 @@ func (e *Employee) FullName() string {
 
 // TeamMemberView is a membership row with employee profile + audit fields.
 type TeamMemberView struct {
-	EmployeeID uuid.UUID  `json:"employee_id"`
-	FirstName  string     `json:"first_name"`
-	LastName   string     `json:"last_name"`
-	Email      string     `json:"email"`
-	JobTitle   string     `json:"job_title"`
-	Status     string     `json:"status"`
-	TeamRole   string     `json:"team_role"`
-	AssignedAt time.Time  `json:"assigned_at"`
-	AssignedBy *int       `json:"assigned_by,omitempty"`
+	EmployeeID uuid.UUID `json:"employee_id"`
+	FirstName  string    `json:"first_name"`
+	LastName   string    `json:"last_name"`
+	Email      string    `json:"email"`
+	JobTitle   string    `json:"job_title"`
+	Status     string    `json:"status"`
+	TeamRole   string    `json:"team_role"`
+	AssignedAt time.Time `json:"assigned_at"`
+	AssignedBy *int      `json:"assigned_by,omitempty"`
 }
 
 // TeamMembership is the raw company-wide membership row. It backs the "one

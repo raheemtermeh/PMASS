@@ -189,12 +189,11 @@ func (r *TeamRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*orga
 	row := r.db.Q(ctx).QueryRowContext(ctx, `
 		SELECT id, company_id, department_id, lead_id, name, description, COALESCE(capacity,0), status, version, created_at, updated_at
 		FROM teams WHERE company_id=$1 AND id=$2`, companyID, id)
-	var t organization.Team
-	err := row.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Capacity, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt)
+	t, err := scanTeam(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, organization.ErrTeamNotFound
 	}
-	return &t, err
+	return t, err
 }
 
 func (r *TeamRepo) List(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]organization.Team, int64, error) {
@@ -236,13 +235,42 @@ func (r *TeamRepo) list(ctx context.Context, companyID, departmentID uuid.UUID, 
 	defer rows.Close()
 	out := make([]organization.Team, 0)
 	for rows.Next() {
-		var t organization.Team
-		if err := rows.Scan(&t.ID, &t.CompanyID, &t.DepartmentID, &t.LeadID, &t.Name, &t.Description, &t.Capacity, &t.Status, &t.Version, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		t, err := scanTeam(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		out = append(out, t)
+		out = append(out, *t)
 	}
 	return out, total, nil
+}
+
+type teamScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTeam(row teamScanner) (*organization.Team, error) {
+	var t organization.Team
+	var departmentID uuid.NullUUID
+	if err := row.Scan(
+		&t.ID,
+		&t.CompanyID,
+		&departmentID,
+		&t.LeadID,
+		&t.Name,
+		&t.Description,
+		&t.Capacity,
+		&t.Status,
+		&t.Version,
+		&t.CreatedAt,
+		&t.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if departmentID.Valid {
+		id := departmentID.UUID
+		t.DepartmentID = &id
+	}
+	return &t, nil
 }
 
 func (r *TeamRepo) Update(ctx context.Context, t *organization.Team) error {

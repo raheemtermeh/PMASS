@@ -150,7 +150,12 @@ export const dashboardDict: DictModule = {
       departmentsHint:
         "Own Product responsibility at each Stage. Manager is required. Archive instead of deleting.",
       teamsHint:
-        "Execution units under a department. Capacity feeds reporting. A team cannot be archived while it still has members, open features or open task assignments — reassign them first.",
+        "Execution units may be independent or linked to a department. Department links improve structure and reporting. Capacity feeds reporting. A team cannot be archived while it still has members, open features or open task assignments — reassign them first.",
+      independentTeam: "Independent team",
+      independentTeams: "Independent teams",
+      independentTeamsHint: "Teams that are not assigned to a department.",
+      noDepartmentIndependent: "No department / Independent team",
+      makeIndependent: "Make independent",
       moveTo: "Move to…",
       moveToDepartment: "Move {name} to another department",
       selectTeam: "Select a team…",
@@ -237,7 +242,12 @@ export const dashboardDict: DictModule = {
       departmentsHint:
         "مسئولیت محصول در هر مرحله را بر عهده دارند. تعیین مدیر الزامی است. به‌جای حذف، بایگانی کنید.",
       teamsHint:
-        "واحدهای اجرایی زیرمجموعه یک دپارتمان. ظرفیت تیم در گزارش‌ها لحاظ می‌شود. تا زمانی که تیم عضو، قابلیت باز یا وظیفه باز داشته باشد قابل بایگانی نیست؛ ابتدا آن‌ها را واگذار کنید.",
+        "واحدهای اجرایی می‌توانند مستقل باشند یا به دپارتمان متصل شوند. اتصال به دپارتمان، ساختاردهی و گزارش‌گیری را بهبود می‌دهد. ظرفیت تیم در گزارش‌ها لحاظ می‌شود. تا زمانی که تیم عضو، قابلیت باز یا وظیفه باز داشته باشد قابل بایگانی نیست؛ ابتدا آن‌ها را واگذار کنید.",
+      independentTeam: "تیم مستقل",
+      independentTeams: "تیم‌های مستقل",
+      independentTeamsHint: "تیم‌هایی که به هیچ دپارتمانی تخصیص داده نشده‌اند.",
+      noDepartmentIndependent: "بدون دپارتمان / تیم مستقل",
+      makeIndependent: "تبدیل به تیم مستقل",
       moveTo: "انتقال به…",
       moveToDepartment: "انتقال {name} به دپارتمان دیگر",
       selectTeam: "یک تیم انتخاب کنید…",

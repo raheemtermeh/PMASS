@@ -58,7 +58,7 @@ func EnsureVSMSchema(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS teams (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			company_id UUID NOT NULL REFERENCES companies(id),
-			department_id UUID NOT NULL REFERENCES departments(id),
+			department_id UUID REFERENCES departments(id),
 			lead_id UUID REFERENCES employees(id),
 			name VARCHAR(255) NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
@@ -67,6 +67,7 @@ func EnsureVSMSchema(db *sql.DB) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`ALTER TABLE teams ALTER COLUMN department_id DROP NOT NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_teams_company ON teams(company_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_teams_department ON teams(department_id)`,
 
