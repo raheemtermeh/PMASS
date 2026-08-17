@@ -7,7 +7,6 @@ export type WidgetId =
   | "deadlines"
   | "teamWorkload"
   | "pipelineAlerts"
-  | "aiSummary"
   | "quickActions"
   | "assignments"
   | "workflow"
@@ -33,7 +32,6 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "deadlines", defaultVisible: true, defaultSize: "half" },
   { id: "teamWorkload", defaultVisible: true, defaultSize: "half" },
   { id: "pipelineAlerts", defaultVisible: true, defaultSize: "half" },
-  { id: "aiSummary", defaultVisible: false, defaultSize: "half" },
   { id: "quickActions", defaultVisible: true, defaultSize: "full" },
   { id: "assignments", defaultVisible: true, defaultSize: "full" },
   { id: "workflow", defaultVisible: true, defaultSize: "full" },

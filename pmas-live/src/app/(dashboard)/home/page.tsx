@@ -17,7 +17,6 @@ import {
 } from "@/features/dashboard/charts";
 import { LifecycleFlowGraph } from "@/features/dashboard/LifecycleFlowGraph";
 import {
-  AiSummaryWidget,
   CommandWidgetShell,
   MyWorkWidget,
   PipelineAlertsWidget,
@@ -109,7 +108,6 @@ export default function HomePage() {
         deadlines: t("dashboard.upcomingDeadlines"),
         teamWorkload: t("dashboard.teamWorkload"),
         pipelineAlerts: t("dashboard.pipelineAlerts"),
-        aiSummary: t("dashboard.aiSummary"),
         quickActions: t("dashboard.quickActions"),
         assignments: t("dashboard.myWorkspaceAssignments"),
         workflow: t("dashboard.workflowPipeline"),
@@ -263,8 +261,6 @@ export default function HomePage() {
         return <TeamWorkloadWidget key={id} items={dash?.team_workload} {...extras} />;
       case "pipelineAlerts":
         return <PipelineAlertsWidget key={id} items={dash?.pipeline_alerts} {...extras} />;
-      case "aiSummary":
-        return <AiSummaryWidget key={id} {...extras} />;
       case "quickActions":
         return (
           <CommandWidgetShell

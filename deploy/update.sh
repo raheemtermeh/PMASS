@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PMAS server update: git pull → Docker build → restart api/web/gateway
+# PMAS server update: git pull → prune old images → Docker build → restart
+# Old termeh-pmas tags and unused layers are deleted each run so the server disk does not fill.
 # Usage:
 #   bash deploy/update.sh              # pull + build + up
 #   bash deploy/update.sh --skip-git   # build + up only (files already synced)
@@ -101,7 +102,36 @@ remove_legacy_v1_containers() {
   done <<< "$names"
 }
 
-ts="$(date -u +%Y%m%d-%H%M%S)"
+disk_free() {
+  df -h / 2>/dev/null | awk 'NR==2{print $3" used, "$4" free ("$5" full)"}' || echo "unknown"
+}
+
+# Drop extra api/web tags (timestamp/sha) then delete every image not used by a container.
+# Never prunes volumes — Postgres data stays.
+reclaim_unused_images() {
+  local extra
+  extra="$(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+    | grep -E '^termeh-pmas-(api|web):' \
+    | grep -vE ':latest$' \
+    || true)"
+  if [[ -n "$extra" ]]; then
+    echo "      removing old app image tags:"
+    while read -r img; do
+      [[ -z "$img" || "$img" == *"<none>"* ]] && continue
+      echo "        - $img"
+      docker rmi "$img" >/dev/null 2>&1 || true
+    done <<< "$extra"
+  fi
+  docker image prune -af || true
+}
+
+# Cap BuildKit cache so Next.js/Go layers cannot grow without bound.
+reclaim_build_cache() {
+  docker builder prune -af --keep-storage=2GB >/dev/null 2>&1 \
+    || docker builder prune -f >/dev/null 2>&1 \
+    || true
+}
+
 echo "========================================"
 echo " PMAS update  $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo " dir: $ROOT"
@@ -195,8 +225,9 @@ sha="$(git rev-parse --short HEAD)"
 echo "      HEAD = $(git log -1 --oneline)"
 
 echo
-echo "[2/6] free dangling docker layers (safe prune)"
-docker image prune -f >/dev/null 2>&1 || true
+echo "[2/6] reclaim unused Docker images (running stack kept)"
+echo "      disk $(disk_free)"
+reclaim_unused_images
 remove_legacy_v1_containers
 remove_stale_compose_containers
 # Drop legacy standalone grafana container if it exists (Grafana is local-only now)
@@ -214,20 +245,13 @@ fi
 compose build
 
 echo
-echo "[4/6] tag release images: $ts / $sha"
-docker tag termeh-pmas-api:latest "termeh-pmas-api:${ts}"
-docker tag termeh-pmas-api:latest "termeh-pmas-api:${sha}"
-docker tag termeh-pmas-web:latest "termeh-pmas-web:${ts}"
-docker tag termeh-pmas-web:latest "termeh-pmas-web:${sha}"
-
-echo
-echo "[5/6] restart stack (db api web gateway + loki promtail if configured)"
+echo "[4/6] restart stack (db api web gateway + loki promtail if configured)"
 compose down --remove-orphans >/dev/null 2>&1 || true
 remove_stale_compose_containers
 compose up -d --remove-orphans
 
 echo
-echo "[6/6] health check (retry up to ~2 min)"
+echo "[5/6] health check (retry up to ~2 min)"
 health=""
 home_code="000"
 loki_ready=""
@@ -261,13 +285,19 @@ fi
 compose ps || true
 
 echo
-echo "Images tagged:"
-docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedSince}}' \
+echo "[6/6] drop previous app images + cap Docker build cache at 2GB"
+reclaim_unused_images
+reclaim_build_cache
+echo "      disk $(disk_free)"
+
+echo
+echo "App images kept:"
+docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}' \
   | grep -E 'REPOSITORY|termeh-pmas-' || true
 
 echo
 echo "Done. App URL: http://server.linooxel.com:3185"
-echo "Git: $sha | Image tags: latest, $ts, $sha"
+echo "Git: $sha | Image tag: latest (old tags pruned)"
 
 if [[ "$ok" -ne 1 ]]; then
   echo

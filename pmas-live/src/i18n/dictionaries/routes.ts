@@ -3,12 +3,8 @@ import type { DictModule } from "../types";
 /** Route headers rendered by the top bar — one entry per ViewId in shared/routes.ts. */
 export const routesDict: DictModule = {
   en: {
-    title: {
-      ai: "PMASS AI",
-    },
     subtitle: {
       home: "Products, tasks, workflows, and activity at a glance",
-      ai: "Natural language assistant for products, projects, and tasks",
       status: "Live state of products, pipelines, stages, and features",
       organization: "Company structure — departments, teams, and employees",
       products: "Product aggregate — pipeline, stages, and execution",
@@ -30,12 +26,8 @@ export const routesDict: DictModule = {
     },
   },
   fa: {
-    title: {
-      ai: "هوش مصنوعی PMASS",
-    },
     subtitle: {
       home: "نمای کلی محصولات، وظایف، گردش‌کارها و فعالیت‌ها",
-      ai: "دستیار زبان طبیعی برای محصولات، پروژه‌ها و وظایف",
       status: "وضعیت زنده محصولات، خطوط تولید، مراحل و قابلیت‌ها",
       organization: "ساختار شرکت — دپارتمان‌ها، تیم‌ها و کارکنان",
       products: "نمای یکپارچه محصول — خط تولید، مراحل و اجرا",

@@ -3,4 +3,3 @@ export { MyWorkWidget } from "./MyWorkWidget";
 export { UpcomingDeadlinesWidget } from "./UpcomingDeadlinesWidget";
 export { TeamWorkloadWidget } from "./TeamWorkloadWidget";
 export { PipelineAlertsWidget } from "./PipelineAlertsWidget";
-export { AiSummaryWidget } from "./AiSummaryWidget";

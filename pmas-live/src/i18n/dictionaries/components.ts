@@ -137,12 +137,6 @@ export const componentsDict: DictModule = {
         legacyLegalHr: "Legacy · Legal and HR",
       },
     },
-    ai: {
-      online: "Online",
-      offline: "Offline",
-      stopRecording: "Stop recording",
-      send: "Send message",
-    },
   },
   fa: {
     toast: {
@@ -278,12 +272,6 @@ export const componentsDict: DictModule = {
         legacyFinance: "قدیمی · مالی",
         legacyLegalHr: "قدیمی · حقوقی و منابع انسانی",
       },
-    },
-    ai: {
-      online: "آنلاین",
-      offline: "آفلاین",
-      stopRecording: "توقف ضبط صدا",
-      send: "ارسال پیام",
     },
   },
 };
