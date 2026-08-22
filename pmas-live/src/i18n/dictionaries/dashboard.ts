@@ -57,7 +57,7 @@ export const dashboardDict: DictModule = {
       projectQuickHint:
         "Type a name and press Enter — details can be filled later with Edit.",
       featureHint:
-        "Click a feature name above (or create one with the quick bar), then add tasks in one line.",
+        "Click a feature row above (or create one with the quick bar), then add tasks in one line.",
       taskHint:
         "Type a task and press Enter. Assign / due date / checklist can come later.",
       quickFeaturePlaceholder: "Type a feature name and press Enter…",
@@ -281,7 +281,7 @@ export const dashboardDict: DictModule = {
       projectQuickHint:
         "نام را وارد کنید و Enter بزنید؛ جزئیات را بعداً با ویرایش تکمیل کنید.",
       featureHint:
-        "روی نام یک قابلیت در بالا کلیک کنید (یا با نوار سریع یکی بسازید)، سپس وظایف را در یک خط اضافه کنید.",
+        "روی یک ردیف قابلیت در جدول بالا کلیک کنید (یا با نوار سریع یکی بسازید)، سپس وظایف را در یک خط اضافه کنید.",
       taskHint:
         "وظیفه را بنویسید و Enter بزنید. تعیین مسئول، مهلت و چک‌لیست را بعداً می‌توانید اضافه کنید.",
       quickFeaturePlaceholder: "نام قابلیت را بنویسید و Enter بزنید…",

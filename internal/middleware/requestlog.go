@@ -52,7 +52,7 @@ func WithRequestLog(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), requestIDKey{}, reqID)
 		r = r.WithContext(ctx)
 
-		if r.URL.Path == "/health" {
+		if isProbePath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -52,13 +52,15 @@ func (h *Handler) listMarketingCampaigns(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT c.id, c.name, c.leads, c.conversion, c.spend, c.status, c.dependent_subsystem_id, COALESCE(s.status, 'healthy')
 		FROM marketing_campaigns c
 		LEFT JOIN subsystems s ON c.dependent_subsystem_id = s.id AND s.tenant_id = c.tenant_id
 		WHERE c.tenant_id = $1
 		ORDER BY c.id
-	`, tenantID)
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying campaigns: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

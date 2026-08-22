@@ -329,5 +329,8 @@ func EnsureMVPExtras(db *sql.DB) error {
 		}
 	}
 	log.Println("[Bootstrap] MVP extras schema ready.")
-	return nil
+	if err := EnsurePerfIndexes(db); err != nil {
+		return err
+	}
+	return EnsurePhase2Indexes(db)
 }

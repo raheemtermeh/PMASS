@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
@@ -109,6 +109,19 @@ export default function PlanningClient() {
   const [depsError, setDepsError] = useState("");
   const [checklistTitle, setChecklistTitle] = useState("");
   const [checklistError, setChecklistError] = useState("");
+  const featureSelectSeq = useRef(0);
+
+  const selectProject = (id: string | number) => {
+    setProjectId(String(id));
+    setFeatureId("");
+    setSelectedTaskId("");
+  };
+
+  const selectFeature = (id: string | number) => {
+    featureSelectSeq.current += 1;
+    setFeatureId(String(id));
+    setSelectedTaskId("");
+  };
 
   const { data: products = [] } = useQuery({
     queryKey: ["vsm-products", "list", 100],
@@ -141,14 +154,18 @@ export default function PlanningClient() {
 
   const { data: features = [], isLoading: featuresLoading } = useQuery({
     queryKey: ["vsm-features", projectId],
-    queryFn: () => httpClient.get<Feature[]>(`/api/v1/features?project_id=${projectId}`),
+    queryFn: () =>
+      httpClient.get<Feature[]>(`/api/v1/features?project_id=${projectId}&page_size=100`),
     enabled: Boolean(projectId),
     staleTime: 20_000,
   });
 
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
     queryKey: ["vsm-tasks", featureId],
-    queryFn: () => httpClient.get<Task[]>(`/api/v1/tasks?feature_id=${featureId}`),
+    queryFn: ({ queryKey }) => {
+      const [, fid] = queryKey as [string, string];
+      return httpClient.get<Task[]>(`/api/v1/tasks?feature_id=${fid}&page_size=100`);
+    },
     enabled: Boolean(featureId),
     staleTime: 20_000,
   });
@@ -305,6 +322,7 @@ export default function PlanningClient() {
   };
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+  const selectedFeature = features.find((f) => String(f.id) === featureId) ?? null;
 
   function onAddChecklistItem(e: FormEvent) {
     e.preventDefault();
@@ -356,6 +374,8 @@ export default function PlanningClient() {
         }
         isLoading={projectsLoading}
         items={projects}
+        selectedRowId={projectId || null}
+        onRowSelect={(row) => selectProject(row.id)}
         createDefaults={productId ? { product_id: productId } : undefined}
         createFields={[
           {
@@ -373,18 +393,10 @@ export default function PlanningClient() {
             key: "name",
             label: t("planning.project"),
             render: (r) => (
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => {
-                  setProjectId(r.id);
-                  setFeatureId("");
-                  setSelectedTaskId("");
-                }}
-              >
+              <>
                 {r.name}
                 {r.code ? <span className="text-dim"> · {r.code}</span> : null}
-              </button>
+              </>
             ),
           },
           {
@@ -493,9 +505,7 @@ export default function PlanningClient() {
           setProductId(pid);
           const id = (created as Project | undefined)?.id;
           if (id) {
-            setProjectId(id);
-            setFeatureId("");
-            setSelectedTaskId("");
+            selectProject(id);
           }
         }}
         onUpdate={async (id, v) => {
@@ -546,6 +556,8 @@ export default function PlanningClient() {
           emptyDescription={t("emptyStates.noFeatures")}
           isLoading={featuresLoading}
           items={features}
+          selectedRowId={featureId || null}
+          onRowSelect={(row) => selectFeature(row.id)}
           quickCreate={{
             placeholder: t("planning.quickFeaturePlaceholder"),
             fieldName: "title",
@@ -565,17 +577,10 @@ export default function PlanningClient() {
               key: "title",
               label: t("planning.feature"),
               render: (r) => (
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => {
-                    setFeatureId(r.id);
-                    setSelectedTaskId("");
-                  }}
-                >
+                <>
                   {r.title}
                   {r.code ? <span className="text-dim"> · {r.code}</span> : null}
-                </button>
+                </>
               ),
             },
             {
@@ -659,14 +664,15 @@ export default function PlanningClient() {
             description: r.description ?? "",
           })}
           onCreate={async (v) => {
+            const seqAtCreate = featureSelectSeq.current;
             const created = await createFeature.mutateAsync({
               project_id: projectId,
               title: v.title,
               priority: v.priority || "MEDIUM",
             });
             const id = (created as Feature | undefined)?.id;
-            if (id) {
-              setFeatureId(id);
+            if (id && seqAtCreate === featureSelectSeq.current) {
+              setFeatureId(String(id));
               setSelectedTaskId("");
             }
           }}
@@ -789,7 +795,11 @@ export default function PlanningClient() {
           </div>
 
           <ResourceManager
-            title={t("planning.tasks")}
+            title={
+              selectedFeature
+                ? `${t("planning.tasks")} — ${selectedFeature.title}`
+                : t("planning.tasks")
+            }
             description={t("planning.taskHint")}
             createLabel={t("planning.createTask")}
             emptyTitle={t("planning.noTasks")}

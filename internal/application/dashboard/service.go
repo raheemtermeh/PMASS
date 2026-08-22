@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"PMAS/internal/infrastructure/postgres"
 )
@@ -167,8 +168,25 @@ type Dashboard struct {
 	PipelineAlerts    []PipelineAlert    `json:"pipeline_alerts"`
 	PipelineStatuses  []PipelineStatus   `json:"pipeline_statuses"`
 	DeptProducts      []DeptProduct      `json:"department_products"`
-	RecentActivities  []map[string]any   `json:"recent_activities"`
-	Notifications     []map[string]any   `json:"notifications"`
+	RecentActivities  []ActivityItem     `json:"recent_activities"`
+	Notifications     []NotificationItem `json:"notifications"`
+}
+
+type ActivityItem struct {
+	ID         string    `json:"id"`
+	EntityType string    `json:"entity_type"`
+	EntityID   string    `json:"entity_id"`
+	Action     string    `json:"action"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type NotificationItem struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	IsRead    bool      `json:"is_read"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // StatusDashboard is the compact read model used by the live Status Board.
@@ -200,47 +218,21 @@ func (s *Service) GetStatus(ctx context.Context, companyID uuid.UUID) (*StatusDa
 	}
 	_ = q.QueryRowContext(ctx, `
 		SELECT
-			COUNT(*) FILTER (WHERE status='ACTIVE'),
-			COUNT(*) FILTER (WHERE status='COMPLETED'),
-			COUNT(*) FILTER (WHERE status='ON_HOLD')
-		FROM products
-		WHERE company_id=$1 AND deleted_at IS NULL`, companyID).
-		Scan(&out.Summary.ActiveProducts, &out.Summary.CompletedProducts, &out.Summary.OnHoldProducts)
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM tasks
-		WHERE company_id=$1 AND deleted_at IS NULL
-		  AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).
-		Scan(&out.Summary.OpenTasks)
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL`, companyID).
-		Scan(&out.Summary.Projects)
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM features
-		WHERE company_id=$1 AND deleted_at IS NULL
-		  AND status NOT IN ('COMPLETED','ARCHIVED','DONE')`, companyID).
-		Scan(&out.Summary.OpenFeatures)
-
+			(SELECT COUNT(*) FILTER (WHERE status='ACTIVE') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status='COMPLETED') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status='ON_HOLD') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL
+				AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')),
+			(SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL
+				AND status NOT IN ('COMPLETED','ARCHIVED','DONE'))
+	`, companyID).Scan(
+		&out.Summary.ActiveProducts, &out.Summary.CompletedProducts, &out.Summary.OnHoldProducts,
+		&out.Summary.OpenTasks, &out.Summary.Projects, &out.Summary.OpenFeatures,
+	)
 	out.Flow = loadFlowGraph(ctx, q, companyID)
-	rows, err := q.QueryContext(ctx, `
-		SELECT p.id, p.name, p.status, COALESCE(s.name,'')
-		FROM products p
-		LEFT JOIN stage_instances si ON si.product_id = p.id AND si.status = 'ACTIVE' AND si.company_id = p.company_id
-		LEFT JOIN stages s ON s.id = si.stage_id
-		WHERE p.company_id=$1 AND p.deleted_at IS NULL
-		  AND p.status IN ('ACTIVE','READY','DRAFT','PLANNING','ON_HOLD')
-		ORDER BY p.updated_at DESC LIMIT 15`, companyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var ps PipelineStatus
-		if err := rows.Scan(&ps.ProductID, &ps.ProductName, &ps.Status, &ps.ActiveStage); err != nil {
-			return nil, err
-		}
-		out.PipelineStatuses = append(out.PipelineStatuses, ps)
-	}
-	return out, rows.Err()
+	out.PipelineStatuses = loadPipelineStatuses(ctx, q, companyID)
+	return out, nil
 }
 
 func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid.UUID) (*Dashboard, error) {
@@ -265,130 +257,157 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 		PipelineAlerts:    []PipelineAlert{},
 		PipelineStatuses:  []PipelineStatus{},
 		DeptProducts:      []DeptProduct{},
-		RecentActivities:  []map[string]any{},
-		Notifications:     []map[string]any{},
+		RecentActivities:  []ActivityItem{},
+		Notifications:     []NotificationItem{},
 	}
 
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ACTIVE' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.ActiveProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='COMPLETED' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.CompletedProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status IN ('DRAFT','READY','PLANNING') AND deleted_at IS NULL`, companyID).Scan(&out.Summary.DraftReadyProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND status='ON_HOLD' AND deleted_at IS NULL`, companyID).Scan(&out.Summary.OnHoldProducts)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OpenTasks)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND due_date < NOW() AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OverdueTasks)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('COMPLETED','DONE')`, companyID).Scan(&out.Summary.CompletedTasks)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM notifications WHERE company_id=$1 AND is_read=false AND COALESCE(is_archived,false)=false`, companyID).Scan(&out.Summary.UnreadNotifs)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM employees WHERE company_id=$1`, companyID).Scan(&out.Summary.Employees)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM departments WHERE company_id=$1 AND status='ACTIVE'`, companyID).Scan(&out.Summary.Departments)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL`, companyID).Scan(&out.Summary.Projects)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('ACTIVE','IN_PROGRESS','PLANNING')`, companyID).Scan(&out.Summary.ActiveProjects)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL`, companyID).Scan(&out.Summary.Features)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL AND status NOT IN ('COMPLETED','ARCHIVED','DONE')`, companyID).Scan(&out.Summary.OpenFeatures)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL AND status IN ('COMPLETED','DONE')`, companyID).Scan(&out.Summary.CompletedFeatures)
-	_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE company_id=$1 AND deleted_at IS NULL AND status='ACTIVE'`, companyID).Scan(&out.Summary.ActiveWorkflows)
-
-	out.Charts.ProductsByStatus = scanNamedCounts(ctx, q, `
-		SELECT status, COUNT(*) FROM products WHERE company_id=$1 AND deleted_at IS NULL
-		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
-	out.Charts.TasksByStatus = scanNamedCounts(ctx, q, `
-		SELECT status, COUNT(*) FROM tasks WHERE company_id=$1
-		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
-	out.Charts.TasksByPriority = scanNamedCounts(ctx, q, `
-		SELECT priority, COUNT(*) FROM tasks WHERE company_id=$1
-		GROUP BY priority ORDER BY COUNT(*) DESC`, companyID)
-	out.Charts.StagesByStatus = scanNamedCounts(ctx, q, `
-		SELECT status, COUNT(*) FROM stage_instances WHERE company_id=$1
-		GROUP BY status ORDER BY COUNT(*) DESC`, companyID)
-	out.Charts.ActivityByDay = scanActivityDays(ctx, q, companyID, 14)
+	loadSummary(ctx, q, companyID, &out.Summary)
+	loadCharts(ctx, q, companyID, &out.Charts)
 	out.Flow = loadFlowGraph(ctx, q, companyID)
 
 	if employeeID != nil && *employeeID != uuid.Nil {
-		rows, err := q.QueryContext(ctx, `
-			SELECT id, title, status, priority, due_date FROM tasks
-			WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND status NOT IN ('ARCHIVED','CANCELLED')
-			ORDER BY created_at DESC LIMIT 10`, companyID, *employeeID)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var t MyTask
-				if err := rows.Scan(&t.ID, &t.Title, &t.Status, &t.Priority, &t.DueDate); err == nil {
-					out.MyTasks = append(out.MyTasks, t)
-				}
-			}
-		}
-
-		prows, err := q.QueryContext(ctx, `
-			SELECT id, name, status FROM products
-			WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
-			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
-		if err == nil {
-			defer prows.Close()
-			for prows.Next() {
-				var n NamedID
-				if err := prows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
-					out.MyProducts = append(out.MyProducts, n)
-				}
-			}
-		}
-
-		pjrows, err := q.QueryContext(ctx, `
-			SELECT id, name, status FROM projects
-			WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
-			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
-		if err == nil {
-			defer pjrows.Close()
-			for pjrows.Next() {
-				var n NamedID
-				if err := pjrows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
-					out.MyProjects = append(out.MyProjects, n)
-				}
-			}
-		}
-
-		frows, err := q.QueryContext(ctx, `
-			SELECT id, title, status FROM features
-			WHERE company_id=$1 AND deleted_at IS NULL AND owner_id=$2
-			ORDER BY updated_at DESC LIMIT 8`, companyID, *employeeID)
-		if err == nil {
-			defer frows.Close()
-			for frows.Next() {
-				var n NamedID
-				if err := frows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
-					out.MyFeatures = append(out.MyFeatures, n)
-				}
-			}
-		}
-
-		_ = q.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM notifications
-			WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false`,
-			companyID, *employeeID).Scan(&out.Summary.UnreadNotifs)
-
-		nrows, err := q.QueryContext(ctx, `
-			SELECT id::text, type, title, body, is_read, created_at
-			FROM notifications
-			WHERE company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false
-			ORDER BY created_at DESC LIMIT 10`, companyID, *employeeID)
-		if err == nil {
-			defer nrows.Close()
-			for nrows.Next() {
-				var id, typ, title, body string
-				var isRead bool
-				var created any
-				if err := nrows.Scan(&id, &typ, &title, &body, &isRead, &created); err == nil {
-					out.Notifications = append(out.Notifications, map[string]any{
-						"id": id, "type": typ, "title": title, "body": body, "is_read": isRead, "created_at": created,
-					})
-				}
-			}
-		}
-
+		loadPersonal(ctx, q, companyID, *employeeID, out)
 		loadMyWork(ctx, q, companyID, *employeeID, &out.MyWork)
 	}
 
 	loadUpcomingDeadlines(ctx, q, companyID, &out.UpcomingDeadlines)
 	loadTeamWorkload(ctx, q, companyID, &out.TeamWorkload)
 	loadPipelineAlerts(ctx, q, companyID, &out.PipelineAlerts)
+	out.PipelineStatuses = loadPipelineStatuses(ctx, q, companyID)
+	loadDeptProducts(ctx, q, companyID, &out.DeptProducts)
+	loadRecentActivities(ctx, q, companyID, &out.RecentActivities)
 
+	if employeeID == nil || *employeeID == uuid.Nil {
+		loadCompanyNotifications(ctx, q, companyID, &out.Notifications)
+	}
+
+	return out, nil
+}
+
+func loadSummary(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *Summary) {
+	_ = q.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FILTER (WHERE status='ACTIVE') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status='COMPLETED') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status IN ('DRAFT','READY','PLANNING')) FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status='ON_HOLD') FROM products WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE due_date < NOW() AND status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status IN ('COMPLETED','DONE')) FROM tasks WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FROM notifications WHERE company_id=$1 AND is_read=false AND COALESCE(is_archived,false)=false),
+			(SELECT COUNT(*) FROM employees WHERE company_id=$1),
+			(SELECT COUNT(*) FROM departments WHERE company_id=$1 AND status='ACTIVE'),
+			(SELECT COUNT(*) FROM projects WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status IN ('ACTIVE','IN_PROGRESS','PLANNING')) FROM projects WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FROM features WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status NOT IN ('COMPLETED','ARCHIVED','DONE')) FROM features WHERE company_id=$1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FILTER (WHERE status IN ('COMPLETED','DONE')) FROM features WHERE company_id=$1 AND deleted_at IS NULL)
+	`, companyID).Scan(
+		&out.ActiveProducts, &out.CompletedProducts, &out.DraftReadyProducts, &out.OnHoldProducts,
+		&out.OpenTasks, &out.OverdueTasks, &out.CompletedTasks, &out.UnreadNotifs,
+		&out.Employees, &out.Departments, &out.Projects, &out.ActiveProjects,
+		&out.Features, &out.OpenFeatures, &out.CompletedFeatures,
+	)
+	out.ActiveWorkflows = out.ActiveProducts
+}
+
+func loadCharts(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *Charts) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT 'products_by_status', status, COUNT(*) FROM products WHERE company_id=$1 AND deleted_at IS NULL GROUP BY status
+		UNION ALL
+		SELECT 'tasks_by_status', status, COUNT(*) FROM tasks WHERE company_id=$1 GROUP BY status
+		UNION ALL
+		SELECT 'tasks_by_priority', priority, COUNT(*) FROM tasks WHERE company_id=$1 GROUP BY priority
+		UNION ALL
+		SELECT 'stages_by_status', status, COUNT(*) FROM stage_instances WHERE company_id=$1 GROUP BY status`, companyID)
+	if err != nil {
+		out.ActivityByDay = scanActivityDays(ctx, q, companyID, 14)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, name string
+		var count int64
+		if err := rows.Scan(&kind, &name, &count); err != nil || name == "" {
+			continue
+		}
+		item := NamedCount{Name: name, Count: count}
+		switch kind {
+		case "products_by_status":
+			out.ProductsByStatus = append(out.ProductsByStatus, item)
+		case "tasks_by_status":
+			out.TasksByStatus = append(out.TasksByStatus, item)
+		case "tasks_by_priority":
+			out.TasksByPriority = append(out.TasksByPriority, item)
+		case "stages_by_status":
+			out.StagesByStatus = append(out.StagesByStatus, item)
+		}
+	}
+	out.ActivityByDay = scanActivityDays(ctx, q, companyID, 14)
+}
+
+func loadPersonal(ctx context.Context, q dashQuerier, companyID, employeeID uuid.UUID, out *Dashboard) {
+	if rows, err := q.QueryContext(ctx, `
+		SELECT id, title, status, priority, due_date FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND status NOT IN ('ARCHIVED','CANCELLED')
+		ORDER BY created_at DESC LIMIT 10`, companyID, employeeID); err == nil {
+		for rows.Next() {
+			var t MyTask
+			if err := rows.Scan(&t.ID, &t.Title, &t.Status, &t.Priority, &t.DueDate); err == nil {
+				out.MyTasks = append(out.MyTasks, t)
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := q.QueryContext(ctx, `
+		SELECT id, name, status FROM products
+		WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
+		ORDER BY updated_at DESC LIMIT 8`, companyID, employeeID); err == nil {
+		for rows.Next() {
+			var n NamedID
+			if err := rows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+				out.MyProducts = append(out.MyProducts, n)
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := q.QueryContext(ctx, `
+		SELECT id, name, status FROM projects
+		WHERE company_id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR manager_id=$2)
+		ORDER BY updated_at DESC LIMIT 8`, companyID, employeeID); err == nil {
+		for rows.Next() {
+			var n NamedID
+			if err := rows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+				out.MyProjects = append(out.MyProjects, n)
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := q.QueryContext(ctx, `
+		SELECT id, title, status FROM features
+		WHERE company_id=$1 AND deleted_at IS NULL AND owner_id=$2
+		ORDER BY updated_at DESC LIMIT 8`, companyID, employeeID); err == nil {
+		for rows.Next() {
+			var n NamedID
+			if err := rows.Scan(&n.ID, &n.Name, &n.Status); err == nil {
+				out.MyFeatures = append(out.MyFeatures, n)
+			}
+		}
+		rows.Close()
+	}
+	_ = q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false`,
+		companyID, employeeID).Scan(&out.Summary.UnreadNotifs)
+	loadNotifications(ctx, q, `
+		SELECT id::text, type, title, body, is_read, created_at
+		FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false
+		ORDER BY created_at DESC LIMIT 10`, []any{companyID, employeeID}, &out.Notifications)
+}
+
+func loadPipelineStatuses(ctx context.Context, q dashQuerier, companyID uuid.UUID) []PipelineStatus {
+	out := []PipelineStatus{}
 	rows, err := q.QueryContext(ctx, `
 		SELECT p.id, p.name, p.status, COALESCE(s.name,'')
 		FROM products p
@@ -396,71 +415,75 @@ func (s *Service) Get(ctx context.Context, companyID uuid.UUID, employeeID *uuid
 		LEFT JOIN stages s ON s.id = si.stage_id
 		WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.status IN ('ACTIVE','READY','DRAFT','PLANNING','ON_HOLD')
 		ORDER BY p.updated_at DESC LIMIT 15`, companyID)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var ps PipelineStatus
-			if err := rows.Scan(&ps.ProductID, &ps.ProductName, &ps.Status, &ps.ActiveStage); err == nil {
-				out.PipelineStatuses = append(out.PipelineStatuses, ps)
-			}
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ps PipelineStatus
+		if err := rows.Scan(&ps.ProductID, &ps.ProductName, &ps.Status, &ps.ActiveStage); err == nil {
+			out = append(out, ps)
 		}
 	}
+	return out
+}
 
-	drows, err := q.QueryContext(ctx, `
+func loadDeptProducts(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]DeptProduct) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT d.id, d.name, COUNT(DISTINCT si.product_id)
 		FROM departments d
 		LEFT JOIN stage_instances si ON si.department_id = d.id AND si.status = 'ACTIVE' AND si.company_id = d.company_id
 		WHERE d.company_id=$1 AND d.status='ACTIVE'
 		GROUP BY d.id, d.name
 		ORDER BY d.name`, companyID)
-	if err == nil {
-		defer drows.Close()
-		for drows.Next() {
-			var dp DeptProduct
-			if err := drows.Scan(&dp.DepartmentID, &dp.DepartmentName, &dp.ProductCount); err == nil {
-				out.DeptProducts = append(out.DeptProducts, dp)
-			}
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dp DeptProduct
+		if err := rows.Scan(&dp.DepartmentID, &dp.DepartmentName, &dp.ProductCount); err == nil {
+			*out = append(*out, dp)
 		}
 	}
+}
 
-	arows, err := q.QueryContext(ctx, `
+func loadRecentActivities(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]ActivityItem) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT id::text, entity_type, entity_id::text, action, created_at
 		FROM activity_logs WHERE company_id=$1
 		ORDER BY created_at DESC LIMIT 15`, companyID)
-	if err == nil {
-		defer arows.Close()
-		for arows.Next() {
-			var id, et, eid, action string
-			var created any
-			if err := arows.Scan(&id, &et, &eid, &action, &created); err == nil {
-				out.RecentActivities = append(out.RecentActivities, map[string]any{
-					"id": id, "entity_type": et, "entity_id": eid, "action": action, "created_at": created,
-				})
-			}
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a ActivityItem
+		if err := rows.Scan(&a.ID, &a.EntityType, &a.EntityID, &a.Action, &a.CreatedAt); err == nil {
+			*out = append(*out, a)
 		}
 	}
+}
 
-	if employeeID == nil || *employeeID == uuid.Nil {
-		nrows, err := q.QueryContext(ctx, `
-			SELECT id::text, type, title, body, is_read, created_at
-			FROM notifications WHERE company_id=$1 AND COALESCE(is_archived,false)=false
-			ORDER BY created_at DESC LIMIT 10`, companyID)
-		if err == nil {
-			defer nrows.Close()
-			for nrows.Next() {
-				var id, typ, title, body string
-				var isRead bool
-				var created any
-				if err := nrows.Scan(&id, &typ, &title, &body, &isRead, &created); err == nil {
-					out.Notifications = append(out.Notifications, map[string]any{
-						"id": id, "type": typ, "title": title, "body": body, "is_read": isRead, "created_at": created,
-					})
-				}
-			}
+func loadCompanyNotifications(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]NotificationItem) {
+	loadNotifications(ctx, q, `
+		SELECT id::text, type, title, body, is_read, created_at
+		FROM notifications WHERE company_id=$1 AND COALESCE(is_archived,false)=false
+		ORDER BY created_at DESC LIMIT 10`, []any{companyID}, out)
+}
+
+func loadNotifications(ctx context.Context, q dashQuerier, query string, args []any, out *[]NotificationItem) {
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var n NotificationItem
+		if err := rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &n.IsRead, &n.CreatedAt); err == nil {
+			*out = append(*out, n)
 		}
 	}
-
-	return out, nil
 }
 
 func scanNamedCounts(ctx context.Context, q interface {
@@ -522,63 +545,125 @@ type flowQuerier interface {
 
 func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) FlowGraph {
 	out := FlowGraph{Products: []FlowProduct{}}
-	_ = q.QueryRowContext(ctx, `SELECT COALESCE(name,'') FROM companies WHERE id=$1`, companyID).Scan(&out.CompanyName)
 
+	// Company name + product list in one round trip.
+	// If there are no products, this still returns a single row with company_name.
 	prows, err := q.QueryContext(ctx, `
-		SELECT p.id, p.name, p.status, p.pipeline_id,
+		WITH company AS (
+			SELECT COALESCE(name,'') AS name FROM companies WHERE id=$1
+		)
+		SELECT
+			company.name,
+			p.id, p.name, p.status, p.pipeline_id,
 			COALESCE(pl.name, ''), COALESCE(pl.status, '')
-		FROM products p
+		FROM company
+		LEFT JOIN products p
+			ON p.company_id=$1 AND p.status <> 'ARCHIVED' AND p.deleted_at IS NULL
 		LEFT JOIN pipelines pl ON pl.id = p.pipeline_id AND pl.company_id = p.company_id
-		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED' AND p.deleted_at IS NULL
-		ORDER BY p.updated_at DESC
+		ORDER BY p.updated_at DESC NULLS LAST
 		LIMIT 50`, companyID)
 	if err != nil {
 		return out
 	}
-	defer prows.Close()
 
 	byID := map[uuid.UUID]*FlowProduct{}
 	order := []uuid.UUID{}
 	for prows.Next() {
-		var p FlowProduct
-		var pipelineID uuid.NullUUID
-		p.Stages = []FlowStage{}
-		p.Projects = []FlowProject{}
-		p.Features = []FlowFeature{}
-		if err := prows.Scan(&p.ID, &p.Name, &p.Status, &pipelineID, &p.PipelineName, &p.PipelineStatus); err != nil {
+		var (
+			companyName string
+			productID   uuid.NullUUID
+			pName       sql.NullString
+			pStatus     sql.NullString
+			pipelineID  uuid.NullUUID
+		)
+
+		var pipelineName, pipelineStatus string
+		if err := prows.Scan(
+			&companyName,
+			&productID,
+			&pName,
+			&pStatus,
+			&pipelineID,
+			&pipelineName,
+			&pipelineStatus,
+		); err != nil {
 			continue
+		}
+
+		if out.CompanyName == "" {
+			out.CompanyName = companyName
+		}
+		if !productID.Valid {
+			continue
+		}
+
+		p := FlowProduct{
+			ID:             productID.UUID,
+			Name:           pName.String,
+			Status:         pStatus.String,
+			Stages:         []FlowStage{},
+			Projects:       []FlowProject{},
+			Features:       []FlowFeature{},
+			PipelineName:   pipelineName,
+			PipelineStatus: pipelineStatus,
 		}
 		if pipelineID.Valid {
 			id := pipelineID.UUID
 			p.PipelineID = &id
 		}
+
 		cp := p
 		byID[p.ID] = &cp
 		order = append(order, p.ID)
 	}
+	_ = prows.Err()
+	prows.Close()
 
 	if len(order) == 0 {
 		return out
 	}
 
-	srows, err := q.QueryContext(ctx, `
+	ids := make([]string, len(order))
+	for i, id := range order {
+		ids[i] = id.String()
+	}
+
+	// One query returns stage chain + latest instance status per (product, stage).
+	if srows, err := q.QueryContext(ctx, `
+		WITH latest AS (
+			SELECT product_id, stage_id,
+				CASE
+					WHEN status IS NULL OR status='' THEN 'PENDING'
+					ELSE status
+				END AS status
+			FROM (
+				SELECT
+					product_id, stage_id, status,
+					ROW_NUMBER() OVER (
+						PARTITION BY product_id, stage_id
+						ORDER BY updated_at DESC
+					) AS rn
+				FROM stage_instances
+				WHERE company_id=$1 AND product_id = ANY($2::uuid[])
+			) ranked
+			WHERE rn=1
+		)
 		SELECT p.id, s.id, s.name, s."order",
-			COALESCE((
-				SELECT si.status FROM stage_instances si
-				WHERE si.company_id = p.company_id AND si.product_id = p.id AND si.stage_id = s.id
-				ORDER BY si.updated_at DESC LIMIT 1
-			), 'PENDING')
+			COALESCE(latest.status, 'PENDING') AS status
 		FROM products p
 		INNER JOIN pipelines pl ON pl.id = p.pipeline_id AND pl.company_id = p.company_id
 		INNER JOIN stages s ON s.pipeline_id = pl.id
-		WHERE p.company_id=$1 AND p.status <> 'ARCHIVED' AND p.deleted_at IS NULL
-		ORDER BY p.updated_at DESC, s."order" ASC`, companyID)
-	if err == nil {
-		defer srows.Close()
+		LEFT JOIN latest ON latest.product_id = p.id AND latest.stage_id = s.id
+		WHERE p.company_id=$1 AND p.id = ANY($2::uuid[])
+		ORDER BY p.updated_at DESC, s."order" ASC`, companyID, pq.Array(ids)); err == nil {
 		for srows.Next() {
-			var productID, stageID uuid.UUID
-			var name, status string
-			var ord int
+			var (
+				productID uuid.UUID
+				stageID   uuid.UUID
+				name      string
+				ord       int
+				status    string
+			)
 			if err := srows.Scan(&productID, &stageID, &name, &ord, &status); err != nil {
 				continue
 			}
@@ -588,16 +673,15 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 				})
 			}
 		}
+		srows.Close()
 	}
 
-	jrows, err := q.QueryContext(ctx, `
+	if jrows, err := q.QueryContext(ctx, `
 		SELECT id, product_id, name, status
 		FROM projects
-		WHERE company_id=$1 AND deleted_at IS NULL
+		WHERE company_id=$1 AND deleted_at IS NULL AND product_id = ANY($2::uuid[])
 		ORDER BY updated_at DESC
-		LIMIT 120`, companyID)
-	if err == nil {
-		defer jrows.Close()
+		LIMIT 120`, companyID, pq.Array(ids)); err == nil {
 		for jrows.Next() {
 			var projectID, productID uuid.UUID
 			var name, status string
@@ -610,16 +694,15 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 				})
 			}
 		}
+		jrows.Close()
 	}
 
-	frows, err := q.QueryContext(ctx, `
+	if frows, err := q.QueryContext(ctx, `
 		SELECT id, product_id, project_id, title, status, COALESCE(priority, '')
 		FROM features
-		WHERE company_id=$1 AND deleted_at IS NULL
+		WHERE company_id=$1 AND deleted_at IS NULL AND product_id = ANY($2::uuid[])
 		ORDER BY updated_at DESC
-		LIMIT 200`, companyID)
-	if err == nil {
-		defer frows.Close()
+		LIMIT 200`, companyID, pq.Array(ids)); err == nil {
 		for frows.Next() {
 			var featureID, productID, projectID uuid.UUID
 			var title, status, priority string
@@ -632,6 +715,7 @@ func loadFlowGraph(ctx context.Context, q flowQuerier, companyID uuid.UUID) Flow
 				})
 			}
 		}
+		frows.Close()
 	}
 
 	for _, id := range order {
@@ -686,39 +770,23 @@ const openTaskSQL = `status NOT IN ('COMPLETED','CANCELLED','ARCHIVED','DONE')`
 
 func loadMyWork(ctx context.Context, q dashQuerier, companyID, employeeID uuid.UUID, out *MyWork) {
 	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM tasks
-		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL,
-		companyID, employeeID).Scan(&out.Assigned)
+		SELECT
+			COUNT(*) FILTER (WHERE `+openTaskSQL+`),
+			COUNT(*) FILTER (WHERE `+openTaskSQL+` AND due_date IS NOT NULL
+				AND due_date::date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date),
+			COUNT(*) FILTER (WHERE `+openTaskSQL+` AND due_date IS NOT NULL AND due_date < NOW()),
+			COUNT(*) FILTER (WHERE status='REVIEW')
+		FROM tasks
+		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL`,
+		companyID, employeeID).Scan(&out.Assigned, &out.DueToday, &out.Overdue, &out.WaitingReview)
 
 	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM tasks
-		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL+`
-		  AND due_date IS NOT NULL
-		  AND due_date::date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date`,
-		companyID, employeeID).Scan(&out.DueToday)
-
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM tasks
-		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND `+openTaskSQL+`
-		  AND due_date IS NOT NULL AND due_date < NOW()`,
-		companyID, employeeID).Scan(&out.Overdue)
-
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM tasks
-		WHERE company_id=$1 AND assignee_id=$2 AND deleted_at IS NULL AND status='REVIEW'`,
-		companyID, employeeID).Scan(&out.WaitingReview)
-
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM notifications
-		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false
-		  AND type='MENTION'`,
-		companyID, employeeID).Scan(&out.Mentions)
-
-	_ = q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM notifications
-		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false
-		  AND (type ILIKE '%APPROVAL%' OR type ILIKE '%STAGE%' OR type='STAGE_REJECTED')`,
-		companyID, employeeID).Scan(&out.Approvals)
+		SELECT
+			COUNT(*) FILTER (WHERE type='MENTION'),
+			COUNT(*) FILTER (WHERE type ILIKE '%APPROVAL%' OR type ILIKE '%STAGE%' OR type='STAGE_REJECTED')
+		FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false`,
+		companyID, employeeID).Scan(&out.Mentions, &out.Approvals)
 }
 
 func loadUpcomingDeadlines(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]UpcomingDeadline) {
@@ -792,97 +860,115 @@ func loadTeamWorkload(ctx context.Context, q dashQuerier, companyID uuid.UUID, o
 }
 
 func loadPipelineAlerts(ctx context.Context, q dashQuerier, companyID uuid.UUID, out *[]PipelineAlert) {
-	// ON_HOLD products
-	prows, err := q.QueryContext(ctx, `
-		SELECT id, name, GREATEST(0, EXTRACT(DAY FROM NOW() - updated_at)::bigint)
-		FROM products
-		WHERE company_id=$1 AND deleted_at IS NULL AND status='ON_HOLD'
-		ORDER BY updated_at ASC LIMIT 8`, companyID)
-	if err == nil {
-		defer prows.Close()
-		for prows.Next() {
-			var a PipelineAlert
-			if err := prows.Scan(&a.ProductID, &a.ProductName, &a.Days); err == nil {
-				a.Kind = "ON_HOLD"
-				a.Detail = "Product on hold"
-				*out = append(*out, a)
-			}
-		}
+	// UNION query preserves the same ordering/capping as the previous
+	// sequential per-widget queries: ON_HOLD (up to 8), then STAGE_BLOCKED
+	// (up to 8), then BLOCKED tasks (up to 8), then REVIEW tasks (up to 8),
+	// finally capping to 12 items.
+	rows, err := q.QueryContext(ctx, `
+		WITH
+		on_hold AS (
+			SELECT
+				1 AS kind_order,
+				'ON_HOLD'::text AS kind,
+				p.id AS product_id,
+				p.name AS product_name,
+				''::text AS stage_name,
+				'Product on hold'::text AS detail,
+				GREATEST(0, EXTRACT(DAY FROM NOW() - p.updated_at)::bigint) AS days,
+				p.updated_at AS sort_ts
+			FROM products p
+			WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.status='ON_HOLD'
+			ORDER BY p.updated_at ASC
+			LIMIT 8
+		),
+		stage_blocked AS (
+			SELECT
+				2 AS kind_order,
+				'STAGE_BLOCKED'::text AS kind,
+				p.id AS product_id,
+				p.name AS product_name,
+				COALESCE(s.name,'') AS stage_name,
+				'Stage idle'::text AS detail,
+				GREATEST(0, EXTRACT(DAY FROM NOW() - si.updated_at)::bigint) AS days,
+				si.updated_at AS sort_ts
+			FROM stage_instances si
+			INNER JOIN products p ON p.id = si.product_id AND p.company_id = si.company_id
+			LEFT JOIN stages s ON s.id = si.stage_id
+			WHERE si.company_id=$1 AND si.status='ACTIVE'
+			  AND si.updated_at < NOW() - INTERVAL '3 days'
+			  AND p.deleted_at IS NULL
+			ORDER BY si.updated_at ASC
+			LIMIT 8
+		),
+		blocked_tasks AS (
+			SELECT
+				3 AS kind_order,
+				'STAGE_BLOCKED'::text AS kind,
+				COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid) AS product_id,
+				COALESCE(p.name, t.title) AS product_name,
+				COALESCE(t.title,'') AS stage_name,
+				'Blocked: ' || COALESCE(t.title,'') AS detail,
+				GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint) AS days,
+				t.updated_at AS sort_ts
+			FROM tasks t
+			LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+			LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
+			WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='BLOCKED'
+			ORDER BY t.updated_at ASC
+			LIMIT 8
+		),
+		waiting_review AS (
+			SELECT
+				4 AS kind_order,
+				'WAITING_APPROVAL'::text AS kind,
+				COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid) AS product_id,
+				COALESCE(p.name, t.title) AS product_name,
+				COALESCE(t.title,'') AS stage_name,
+				'Waiting review'::text AS detail,
+				GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint) AS days,
+				t.updated_at AS sort_ts
+			FROM tasks t
+			LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+			LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
+			WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='REVIEW'
+			ORDER BY t.updated_at ASC
+			LIMIT 8
+		)
+		SELECT
+			kind, product_id, product_name, stage_name, detail, days, kind_order, sort_ts
+		FROM (
+			SELECT * FROM on_hold
+			UNION ALL
+			SELECT * FROM stage_blocked
+			UNION ALL
+			SELECT * FROM blocked_tasks
+			UNION ALL
+			SELECT * FROM waiting_review
+		) alerts
+		ORDER BY kind_order ASC, sort_ts ASC
+		LIMIT 12`, companyID)
+	if err != nil {
+		return
 	}
+	defer rows.Close()
 
-	// Active stages stuck ≥ 3 days
-	srows, err := q.QueryContext(ctx, `
-		SELECT p.id, p.name, COALESCE(s.name,''),
-			GREATEST(0, EXTRACT(DAY FROM NOW() - si.updated_at)::bigint)
-		FROM stage_instances si
-		INNER JOIN products p ON p.id = si.product_id AND p.company_id = si.company_id
-		LEFT JOIN stages s ON s.id = si.stage_id
-		WHERE si.company_id=$1 AND si.status='ACTIVE'
-		  AND si.updated_at < NOW() - INTERVAL '3 days'
-		  AND p.deleted_at IS NULL
-		ORDER BY si.updated_at ASC LIMIT 8`, companyID)
-	if err == nil {
-		defer srows.Close()
-		for srows.Next() {
-			var a PipelineAlert
-			if err := srows.Scan(&a.ProductID, &a.ProductName, &a.StageName, &a.Days); err == nil {
-				a.Kind = "STAGE_BLOCKED"
-				a.Detail = "Stage idle"
-				*out = append(*out, a)
-			}
+	for rows.Next() {
+		var (
+			a         PipelineAlert
+			kindOrder int
+			sortTS    time.Time
+		)
+		if err := rows.Scan(
+			&a.Kind,
+			&a.ProductID,
+			&a.ProductName,
+			&a.StageName,
+			&a.Detail,
+			&a.Days,
+			&kindOrder,
+			&sortTS,
+		); err == nil {
+			*out = append(*out, a)
 		}
-	}
-
-	// BLOCKED tasks with product context
-	brows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid),
-			COALESCE(p.name, t.title), COALESCE(t.title,''),
-			GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint)
-		FROM tasks t
-		LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
-		LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
-		WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='BLOCKED'
-		ORDER BY t.updated_at ASC LIMIT 8`, companyID)
-	if err == nil {
-		defer brows.Close()
-		for brows.Next() {
-			var a PipelineAlert
-			var taskTitle string
-			if err := brows.Scan(&a.ProductID, &a.ProductName, &taskTitle, &a.Days); err == nil {
-				a.Kind = "STAGE_BLOCKED"
-				a.Detail = "Blocked: " + taskTitle
-				a.StageName = taskTitle
-				*out = append(*out, a)
-			}
-		}
-	}
-
-	// Tasks waiting review
-	rrows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(p.id, '00000000-0000-0000-0000-000000000000'::uuid),
-			COALESCE(p.name, t.title), COALESCE(t.title,''),
-			GREATEST(0, EXTRACT(DAY FROM NOW() - t.updated_at)::bigint)
-		FROM tasks t
-		LEFT JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
-		LEFT JOIN products p ON p.id = f.product_id AND p.company_id = t.company_id
-		WHERE t.company_id=$1 AND t.deleted_at IS NULL AND t.status='REVIEW'
-		ORDER BY t.updated_at ASC LIMIT 8`, companyID)
-	if err == nil {
-		defer rrows.Close()
-		for rrows.Next() {
-			var a PipelineAlert
-			var taskTitle string
-			if err := rrows.Scan(&a.ProductID, &a.ProductName, &taskTitle, &a.Days); err == nil {
-				a.Kind = "WAITING_APPROVAL"
-				a.Detail = "Waiting review"
-				a.StageName = taskTitle
-				*out = append(*out, a)
-			}
-		}
-	}
-
-	// Cap total alerts shown
-	if len(*out) > 12 {
-		*out = (*out)[:12]
 	}
 }

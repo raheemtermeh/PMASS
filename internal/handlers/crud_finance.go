@@ -52,10 +52,13 @@ func (h *Handler) listFinanceEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, title, category, amount, period, status, notes, created_at
-		FROM finance_entries WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM finance_entries WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying finance entries: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

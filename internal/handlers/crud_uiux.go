@@ -52,10 +52,13 @@ func (h *Handler) listDesignTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, category, token_data FROM design_tokens
-		WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying design tokens: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")
@@ -256,10 +259,13 @@ func (h *Handler) listUIAssets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, size, cdn_status, date
-		FROM ui_assets WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM ui_assets WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying UI assets: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

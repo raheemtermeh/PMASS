@@ -52,13 +52,15 @@ func (h *Handler) listOperationsItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, ticket_code, title, description, type, severity, status,
 		       origin_subsystem_id, assigned_to, linked_pr, created_at, completed_at
 		FROM operational_items
 		WHERE tenant_id = $1
 		ORDER BY id
-	`, tenantID)
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying operational items: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

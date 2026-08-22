@@ -115,12 +115,13 @@ func (h *CollabHandler) HandleAttachments(w http.ResponseWriter, r *http.Request
 			WriteErr(w, shared.New("INVALID_QUERY", "entity_type and entity_id required", 400))
 			return
 		}
-		items, err := h.Svc.ListAttachments(r.Context(), companyID, et, eid)
+		q := PageQueryFromRequest(r)
+		items, meta, err := h.Svc.ListAttachments(r.Context(), companyID, et, eid, q)
 		if err != nil {
 			WriteErr(w, err)
 			return
 		}
-		WriteOK(w, http.StatusOK, items, nil)
+		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		// MVP: metadata registration (path/URL). Binary upload can use local path from client/CDN.
 		var body struct {
@@ -191,14 +192,13 @@ func (h *CollabHandler) HandleNotifications(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			var receiverID uuid.UUID
-			err := h.Scope.DB.Q(r.Context()).QueryRowContext(r.Context(), `
-				SELECT COALESCE(
-					(SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 LIMIT 1),
-					'00000000-0000-0000-0000-000000000000'::uuid
-				)`, companyID, claims.UserID).Scan(&receiverID)
-			if err != nil {
-				WriteErr(w, err)
-				return
+			if claims.EmployeeID != "" {
+				id, err := uuid.Parse(claims.EmployeeID)
+				if err != nil {
+					WriteErr(w, err)
+					return
+				}
+				receiverID = id
 			}
 			if receiverID == uuid.Nil {
 				WriteOK(w, http.StatusOK, []any{}, nil)
@@ -278,14 +278,10 @@ func (h *DashboardHandler) HandleDashboard(w http.ResponseWriter, r *http.Reques
 			empID = &id
 		}
 	} else if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
-		var id uuid.UUID
-		err := h.Scope.DB.Q(r.Context()).QueryRowContext(r.Context(), `
-			SELECT COALESCE(
-				(SELECT id FROM employees WHERE company_id=$1 AND user_id=$2 LIMIT 1),
-				'00000000-0000-0000-0000-000000000000'::uuid
-			)`, companyID, claims.UserID).Scan(&id)
-		if err == nil && id != uuid.Nil {
-			empID = &id
+		if claims.EmployeeID != "" {
+			if id, err := uuid.Parse(claims.EmployeeID); err == nil && id != uuid.Nil {
+				empID = &id
+			}
 		}
 	}
 	data, err := h.Svc.Get(r.Context(), companyID, empID)

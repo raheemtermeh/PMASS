@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -27,6 +28,7 @@ func PageQueryFromRequest(r *http.Request) shared.PageQuery {
 			q.PageSize = n
 		}
 	}
+	q.Cursor = strings.TrimSpace(r.URL.Query().Get("cursor"))
 	return q.Normalize()
 }
 
@@ -48,6 +50,11 @@ func (c *CompanyScope) Require(w http.ResponseWriter, r *http.Request) (uuid.UUI
 	if claims.TenantID == nil {
 		WriteErr(w, shared.New("COMPANY_WORKSPACE_REQUIRED", "Company workspace required", 403))
 		return uuid.Nil, false
+	}
+	if claims.CompanyID != "" {
+		if id, err := uuid.Parse(claims.CompanyID); err == nil && id != uuid.Nil {
+			return id, true
+		}
 	}
 	companyID, err := c.DB.ResolveCompanyID(r.Context(), *claims.TenantID)
 	if err != nil {

@@ -8,6 +8,7 @@ import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useMobileNav } from "@/components/MobileNavContext";
 import { useI18n } from "@/core/providers/I18nProvider";
+import { useVisibleRefetchInterval } from "@/shared/hooks/usePageVisible";
 import { NavIcon, navLabels } from "@/lib/navigation";
 import { isPlatformRole } from "@/shared/permissions";
 import { resolveSignOutPath } from "@/shared/auth-portals";
@@ -101,13 +102,15 @@ export function Sidebar() {
     });
   }
 
+  const accessRequestPollMs = useVisibleRefetchInterval(60_000);
+
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ["access-requests", "pending", "sidebar"],
     queryFn: () =>
       httpClient.get<AccessRequestRow[]>("/api/v1/access-requests?status=pending"),
     enabled: Boolean(user) && platform,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: accessRequestPollMs,
   });
 
   if (!user) return null;

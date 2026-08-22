@@ -52,10 +52,13 @@ func (h *Handler) listSubsystems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, slug, status, load_percentage
-		FROM subsystems WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM subsystems WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying subsystems: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

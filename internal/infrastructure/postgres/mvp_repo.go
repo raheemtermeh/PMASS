@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,8 +78,13 @@ func (r *CommentRepo) Create(ctx context.Context, c *support.Comment) error {
 func (r *CommentRepo) ListByEntity(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID) ([]support.Comment, error) {
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
 		SELECT id, company_id, entity_type, entity_id, author_id, parent_id, body, COALESCE(is_archived,false), created_at, updated_at
-		FROM comments
-		WHERE company_id=$1 AND entity_type=$2 AND entity_id=$3 AND COALESCE(is_archived,false)=false
+		FROM (
+			SELECT id, company_id, entity_type, entity_id, author_id, parent_id, body, COALESCE(is_archived,false) AS is_archived, created_at, updated_at
+			FROM comments
+			WHERE company_id=$1 AND entity_type=$2 AND entity_id=$3 AND COALESCE(is_archived,false)=false
+			ORDER BY created_at DESC
+			LIMIT 200
+		) c
 		ORDER BY created_at ASC`, companyID, entityType, entityID)
 	if err != nil {
 		return nil, err
@@ -122,24 +128,44 @@ func (r *AttachmentRepo) Create(ctx context.Context, a *support.Attachment) erro
 	return err
 }
 
-func (r *AttachmentRepo) ListByEntity(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID) ([]support.Attachment, error) {
+func (r *AttachmentRepo) ListByEntity(
+	ctx context.Context,
+	companyID uuid.UUID,
+	entityType string,
+	entityID uuid.UUID,
+	q shared.PageQuery,
+) ([]support.Attachment, int64, error) {
+	q = q.Normalize()
+
+	var total int64
+	if err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM attachments
+		WHERE company_id=$1 AND entity_type=$2 AND entity_id=$3
+	`, companyID, entityType, entityID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
 		SELECT id, company_id, entity_type, entity_id, file_name, path, size, mime_type, COALESCE(category,'general'), created_at, updated_at
-		FROM attachments WHERE company_id=$1 AND entity_type=$2 AND entity_id=$3
-		ORDER BY created_at DESC`, companyID, entityType, entityID)
+		FROM attachments
+		WHERE company_id=$1 AND entity_type=$2 AND entity_id=$3
+		ORDER BY created_at DESC
+		LIMIT $4 OFFSET $5`,
+		companyID, entityType, entityID, q.PageSize, q.Offset(),
+	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := make([]support.Attachment, 0)
 	for rows.Next() {
 		var a support.Attachment
 		if err := rows.Scan(&a.ID, &a.CompanyID, &a.EntityType, &a.EntityID, &a.FileName, &a.Path, &a.Size, &a.MimeType, &a.Category, &a.CreatedAt, &a.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, a)
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (r *AttachmentRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*support.Attachment, error) {
@@ -163,17 +189,44 @@ func (r *TaskRepo) SetDependencies(ctx context.Context, companyID, taskID uuid.U
 	if _, err := r.db.Q(ctx).ExecContext(ctx, `DELETE FROM task_dependencies WHERE company_id=$1 AND task_id=$2`, companyID, taskID); err != nil {
 		return err
 	}
+
+	// Batch insert to avoid one round trip per dependency.
+	filtered := dependsOn[:0]
 	for _, dep := range dependsOn {
 		if dep == taskID {
 			continue
 		}
-		if _, err := r.db.Q(ctx).ExecContext(ctx, `
-			INSERT INTO task_dependencies (company_id, task_id, depends_on_task_id)
-			VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, companyID, taskID, dep); err != nil {
-			return err
-		}
+		filtered = append(filtered, dep)
 	}
-	return nil
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	values := make([]string, 0, len(filtered))
+	args := make([]any, 0, 2+len(filtered))
+	args = append(args, companyID, taskID)
+	for i, dep := range filtered {
+		// ($1,$2,$3) => ($1,$2,$(3+i))
+		values = append(values, fmt.Sprintf("($1,$2,$%d)", 3+i))
+		args = append(args, dep)
+	}
+
+	query := fmt.Sprintf(`
+		INSERT INTO task_dependencies (company_id, task_id, depends_on_task_id)
+		VALUES %s ON CONFLICT DO NOTHING`, joinWithComma(values))
+	_, err := r.db.Q(ctx).ExecContext(ctx, query, args...)
+	return err
+}
+
+func joinWithComma(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	out := parts[0]
+	for i := 1; i < len(parts); i++ {
+		out += "," + parts[i]
+	}
+	return out
 }
 
 func (r *TaskRepo) ListDependencies(ctx context.Context, companyID, taskID uuid.UUID) ([]uuid.UUID, error) {

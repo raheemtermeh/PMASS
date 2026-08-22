@@ -43,6 +43,21 @@ func scanProductRow(row rowScanner) (*product.Product, error) {
 	return &p, nil
 }
 
+func scanProductRowTotal(row rowScanner) (*product.Product, int64, error) {
+	var p product.Product
+	var total int64
+	err := row.Scan(
+		&p.ID, &p.CompanyID, &p.OwnerID, &p.Name, &p.Description, &p.Category, &p.Status, &p.ExecutionModel, &p.PipelineID,
+		&p.Code, &p.ProductType, &p.ManagerID, &p.Priority, &p.Vision, &p.Goal,
+		&p.SuccessMetrics, &p.BusinessValue, &p.Visibility, &p.DeletedAt,
+		&p.Version, &p.CreatedAt, &p.UpdatedAt, &total,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	return &p, total, nil
+}
+
 func (r *ProductRepo) Create(ctx context.Context, p *product.Product) error {
 	visibility := p.Visibility
 	if visibility == "" {
@@ -103,10 +118,6 @@ func (r *ProductRepo) List(ctx context.Context, companyID uuid.UUID, q shared.Pa
 		args = append(args, "%"+strings.ToLower(q.Search)+"%")
 		where += fmt.Sprintf(` AND LOWER(name) LIKE $%d`, len(args))
 	}
-	var total int64
-	if err := r.db.Q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM products WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
 	order := `created_at DESC`
 	if q.Sort == "name" {
 		order = `name ASC`
@@ -117,7 +128,7 @@ func (r *ProductRepo) List(ctx context.Context, companyID uuid.UUID, q shared.Pa
 	}
 	args = append(args, q.PageSize, q.Offset())
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT `+productColumns+`
+		SELECT `+productColumns+`, COUNT(*) OVER()
 		FROM products WHERE `+where+` ORDER BY `+order+`
 		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -125,14 +136,16 @@ func (r *ProductRepo) List(ctx context.Context, companyID uuid.UUID, q shared.Pa
 	}
 	defer rows.Close()
 	out := make([]product.Product, 0)
+	var total int64
 	for rows.Next() {
-		p, err := scanProductRow(rows)
+		p, n, err := scanProductRowTotal(rows)
 		if err != nil {
 			return nil, 0, err
 		}
+		total = n
 		out = append(out, *p)
 	}
-	return out, total, nil
+	return out, total, rows.Err()
 }
 
 func (r *ProductRepo) Update(ctx context.Context, p *product.Product) error {

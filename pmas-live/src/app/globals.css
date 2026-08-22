@@ -2582,6 +2582,22 @@ a.auth-forgot-link {
   letter-spacing: 0.04em;
 }
 
+.data-table tbody tr.row-selectable {
+  cursor: pointer;
+}
+
+.data-table tbody tr.row-selectable:hover {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.data-table tbody tr.row-selected {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.data-table tbody tr.row-selected:hover {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
 .empty-state-card {
   text-align: center;
   padding: 4rem 2rem;

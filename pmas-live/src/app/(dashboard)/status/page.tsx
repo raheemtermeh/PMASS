@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { httpClient } from "@/core/api/http-client";
 import { useI18n } from "@/core/providers/I18nProvider";
+import { useVisibleRefetchInterval } from "@/shared/hooks/usePageVisible";
 import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
 import type {
   DashboardData,
@@ -81,11 +82,13 @@ export default function StatusBoardPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
 
+  const dashboardPollMs = useVisibleRefetchInterval(30_000);
+
   const { data: dash, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ["vsm-dashboard", "status"],
     queryFn: () => httpClient.get<DashboardData>("/api/v1/dashboard?view=status"),
     staleTime: 15_000,
-    refetchInterval: 30_000,
+    refetchInterval: dashboardPollMs,
     retry: false,
   });
 

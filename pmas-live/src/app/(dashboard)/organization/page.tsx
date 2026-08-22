@@ -1,9 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResourceManager } from "@/components/ResourceManager";
-import { OrgStructureGraph } from "@/components/visual/OrgStructureGraph";
 import { httpClient } from "@/core/api/http-client";
 import type {
   Company,
@@ -16,6 +16,14 @@ import type {
 import { employeeLabel } from "@/features/vsm/types";
 import { useI18n } from "@/core/providers/I18nProvider";
 import { localizedEnumLabel, statusTranslationKey } from "@/lib/localized-labels";
+
+const OrgStructureGraph = dynamic(
+  () =>
+    import("@/components/visual/OrgStructureGraph").then((mod) => ({
+      default: mod.OrgStructureGraph,
+    })),
+  { ssr: false, loading: () => <p className="text-dim">…</p> },
+);
 
 type Tab = "structure" | "employees" | "departments" | "teams" | "membership";
 

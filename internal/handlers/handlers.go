@@ -81,12 +81,17 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	nodes := make([]models.TopologyNode, 0)
 	edges := make([]models.APIGraphEdge, 0)
 
 	subRows, err := h.db.QueryContext(r.Context(), `
-		SELECT id, name, slug, status, load_percentage FROM subsystems WHERE tenant_id = $1
-	`, tenantID)
+		SELECT id, name, slug, status, load_percentage
+		FROM subsystems
+		WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying subsystems: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -112,8 +117,11 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 
 	memberRows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, avatar_url, role, subsystem_id, capacity_weight
-		FROM team_members WHERE tenant_id = $1
-	`, tenantID)
+		FROM team_members
+		WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying team members: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -144,7 +152,9 @@ func (h *Handler) GetTopology(w http.ResponseWriter, r *http.Request) {
 		JOIN subsystems s ON e.source_id = s.id
 		JOIN subsystems t ON e.target_id = t.id
 		WHERE e.tenant_id = $1
-	`, tenantID)
+		ORDER BY e.id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying graph edges: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -190,9 +200,14 @@ func (h *Handler) GetTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT category, token_data FROM design_tokens WHERE tenant_id = $1
-	`, tenantID)
+		SELECT category, token_data
+		FROM design_tokens
+		WHERE tenant_id = $1
+		ORDER BY category
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying design tokens: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -282,10 +297,13 @@ func (h *Handler) GetSubsystems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, slug, status, load_percentage
-		FROM subsystems WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM subsystems WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying subsystems: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -420,13 +438,15 @@ func (h *Handler) GetMarketingCampaigns(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT c.id, c.name, c.leads, c.conversion, c.spend, c.status, c.dependent_subsystem_id, COALESCE(s.status, 'healthy')
 		FROM marketing_campaigns c
 		LEFT JOIN subsystems s ON c.dependent_subsystem_id = s.id AND s.tenant_id = c.tenant_id
 		WHERE c.tenant_id = $1
 		ORDER BY c.id
-	`, tenantID)
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying campaigns: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -651,12 +671,14 @@ func (h *Handler) GetOperationsItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, ticket_code, title, description, type, severity, status, origin_subsystem_id, assigned_to, linked_pr, created_at, completed_at 
 		FROM operational_items 
 		WHERE tenant_id = $1
 		ORDER BY id
-	`, tenantID)
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying operational items: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -707,10 +729,12 @@ func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, value, description, updated_at
 		FROM credentials WHERE tenant_id = $1 ORDER BY name
-	`, tenantID)
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying credentials: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)

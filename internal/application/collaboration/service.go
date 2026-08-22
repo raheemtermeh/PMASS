@@ -132,8 +132,18 @@ func (s *Service) CreateAttachment(ctx context.Context, companyID uuid.UUID, in 
 	return a, nil
 }
 
-func (s *Service) ListAttachments(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID) ([]support.Attachment, error) {
-	return s.att.ListByEntity(ctx, companyID, entityType, entityID)
+func (s *Service) ListAttachments(
+	ctx context.Context,
+	companyID uuid.UUID,
+	entityType string,
+	entityID uuid.UUID,
+	q shared.PageQuery,
+) ([]support.Attachment, shared.PageMeta, error) {
+	items, total, err := s.att.ListByEntity(ctx, companyID, entityType, entityID, q)
+	if err != nil {
+		return nil, shared.PageMeta{}, err
+	}
+	return items, shared.NewPageMeta(q, total), nil
 }
 
 func (s *Service) ListActivity(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID, q shared.PageQuery) ([]support.ActivityLog, shared.PageMeta, error) {

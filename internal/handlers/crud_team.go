@@ -52,10 +52,13 @@ func (h *Handler) listTeamMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, avatar_url, role, subsystem_id, capacity_weight
-		FROM team_members WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM team_members WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying team members: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

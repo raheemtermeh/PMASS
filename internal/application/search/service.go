@@ -10,10 +10,10 @@ import (
 )
 
 type Hit struct {
-	Type string    `json:"type"`
-	ID   uuid.UUID `json:"id"`
-	Title string   `json:"title"`
-	Meta string    `json:"meta,omitempty"`
+	Type  string    `json:"type"`
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+	Meta  string    `json:"meta,omitempty"`
 }
 
 type Result struct {
@@ -34,76 +34,37 @@ func (s *Service) Search(ctx context.Context, companyID uuid.UUID, query string)
 		return out, nil
 	}
 	like := "%" + strings.ToLower(q) + "%"
-	dbq := s.db.Q(ctx)
 
-	rows, err := dbq.QueryContext(ctx, `
-		SELECT id, name, status FROM products
-		WHERE company_id=$1 AND LOWER(name) LIKE $2
-		ORDER BY updated_at DESC LIMIT 10`, companyID, like)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var h Hit
-			var status string
-			if err := rows.Scan(&h.ID, &h.Title, &status); err == nil {
-				h.Type = "product"
-				h.Meta = status
-				out.Hits = append(out.Hits, h)
-			}
+	rows, err := s.db.Q(ctx).QueryContext(ctx, `
+		(SELECT 'product' AS kind, id, name, status
+		 FROM products
+		 WHERE company_id=$1 AND deleted_at IS NULL AND LOWER(name) LIKE $2
+		 ORDER BY updated_at DESC LIMIT 10)
+		UNION ALL
+		(SELECT 'feature', id, title, status
+		 FROM features
+		 WHERE company_id=$1 AND deleted_at IS NULL AND LOWER(title) LIKE $2
+		 ORDER BY updated_at DESC LIMIT 10)
+		UNION ALL
+		(SELECT 'task', id, title, status
+		 FROM tasks
+		 WHERE company_id=$1 AND deleted_at IS NULL AND LOWER(title) LIKE $2 AND status <> 'ARCHIVED'
+		 ORDER BY updated_at DESC LIMIT 10)
+		UNION ALL
+		(SELECT 'employee', id, first_name || ' ' || last_name, email
+		 FROM employees
+		 WHERE company_id=$1 AND status='ACTIVE'
+		   AND (LOWER(first_name) LIKE $2 OR LOWER(last_name) LIKE $2 OR LOWER(email) LIKE $2)
+		 ORDER BY updated_at DESC LIMIT 10)`, companyID, like)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h Hit
+		if err := rows.Scan(&h.Type, &h.ID, &h.Title, &h.Meta); err == nil {
+			out.Hits = append(out.Hits, h)
 		}
 	}
-
-	frows, err := dbq.QueryContext(ctx, `
-		SELECT id, title, status FROM features
-		WHERE company_id=$1 AND LOWER(title) LIKE $2
-		ORDER BY updated_at DESC LIMIT 10`, companyID, like)
-	if err == nil {
-		defer frows.Close()
-		for frows.Next() {
-			var h Hit
-			var status string
-			if err := frows.Scan(&h.ID, &h.Title, &status); err == nil {
-				h.Type = "feature"
-				h.Meta = status
-				out.Hits = append(out.Hits, h)
-			}
-		}
-	}
-
-	trows, err := dbq.QueryContext(ctx, `
-		SELECT id, title, status FROM tasks
-		WHERE company_id=$1 AND LOWER(title) LIKE $2 AND status <> 'ARCHIVED'
-		ORDER BY updated_at DESC LIMIT 10`, companyID, like)
-	if err == nil {
-		defer trows.Close()
-		for trows.Next() {
-			var h Hit
-			var status string
-			if err := trows.Scan(&h.ID, &h.Title, &status); err == nil {
-				h.Type = "task"
-				h.Meta = status
-				out.Hits = append(out.Hits, h)
-			}
-		}
-	}
-
-	erows, err := dbq.QueryContext(ctx, `
-		SELECT id, first_name || ' ' || last_name, email FROM employees
-		WHERE company_id=$1 AND (LOWER(first_name) LIKE $2 OR LOWER(last_name) LIKE $2 OR LOWER(email) LIKE $2)
-		AND status='ACTIVE'
-		ORDER BY updated_at DESC LIMIT 10`, companyID, like)
-	if err == nil {
-		defer erows.Close()
-		for erows.Next() {
-			var h Hit
-			var email string
-			if err := erows.Scan(&h.ID, &h.Title, &email); err == nil {
-				h.Type = "employee"
-				h.Meta = email
-				out.Hits = append(out.Hits, h)
-			}
-		}
-	}
-
-	return out, nil
+	return out, rows.Err()
 }

@@ -1,0 +1,242 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.50, ({compose_service=\"api\"} |= \"http_request\" | json | unwrap duration_ms)[1m])",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, ({compose_service=\"api\"} |= \"http_request\" | json | unwrap duration_ms)[1m])",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.99, ({compose_service=\"api\"} |= \"http_request\" | json | unwrap duration_ms)[1m])",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "HTTP latency (api) p50/p95/p99 (log-derived)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({compose_service=\"api\"} |= \"http_request\" [1m]))",
+          "legendFormat": "req/min",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP requests (api) rate (log-derived)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({compose_service=\"api\"} |= \"http_request\" |~ \"\\\\\\\"status\\\\\\\":4[0-9]{2}\" [1m]))",
+          "legendFormat": "4xx req/min",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP 4xx (api) rate (log-derived)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({compose_service=\"api\"} |= \"http_request\" |~ \"\\\\\\\"status\\\\\\\":5[0-9]{2}\" [1m]))",
+          "legendFormat": "5xx req/min",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP 5xx (api) rate (log-derived)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 5,
+      "options": {
+        "content": "## Go / DB metrics\n\nThis repo currently provisions **Loki + Grafana logs only** (no Prometheus datasource).\n\nThe Go service exposes **authenticated JSON** at `GET /metrics` (Go latency p50/p95/p99, status_4xx/status_5xx, goroutines, heap+GC, and `database/sql` pool stats).\n\nTo dashboard these values as graphs, you’ll need to wire `/metrics` into Prometheus (or add a Grafana JSON datasource). Until then, use `/metrics` + `curl`/k6 snapshots during load to populate the report.\n",
+        "mode": "markdown"
+      },
+      "title": "Go / DB metrics (not yet dashboarded)",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 6,
+      "options": {
+        "content": "## Missing exporters / Next.js request timing\n\nRequested Phase 5 panels for:\n\n- Postgres exporter metrics\n- Nginx request/conn/response timing + upstream errors\n- Next.js request rate/latency/errors\n\nare **not available** in this repo because no Prometheus scrape targets / exporters are present.\n\nYou can still approximate some error rates via Loki (api gateway logs), but latency percentiles for Next.js and upstream timings require exporter metrics.\n",
+        "mode": "markdown"
+      },
+      "title": "Exporter gaps",
+      "type": "text"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": [
+    "pmas",
+    "load-test"
+  ],
+  "style": "dark",
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "PMASS Load Test",
+  "uid": "pmas-load-test",
+  "version": 1
+}
+

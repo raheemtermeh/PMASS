@@ -4,21 +4,47 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all service configurations.
 type Config struct {
-	SupabaseDBURL       string
-	ServerPort          string
-	JWTSecret           string
-	EncryptionKey       string
-	CORSOrigins         []string
-	AppEnv              string
-	CookieSecure        bool
-	WebAuthnRPID        string
-	WebAuthnRPDisplay   string
-	WebAuthnRPOrigins   []string
+	SupabaseDBURL     string
+	ServerPort        string
+	JWTSecret         string
+	EncryptionKey     string
+	CORSOrigins       []string
+	AppEnv            string
+	CookieSecure      bool
+	WebAuthnRPID      string
+	WebAuthnRPDisplay string
+	WebAuthnRPOrigins []string
+
+	DBMaxOpenConns     int
+	DBMaxIdleConns     int
+	DBConnMaxLifetime  time.Duration
+	DBConnMaxIdleTime  time.Duration
+	DBStatementTimeout time.Duration
+
+	RequestTimeout  time.Duration
+	ShutdownTimeout time.Duration
+	SlowRequest     time.Duration
+
+	HTTPReadHeaderTimeout time.Duration
+	HTTPReadTimeout       time.Duration
+	HTTPWriteTimeout      time.Duration
+	HTTPIdleTimeout       time.Duration
+	HTTPMaxHeaderBytes    int
+
+	RateLimitRPM     int
+	AuthRateLimitRPM int
+	RateLimitMaxIPs  int
+
+	PprofEnabled bool
+	PprofToken   string
+	MetricsToken string
 }
 
 // Load reads config from environment variables. Fails closed on missing secrets in production.
@@ -29,7 +55,9 @@ func Load() *Config {
 	if dbURL == "" {
 		log.Fatal("[Config] SUPABASE_DB_URL (or DATABASE_URL) is required. Hardcoded DB credentials are disabled.")
 	}
+	stmtTimeout := envDuration("DB_STATEMENT_TIMEOUT", 15*time.Second)
 	dbURL = normalizeDSN(dbURL)
+	dbURL = appendStatementTimeout(dbURL, stmtTimeout)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -76,16 +104,35 @@ func Load() *Config {
 	}
 
 	return &Config{
-		SupabaseDBURL:     dbURL,
-		ServerPort:        port,
-		JWTSecret:         jwtSecret,
-		EncryptionKey:     encKey,
-		CORSOrigins:       origins,
-		AppEnv:            appEnv,
-		CookieSecure:      appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
-		WebAuthnRPID:      waRPID,
-		WebAuthnRPDisplay: waDisplay,
-		WebAuthnRPOrigins: waOrigins,
+		SupabaseDBURL:      dbURL,
+		ServerPort:         port,
+		JWTSecret:          jwtSecret,
+		EncryptionKey:      encKey,
+		CORSOrigins:        origins,
+		AppEnv:             appEnv,
+		CookieSecure:       appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
+		WebAuthnRPID:       waRPID,
+		WebAuthnRPDisplay:  waDisplay,
+		WebAuthnRPOrigins:  waOrigins,
+		DBMaxOpenConns:     envInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:     envInt("DB_MAX_IDLE_CONNS", 10),
+		DBConnMaxLifetime:  envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+		DBConnMaxIdleTime:  envDuration("DB_CONN_MAX_IDLE_TIME", 1*time.Minute),
+		DBStatementTimeout: stmtTimeout,
+		RequestTimeout:        envDuration("HTTP_REQUEST_TIMEOUT", 25*time.Second),
+		ShutdownTimeout:       envDuration("HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
+		SlowRequest:           envDuration("SLOW_REQUEST_THRESHOLD", 500*time.Millisecond),
+		HTTPReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		HTTPReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 30*time.Second),
+		HTTPWriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+		HTTPIdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		HTTPMaxHeaderBytes:    envInt("HTTP_MAX_HEADER_BYTES", 1<<20),
+		RateLimitRPM:          envInt("RATE_LIMIT_RPM", 600),
+		AuthRateLimitRPM:      envInt("AUTH_RATE_LIMIT_RPM", 20),
+		RateLimitMaxIPs:       envInt("RATE_LIMIT_MAX_IPS", 10000),
+		PprofEnabled:       envBool("PPROF_ENABLED", false),
+		PprofToken:         strings.TrimSpace(os.Getenv("PPROF_TOKEN")),
+		MetricsToken:       strings.TrimSpace(firstNonEmpty(os.Getenv("METRICS_TOKEN"), os.Getenv("PPROF_TOKEN"))),
 	}
 }
 
@@ -98,6 +145,59 @@ func normalizeDSN(dbURL string) string {
 		dbURL += sep + "sslmode=require"
 	}
 	return dbURL
+}
+
+func appendStatementTimeout(dbURL string, timeout time.Duration) string {
+	if timeout <= 0 {
+		return dbURL
+	}
+	ms := int(timeout / time.Millisecond)
+	if ms < 1 {
+		ms = 1
+	}
+	if strings.Contains(strings.ToLower(dbURL), "statement_timeout") {
+		return dbURL
+	}
+	opt := fmt.Sprintf("-c statement_timeout=%d", ms)
+	sep := "?"
+	if strings.Contains(dbURL, "?") {
+		sep = "&"
+	}
+	return dbURL + sep + "options=" + strings.ReplaceAll(opt, " ", "+")
+}
+
+func envInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	if d, err := time.ParseDuration(raw); err == nil {
+		return d
+	}
+	if n, err := strconv.Atoi(raw); err == nil {
+		return time.Duration(n) * time.Millisecond
+	}
+	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if raw == "" {
+		return fallback
+	}
+	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
 func parseOrigins(raw string) []string {

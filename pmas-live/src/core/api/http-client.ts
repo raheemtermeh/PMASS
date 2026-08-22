@@ -92,6 +92,9 @@ const NO_REFRESH_PATHS = [
   "/api/v1/auth/reset-password",
 ];
 
+// Align with Go HTTP_REQUEST_TIMEOUT (default 25s) — abort before gateway write deadline.
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+
 // Single-flight guard so concurrent 401s only trigger one refresh call.
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -134,18 +137,35 @@ export async function httpRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { body, headers, auth = true, _retried, ...rest } = options;
+  const { body, headers, auth = true, _retried, signal, ...rest } = options;
   const token = useAuthStore.getState().token;
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => controller.abort();
+  signal?.addEventListener("abort", onExternalAbort);
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...rest,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new HttpError("Request timed out", 408);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", onExternalAbort);
+  }
 
   if (
     response.status === 401 &&

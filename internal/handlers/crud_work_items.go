@@ -122,6 +122,7 @@ func (h *Handler) listSectionWorkItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, section, kind, title, description, status, priority, assignee, due_date, created_at, updated_at
 		FROM section_work_items
@@ -142,7 +143,8 @@ func (h *Handler) listSectionWorkItems(w http.ResponseWriter, r *http.Request) {
 				ELSE 3
 			END,
 			id DESC
-	`, tenantID, section)
+		LIMIT $3 OFFSET $4
+	`, tenantID, section, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying section work items: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

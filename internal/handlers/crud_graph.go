@@ -52,10 +52,13 @@ func (h *Handler) listGraphEdges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, source_id, target_id, edge_type, weight
-		FROM graph_edges WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM graph_edges WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying graph edges: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

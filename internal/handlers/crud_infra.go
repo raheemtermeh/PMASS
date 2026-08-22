@@ -52,10 +52,13 @@ func (h *Handler) listInfraNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, name, node_type, status, cpu_pct, ram_pct, region, notes, created_at
-		FROM infra_nodes WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM infra_nodes WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying infra nodes: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lib/pq"
+
 	"PMAS/internal/auth"
 )
 
@@ -22,14 +24,40 @@ const (
 
 // SecurityOptions configures transport-level protections.
 type SecurityOptions struct {
-	AllowedOrigins []string
+	AllowedOrigins   []string
+	RateLimitRPM     int
+	AuthRateLimitRPM int
+	MaxTrackedIPs    int
 }
 
-func WithSecurity(opts SecurityOptions, next http.Handler) http.Handler {
-	limiter := newIPRateLimiter(30, time.Minute)
-	authLimiter := newIPRateLimiter(10, time.Minute)
+// Security wires CORS, body limits, and IP rate limiting with explicit shutdown.
+type Security struct {
+	handler http.Handler
+	stopFns []func()
+}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// NewSecurity returns middleware that can be stopped during graceful shutdown.
+func NewSecurity(opts SecurityOptions, next http.Handler) *Security {
+	generalRPM := opts.RateLimitRPM
+	if generalRPM < 0 {
+		generalRPM = 0
+	}
+	authRPM := opts.AuthRateLimitRPM
+	if authRPM <= 0 {
+		authRPM = 20
+	}
+	maxIPs := opts.MaxTrackedIPs
+	if maxIPs <= 0 {
+		maxIPs = 10000
+	}
+
+	generalLimiter := newIPRateLimiter(generalRPM, time.Minute, maxIPs)
+	authLimiter := newIPRateLimiter(authRPM, time.Minute, maxIPs)
+
+	s := &Security{
+		stopFns: []func(){generalLimiter.stop, authLimiter.stop},
+	}
+	s.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		applySecurityHeaders(w)
 
 		// Body size cap for JSON APIs.
@@ -57,8 +85,13 @@ func WithSecurity(opts SecurityOptions, next http.Handler) http.Handler {
 			return
 		}
 
-		ip := clientIP(r)
 		path := r.URL.Path
+		if isProbePath(path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ip := clientIP(r)
 		if strings.HasPrefix(path, "/api/v1/auth/login") ||
 			strings.HasPrefix(path, "/api/v1/auth/bootstrap") ||
 			strings.HasPrefix(path, "/api/v1/auth/forgot-password") ||
@@ -70,7 +103,7 @@ func WithSecurity(opts SecurityOptions, next http.Handler) http.Handler {
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "Too many auth attempts"})
 				return
 			}
-		} else if !limiter.Allow(ip) {
+		} else if generalRPM > 0 && !generalLimiter.Allow(ip) {
 			w.Header().Set("Retry-After", "60")
 			w.WriteHeader(http.StatusTooManyRequests)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Rate limit exceeded"})
@@ -79,6 +112,22 @@ func WithSecurity(opts SecurityOptions, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+	return s
+}
+
+func (s *Security) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
+}
+
+// Stop ends background rate-limiter maintenance goroutines.
+func (s *Security) Stop() {
+	for _, fn := range s.stopFns {
+		fn()
+	}
+}
+
+func isProbePath(path string) bool {
+	return path == "/health" || path == "/ready" || path == "/metrics" || strings.HasPrefix(path, "/debug/")
 }
 
 func applySecurityHeaders(w http.ResponseWriter) {
@@ -121,38 +170,131 @@ func clientIP(r *http.Request) string {
 }
 
 type ipRateLimiter struct {
-	mu       sync.Mutex
-	limit    int
-	window   time.Duration
-	attempts map[string][]time.Time
+	shards     [16]limiterShard
+	limit      int
+	window     time.Duration
+	maxTracked int
+	disabled   bool
+	stopCh     chan struct{}
+	stopOnce   sync.Once
 }
 
-func newIPRateLimiter(limit int, window time.Duration) *ipRateLimiter {
-	return &ipRateLimiter{
-		limit:    limit,
-		window:   window,
-		attempts: make(map[string][]time.Time),
+type limiterShard struct {
+	mu         sync.Mutex
+	attempts   map[string][]time.Time
+	maxEntries int
+}
+
+func newIPRateLimiter(limit int, window time.Duration, maxTracked int) *ipRateLimiter {
+	l := &ipRateLimiter{
+		limit:      limit,
+		window:     window,
+		maxTracked: maxTracked,
+		disabled:   limit <= 0,
+		stopCh:     make(chan struct{}),
 	}
+	perShard := maxTracked / len(l.shards)
+	if perShard < 1 {
+		perShard = 1
+	}
+	for i := range l.shards {
+		l.shards[i].attempts = make(map[string][]time.Time)
+		l.shards[i].maxEntries = perShard
+	}
+	if !l.disabled {
+		go l.evictLoop()
+	}
+	return l
+}
+
+func (l *ipRateLimiter) shardFor(ip string) *limiterShard {
+	h := uint32(2166136261)
+	for i := 0; i < len(ip); i++ {
+		h ^= uint32(ip[i])
+		h *= 16777619
+	}
+	return &l.shards[h%uint32(len(l.shards))]
 }
 
 func (l *ipRateLimiter) Allow(ip string) bool {
+	if l.disabled {
+		return true
+	}
 	now := time.Now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	s := l.shardFor(ip)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	cutoff := now.Add(-l.window)
-	kept := l.attempts[ip][:0]
-	for _, t := range l.attempts[ip] {
+	kept := s.attempts[ip][:0]
+	for _, t := range s.attempts[ip] {
 		if t.After(cutoff) {
 			kept = append(kept, t)
 		}
 	}
 	if len(kept) >= l.limit {
-		l.attempts[ip] = kept
+		s.attempts[ip] = kept
 		return false
 	}
-	l.attempts[ip] = append(kept, now)
+	if _, exists := s.attempts[ip]; !exists {
+		s.trimToMaxLocked()
+	}
+	s.attempts[ip] = append(kept, now)
 	return true
+}
+
+func (s *limiterShard) trimToMaxLocked() {
+	if s.maxEntries <= 0 || len(s.attempts) < s.maxEntries {
+		return
+	}
+	for ip := range s.attempts {
+		delete(s.attempts, ip)
+		if len(s.attempts) < s.maxEntries {
+			return
+		}
+	}
+}
+
+func (l *ipRateLimiter) evictLoop() {
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			l.evictStale()
+		case <-l.stopCh:
+			return
+		}
+	}
+}
+
+func (l *ipRateLimiter) evictStale() {
+	cutoff := time.Now().Add(-l.window)
+	for i := range l.shards {
+		s := &l.shards[i]
+		s.mu.Lock()
+		for ip, times := range s.attempts {
+			kept := times[:0]
+			for _, t := range times {
+				if t.After(cutoff) {
+					kept = append(kept, t)
+				}
+			}
+			if len(kept) == 0 {
+				delete(s.attempts, ip)
+			} else {
+				s.attempts[ip] = kept
+			}
+		}
+		s.trimToMaxLocked()
+		s.mu.Unlock()
+	}
+}
+
+func (l *ipRateLimiter) stop() {
+	l.stopOnce.Do(func() {
+		close(l.stopCh)
+	})
 }
 
 // Authenticator reloads user state from DB on every authenticated request.
@@ -218,18 +360,38 @@ func (a *Authenticator) RequirePermissionByMethod(readPerm, writePerm string, ne
 
 func (a *Authenticator) loadFreshClaims(ctx context.Context, tokenClaims *auth.Claims) (*auth.Claims, error) {
 	var (
-		role     string
-		isActive bool
-		sv       int
-		tid      sql.NullInt64
-		email    string
-		fullName string
+		role       string
+		isActive   bool
+		sv         int
+		tid        sql.NullInt64
+		email      string
+		fullName   string
+		tenantSlug string
+		tenantName string
+		companyID  sql.NullString
+		tenantOK   sql.NullBool
+		employeeID sql.NullString
+		perms      pq.StringArray
 	)
 
 	err := a.db.QueryRowContext(ctx, `
-		SELECT email, full_name, role, is_active, tenant_id, COALESCE(session_version, 1)
-		FROM app_users WHERE id = $1
-	`, tokenClaims.UserID).Scan(&email, &fullName, &role, &isActive, &tid, &sv)
+		SELECT u.email, u.full_name, u.role, u.is_active, u.tenant_id, COALESCE(u.session_version, 1),
+			COALESCE(t.slug, ''), COALESCE(t.name, ''), t.company_id::text, t.is_active,
+			(SELECT e.id::text FROM employees e
+			 WHERE e.company_id = t.company_id AND e.user_id = u.id LIMIT 1),
+			COALESCE((
+				SELECT array_agg(p.permission)
+				FROM user_permissions p
+				WHERE p.user_id = u.id
+			), '{}')
+		FROM app_users u
+		LEFT JOIN tenants t ON t.id = u.tenant_id
+		WHERE u.id = $1
+	`, tokenClaims.UserID).Scan(
+		&email, &fullName, &role, &isActive, &tid, &sv,
+		&tenantSlug, &tenantName, &companyID, &tenantOK,
+		&employeeID, &perms,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -241,37 +403,22 @@ func (a *Authenticator) loadFreshClaims(ctx context.Context, tokenClaims *auth.C
 	}
 
 	var tenantID *int
-	tenantSlug, tenantName := "", ""
 	if tid.Valid {
 		id := int(tid.Int64)
 		tenantID = &id
-		_ = a.db.QueryRowContext(ctx, `
-			SELECT slug, name FROM tenants WHERE id = $1 AND is_active = true
-		`, id).Scan(&tenantSlug, &tenantName)
+		if tenantOK.Valid && !tenantOK.Bool && !auth.IsPlatformAdmin(role) {
+			return nil, sql.ErrNoRows
+		}
 		if tenantSlug == "" && !auth.IsPlatformAdmin(role) {
 			return nil, sql.ErrNoRows
 		}
 	}
 
-	perms := []string{}
 	if auth.IsTenantAdmin(role) {
-		perms = append(perms, auth.AllPermissions...)
-	} else {
-		rows, err := a.db.QueryContext(ctx, `SELECT permission FROM user_permissions WHERE user_id = $1`, tokenClaims.UserID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err != nil {
-				return nil, err
-			}
-			perms = append(perms, p)
-		}
+		perms = append([]string{}, auth.AllPermissions...)
 	}
 
-	return &auth.Claims{
+	out := &auth.Claims{
 		UserID:         tokenClaims.UserID,
 		TenantID:       tenantID,
 		TenantSlug:     tenantSlug,
@@ -279,10 +426,17 @@ func (a *Authenticator) loadFreshClaims(ctx context.Context, tokenClaims *auth.C
 		Email:          email,
 		FullName:       fullName,
 		Role:           role,
-		Permissions:    perms,
+		Permissions:    []string(perms),
 		SessionVersion: sv,
 		RegisteredClaims: tokenClaims.RegisteredClaims,
-	}, nil
+	}
+	if companyID.Valid {
+		out.CompanyID = companyID.String
+	}
+	if employeeID.Valid {
+		out.EmployeeID = employeeID.String
+	}
+	return out, nil
 }
 
 func ClaimsFromContext(ctx context.Context) *auth.Claims {

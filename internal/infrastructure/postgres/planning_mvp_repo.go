@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,16 +103,33 @@ func (r *FeatureDependencyRepo) SetDependencies(ctx context.Context, companyID, 
 			DELETE FROM feature_dependencies WHERE company_id=$1 AND feature_id=$2`, companyID, featureID); err != nil {
 			return err
 		}
+
+		// Batch insert to avoid one round trip per dependency.
+		filtered := dependsOn[:0]
 		for _, dep := range dependsOn {
 			if dep == featureID {
 				continue
 			}
-			if _, err := r.db.Q(ctx).ExecContext(ctx, `
-				INSERT INTO feature_dependencies (company_id, feature_id, depends_on_feature_id)
-				VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, companyID, featureID, dep); err != nil {
-				return err
-			}
+			filtered = append(filtered, dep)
 		}
+		if len(filtered) == 0 {
+			return nil
+		}
+
+		values := make([]string, 0, len(filtered))
+		args := make([]any, 0, 2+len(filtered))
+		args = append(args, companyID, featureID)
+		for i, dep := range filtered {
+			// ($1,$2,$3) => ($1,$2,$(3+i))
+			values = append(values, fmt.Sprintf("($1,$2,$%d)", 3+i))
+			args = append(args, dep)
+		}
+
+		query := fmt.Sprintf(`
+			INSERT INTO feature_dependencies (company_id, feature_id, depends_on_feature_id)
+			VALUES %s ON CONFLICT DO NOTHING`, joinWithComma(values))
+		_, err := r.db.Q(ctx).ExecContext(ctx, query, args...)
+		return err
 		return nil
 	})
 }

@@ -30,7 +30,7 @@ type CommentRepository interface {
 
 type AttachmentRepository interface {
 	Create(ctx context.Context, a *Attachment) error
-	ListByEntity(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID) ([]Attachment, error)
+	ListByEntity(ctx context.Context, companyID uuid.UUID, entityType string, entityID uuid.UUID, q shared.PageQuery) ([]Attachment, int64, error)
 	FindByID(ctx context.Context, companyID, id uuid.UUID) (*Attachment, error)
 	Delete(ctx context.Context, companyID, id uuid.UUID) error
 }

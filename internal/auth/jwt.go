@@ -24,6 +24,10 @@ type Claims struct {
 	Permissions    []string `json:"permissions"`
 	SessionVersion int      `json:"sv"`
 	jwt.RegisteredClaims
+
+	// Request-scoped only (json:"-" keeps JWT payload unchanged).
+	CompanyID  string `json:"-"`
+	EmployeeID string `json:"-"`
 }
 
 var (

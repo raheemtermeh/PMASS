@@ -61,6 +61,9 @@ interface ResourceManagerProps<T extends { id: string | number }> {
   onDelete?: (id: string | number) => Promise<void> | void;
   toFormValues?: (row: T) => Record<string, string>;
   extraActions?: (row: T) => ReactNode;
+  /** Highlights and enables click-to-select on table rows. */
+  selectedRowId?: string | number | null;
+  onRowSelect?: (row: T) => void;
 }
 
 function blankValues(fields: FieldDef[]): Record<string, string> {
@@ -90,6 +93,8 @@ export function ResourceManager<T extends { id: string | number }>({
   onDelete,
   toFormValues,
   extraActions,
+  selectedRowId,
+  onRowSelect,
 }: ResourceManagerProps<T>) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -250,8 +255,22 @@ export function ResourceManager<T extends { id: string | number }>({
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((row) => (
-                    <tr key={row.id}>
+                  {visibleRows.map((row) => {
+                    const isSelected =
+                      selectedRowId != null &&
+                      String(row.id) === String(selectedRowId);
+                    const rowClass = [
+                      onRowSelect ? "row-selectable" : "",
+                      isSelected ? "row-selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+                    return (
+                    <tr
+                      key={row.id}
+                      className={rowClass || undefined}
+                      onClick={onRowSelect ? () => onRowSelect(row) : undefined}
+                    >
                       {columns.map((c) => (
                         <td key={c.key}>
                           {c.render
@@ -264,7 +283,7 @@ export function ResourceManager<T extends { id: string | number }>({
                               )}
                         </td>
                       ))}
-                      <td className="actions-cell">
+                      <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                         {extraActions?.(row)}
                         {!hideEdit && onUpdate ? (
                           <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
@@ -282,7 +301,8 @@ export function ResourceManager<T extends { id: string | number }>({
                         ) : null}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

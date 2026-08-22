@@ -52,10 +52,13 @@ func (h *Handler) listComplianceControls(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	_, pageSize, offset := parseMVPPageQuery(r)
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, code, title, framework, status, owner_name, notes, created_at
-		FROM compliance_controls WHERE tenant_id = $1 ORDER BY id
-	`, tenantID)
+		FROM compliance_controls WHERE tenant_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, tenantID, pageSize, offset)
 	if err != nil {
 		log.Printf("Error querying compliance controls: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Database query failed")

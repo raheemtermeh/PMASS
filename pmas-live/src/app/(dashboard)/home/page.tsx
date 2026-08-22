@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,15 +8,6 @@ import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import type { DashboardData } from "@/features/dashboard/types";
 import { useI18n } from "@/core/providers/I18nProvider";
-import {
-  ActivityTrendChart,
-  DepartmentLoadChart,
-  ProductsStatusChart,
-  StagesStatusChart,
-  TasksPriorityChart,
-  TasksStatusChart,
-} from "@/features/dashboard/charts";
-import { LifecycleFlowGraph } from "@/features/dashboard/LifecycleFlowGraph";
 import {
   CommandWidgetShell,
   MyWorkWidget,
@@ -38,6 +30,46 @@ import {
   WIDGET_REGISTRY,
 } from "@/features/dashboard/commandCenterLayout";
 import { useUILayout } from "@/shared/hooks/useUILayout";
+import { useVisibleRefetchInterval } from "@/shared/hooks/usePageVisible";
+
+const chartLoading = () => (
+  <div className="cc-chart-empty" aria-busy="true">
+    <span>…</span>
+  </div>
+);
+
+const LifecycleFlowGraph = dynamic(
+  () =>
+    import("@/features/dashboard/LifecycleFlowGraph").then((mod) => ({
+      default: mod.LifecycleFlowGraph,
+    })),
+  { ssr: false, loading: () => <div className="cc-flow-box cc-flow-loading" aria-busy="true" /> },
+);
+
+const ProductsStatusChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.ProductsStatusChart })),
+  { ssr: false, loading: chartLoading },
+);
+const TasksStatusChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.TasksStatusChart })),
+  { ssr: false, loading: chartLoading },
+);
+const ActivityTrendChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.ActivityTrendChart })),
+  { ssr: false, loading: chartLoading },
+);
+const TasksPriorityChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.TasksPriorityChart })),
+  { ssr: false, loading: chartLoading },
+);
+const StagesStatusChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.StagesStatusChart })),
+  { ssr: false, loading: chartLoading },
+);
+const DepartmentLoadChart = dynamic(
+  () => import("@/features/dashboard/charts").then((m) => ({ default: m.DepartmentLoadChart })),
+  { ssr: false, loading: chartLoading },
+);
 
 const QUICK_ACTIONS = [
   { href: "/products", key: "createProduct", tone: "cyan" },
@@ -56,11 +88,13 @@ export default function HomePage() {
   const [overId, setOverId] = useState<WidgetId | null>(null);
   const [ccLayout, setCcLayout] = useState<CommandCenterLayout>(() => defaultCommandCenterLayout());
 
+  const dashboardPollMs = useVisibleRefetchInterval(30_000);
+
   const { data: dash, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ["vsm-dashboard", "self"],
     queryFn: () => httpClient.get<DashboardData>("/api/v1/dashboard"),
     staleTime: 15_000,
-    refetchInterval: 30_000,
+    refetchInterval: dashboardPollMs,
     retry: false,
   });
 
