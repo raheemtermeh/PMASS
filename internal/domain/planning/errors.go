@@ -24,4 +24,5 @@ var (
 	ErrTaskDeleted          = shared.New("TASK_DELETED", "Task is deleted", 409)
 	ErrProjectMemberNotFound = shared.New("PROJECT_MEMBER_NOT_FOUND", "Project member not found", 404)
 	ErrFeatureMemberNotFound = shared.New("FEATURE_MEMBER_NOT_FOUND", "Feature member not found", 404)
+	ErrLevelNotInModel       = shared.New("LEVEL_NOT_IN_MODEL", "This work level is not part of the product execution model", 400)
 )

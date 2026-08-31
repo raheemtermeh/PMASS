@@ -3,7 +3,11 @@
 import dynamic from "next/dynamic";
 import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { EmptyState } from "@/components/EmptyState";
+import { PageGuide } from "@/components/PageGuide";
 import { ResourceManager } from "@/components/ResourceManager";
+import { useToast } from "@/components/Toast";
 import { httpClient } from "@/core/api/http-client";
 import type {
   Company,
@@ -29,6 +33,7 @@ type Tab = "structure" | "employees" | "departments" | "teams" | "membership";
 
 export default function OrganizationPage() {
   const { t, d } = useI18n();
+  const { showToast } = useToast();
   const qc = useQueryClient();
   const statusOptions = ["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => ({
     value,
@@ -46,6 +51,14 @@ export default function OrganizationPage() {
   const [jumpDept, setJumpDept] = useState("");
   const [jumpTeam, setJumpTeam] = useState("");
   const [highlightId, setHighlightId] = useState("");
+  const [assignSearch, setAssignSearch] = useState("");
+  const [selectedAssignIds, setSelectedAssignIds] = useState<string[]>([]);
+  const [empSort, setEmpSort] = useState<"name_asc" | "name_desc" | "status">("name_asc");
+  const [teamDeptFilter, setTeamDeptFilter] = useState("");
+  const [teamSearch, setTeamSearch] = useState("");
+  const [pendingRemove, setPendingRemove] = useState<TeamMemberView | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [openDeptCreate, setOpenDeptCreate] = useState(false);
 
   const { data: company } = useQuery({
     queryKey: ["vsm-company"],
@@ -208,9 +221,46 @@ export default function OrganizationPage() {
     (e) => e.status === "ACTIVE" && !teamByEmployee.has(e.id),
   );
 
+  const filteredAssignable = useMemo(() => {
+    const q = assignSearch.trim().toLowerCase();
+    if (!q) return assignableEmployees;
+    return assignableEmployees.filter(
+      (e) =>
+        employeeLabel(e).toLowerCase().includes(q) ||
+        e.email.toLowerCase().includes(q) ||
+        (e.job_title || "").toLowerCase().includes(q),
+    );
+  }, [assignableEmployees, assignSearch]);
+
+  /** Employees linked to a department via team membership or manager role. */
+  const employeesInDepartment = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const m of memberships) {
+      const team = teams.find((t) => t.id === m.team_id);
+      if (!team?.department_id) continue;
+      const set = map.get(team.department_id) ?? new Set<string>();
+      set.add(m.employee_id);
+      map.set(team.department_id, set);
+    }
+    for (const d of departments) {
+      if (!d.manager_id) continue;
+      const set = map.get(d.id) ?? new Set<string>();
+      set.add(d.manager_id);
+      map.set(d.id, set);
+    }
+    return map;
+  }, [memberships, teams, departments]);
+
+  const teamLeadOptions = (departmentId: string) => {
+    if (!departmentId) return empOptions;
+    const ids = employeesInDepartment.get(departmentId);
+    if (!ids || ids.size === 0) return empOptions;
+    return empOptions.filter((o) => ids.has(o.value));
+  };
+
   const filteredEmployees = useMemo(() => {
     const q = empSearch.trim().toLowerCase();
-    return employees.filter((e) => {
+    const list = employees.filter((e) => {
       if (empStatus && e.status !== empStatus) return false;
       if (!q) return true;
       return (
@@ -219,7 +269,22 @@ export default function OrganizationPage() {
         (e.job_title || "").toLowerCase().includes(q)
       );
     });
-  }, [employees, empSearch, empStatus]);
+    return [...list].sort((a, b) => {
+      if (empSort === "status") return a.status.localeCompare(b.status);
+      const cmp = employeeLabel(a).localeCompare(employeeLabel(b));
+      return empSort === "name_desc" ? -cmp : cmp;
+    });
+  }, [employees, empSearch, empStatus, empSort]);
+
+  const filteredTeams = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase();
+    return teams.filter((team) => {
+      if (teamDeptFilter && (team.department_id ?? "") !== teamDeptFilter) return false;
+      if (!q) return true;
+      const dept = departments.find((d) => d.id === team.department_id)?.name ?? "";
+      return team.name.toLowerCase().includes(q) || dept.toLowerCase().includes(q);
+    });
+  }, [teams, teamDeptFilter, teamSearch, departments]);
 
   const filteredDepartments = useMemo(() => {
     const q = deptSearch.trim().toLowerCase();
@@ -234,15 +299,29 @@ export default function OrganizationPage() {
   async function handleAssign(e: FormEvent) {
     e.preventDefault();
     setMemberError("");
-    if (!memberTeamId || !assignEmployeeId) {
+    if (!memberTeamId) {
+      setMemberError(t("errors.selectTeamAndEmployee"));
+      return;
+    }
+    const ids = selectedAssignIds.length > 0 ? selectedAssignIds : assignEmployeeId ? [assignEmployeeId] : [];
+    if (ids.length === 0) {
       setMemberError(t("errors.selectTeamAndEmployee"));
       return;
     }
     try {
-      await assignMember.mutateAsync({ employeeId: assignEmployeeId, teamId: memberTeamId });
+      for (const employeeId of ids) {
+        await assignMember.mutateAsync({ employeeId, teamId: memberTeamId });
+      }
+      setSelectedAssignIds([]);
     } catch (err) {
       setMemberError(err instanceof Error ? err.message : t("errors.assignFailed"));
     }
+  }
+
+  function toggleAssignSelection(id: string) {
+    setSelectedAssignIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   function jumpToDepartment(id: string) {
@@ -265,6 +344,8 @@ export default function OrganizationPage() {
 
   return (
     <div className="page-stack">
+      <PageGuide page="organization" />
+
       <section className="data-panel">
         <div className="panel-header">
           <div>
@@ -272,11 +353,11 @@ export default function OrganizationPage() {
               {company?.name ?? t("common.company")}
             </h2>
             <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-              Tenant = Company. Define who owns responsibility before creating Products.
+              {t("emptyStates.setupChecklist")}
               {company?.slug ? (
                 <>
                   {" "}
-                  Slug: <span className="font-mono">{company.slug}</span>
+                  · <span className="font-mono">{company.slug}</span>
                 </>
               ) : null}
             </p>
@@ -356,9 +437,25 @@ export default function OrganizationPage() {
               </select>
             </div>
             {orgTree.length === 0 && independentTeams.length === 0 ? (
-              <p className="text-dim">
-                {t("organization.noStructure")}
-              </p>
+              <EmptyState
+                title={t("organization.noStructure")}
+                description={t("emptyStates.setupChecklist")}
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setTab("departments");
+                      setOpenDeptCreate(true);
+                    }}
+                  >
+                    {t("org.createDepartmentCta")}
+                  </button>
+                }
+                secondary={
+                  <span className="text-dim">{t("emptyStates.departmentRoleExample")}</span>
+                }
+              />
             ) : (
               <div className="org-tree">
                 {orgTree.map(({ dept, teams: deptTeams }) => (
@@ -456,10 +553,10 @@ export default function OrganizationPage() {
       {tab === "employees" ? (
         <ResourceManager
           title={t("organization.employees")}
-          description={t("organization.employeesHint")}
-          createLabel={t("organization.addEmployee")}
+          description={t("emptyStates.employeeVsUser")}
+          createLabel={t("org.createEmployeeCta")}
           emptyTitle={t("organization.noEmployees")}
-          emptyDescription={t("emptyStates.noEmployees")}
+          emptyDescription={t("emptyStates.employeeVsUser")}
           isLoading={empLoading}
           items={filteredEmployees}
           deleteLabel={t("organization.deactivate")}
@@ -475,34 +572,62 @@ export default function OrganizationPage() {
               <select
                 value={empStatus}
                 onChange={(e) => setEmpStatus(e.target.value)}
-                aria-label={t("filters.byStatus")}
+                aria-label={t("users.filterByStatus")}
               >
                 <option value="">{t("common.allStatuses")}</option>
-                {statusOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
+                <option value="ACTIVE">{t("statuses.active")}</option>
+                <option value="INACTIVE">{t("statuses.inactive")}</option>
+              </select>
+              <select
+                value={empSort}
+                onChange={(e) => setEmpSort(e.target.value as typeof empSort)}
+                aria-label={t("filters.sortProducts")}
+              >
+                <option value="name_asc">{t("common.name")} A→Z</option>
+                <option value="name_desc">{t("common.name")} Z→A</option>
+                <option value="status">{t("common.status")}</option>
               </select>
             </>
           }
           columns={[
             { key: "name", label: t("common.name"), render: (r) => employeeLabel(r) },
             { key: "job_title", label: t("common.jobTitle"), render: (r) => r.job_title || "—" },
-            { key: "email", label: t("common.email") },
-            { key: "phone", label: t("common.phone") },
             {
               key: "status",
               label: t("common.status"),
-              render: (r) => <span className="status-pill">{r.status}</span>,
+              render: (r) => (
+                <span className="status-pill">
+                  {localizedEnumLabel(r.status, statusTranslationKey(r.status), t)}
+                </span>
+              ),
             },
           ]}
           fields={[
-            { name: "first_name", label: t("organization.firstName"), required: true },
-            { name: "last_name", label: t("organization.lastName"), required: true },
-            { name: "email", label: t("common.email"), required: true },
-            { name: "job_title", label: t("common.jobTitle") },
-            { name: "phone", label: t("common.phone") },
+            {
+              name: "first_name",
+              label: t("organization.firstName"),
+              required: true,
+              group: t("org.personalGroup"),
+            },
+            {
+              name: "last_name",
+              label: t("organization.lastName"),
+              required: true,
+              group: t("org.personalGroup"),
+            },
+            {
+              name: "job_title",
+              label: t("common.jobTitle"),
+              group: t("org.employmentGroup"),
+            },
+            {
+              name: "email",
+              label: t("common.email"),
+              required: true,
+              group: t("org.contactGroup"),
+              helperText: t("emptyStates.employeeVsUser"),
+            },
+            { name: "phone", label: t("common.phone"), group: t("org.contactGroup") },
           ]}
           toFormValues={(r) => ({
             first_name: r.first_name,
@@ -535,20 +660,19 @@ export default function OrganizationPage() {
           onDelete={async (id) => {
             await empDeactivate.mutateAsync(id);
           }}
-          extraActions={(row) =>
-            row.status === "INACTIVE" ? (
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() =>
-                  void httpClient
-                    .post(`/api/v1/employees/${row.id}/activate`)
-                    .then(() => qc.invalidateQueries({ queryKey: ["vsm-employees"] }))
-                }
-              >
-                Activate
-              </button>
-            ) : null
+          moreActions={(row) =>
+            row.status === "INACTIVE"
+              ? [
+                  {
+                    id: "activate",
+                    label: t("users.enableUser"),
+                    onClick: () =>
+                      void httpClient
+                        .post(`/api/v1/employees/${row.id}/activate`)
+                        .then(() => qc.invalidateQueries({ queryKey: ["vsm-employees"] })),
+                  },
+                ]
+              : []
           }
         />
       ) : null}
@@ -557,9 +681,10 @@ export default function OrganizationPage() {
         <ResourceManager
           title={t("organization.departments")}
           description={t("organization.departmentsHint")}
-          createLabel={t("organization.addDepartment")}
+          createLabel={t("org.createDepartmentCta")}
           emptyTitle={t("organization.noDepartments")}
-          emptyDescription={t("emptyStates.noDepartments")}
+          emptyDescription={t("emptyStates.needDepartmentFirst")}
+          autoOpenCreate={openDeptCreate}
           isLoading={deptLoading}
           items={filteredDepartments}
           deleteLabel="Archive"
@@ -609,6 +734,7 @@ export default function OrganizationPage() {
               type: "select",
               required: true,
               options: empOptions,
+              helperText: t("org.managerFromEmployees"),
             },
           ]}
           toFormValues={(r) => ({
@@ -617,6 +743,7 @@ export default function OrganizationPage() {
             manager_id: r.manager_id ?? "",
           })}
           onCreate={async (v) => {
+            setOpenDeptCreate(false);
             await deptCreate.mutateAsync({
               name: v.name,
               description: v.description,
@@ -638,20 +765,40 @@ export default function OrganizationPage() {
       {tab === "teams" ? (
         <ResourceManager
           title={t("organization.teams")}
-          description={t("organization.teamsHint")}
-          createLabel={t("organization.addTeam")}
+          description={`${t("organization.teamsHint")} ${t("emptyStates.setupChecklist")}`}
+          createLabel={t("org.createTeamCta")}
           emptyTitle={t("organization.noTeams")}
-          emptyDescription={t("emptyStates.noTeams")}
+          emptyDescription={t("emptyStates.needDepartmentFirst")}
           isLoading={teamLoading}
-          items={teams}
+          items={filteredTeams}
           deleteLabel="Archive"
           pageSize={10}
           toolbar={
-            teamError ? (
-              <p className="auth-error" style={{ margin: 0, width: "100%" }}>
-                {teamError}
-              </p>
-            ) : null
+            <>
+              <input
+                value={teamSearch}
+                onChange={(e) => setTeamSearch(e.target.value)}
+                placeholder={t("organization.searchTeams")}
+                aria-label={t("organization.searchTeams")}
+              />
+              <select
+                value={teamDeptFilter}
+                onChange={(e) => setTeamDeptFilter(e.target.value)}
+                aria-label={t("organization.department")}
+              >
+                <option value="">{t("organization.allDepartments")}</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              {teamError ? (
+                <p className="auth-error" style={{ margin: 0, width: "100%" }}>
+                  {teamError}
+                </p>
+              ) : null}
+            </>
           }
           columns={[
             { key: "name", label: t("common.name") },
@@ -722,7 +869,8 @@ export default function OrganizationPage() {
               label: t("organization.teamLead"),
               type: "select",
               required: true,
-              options: empOptions,
+              options: (v) => teamLeadOptions(v.department_id ?? ""),
+              helperText: t("org.teamLeadFiltered"),
             },
             {
               name: "capacity",
@@ -735,7 +883,12 @@ export default function OrganizationPage() {
               type: "select",
               options: statusOptions,
             },
-            { name: "description", label: t("common.description"), type: "textarea" },
+            {
+              name: "description",
+              label: t("org.descriptionOptional"),
+              type: "textarea",
+              collapsible: true,
+            },
           ]}
           toFormValues={(r) => ({
             name: r.name,
@@ -770,34 +923,24 @@ export default function OrganizationPage() {
           onDelete={async (id) => {
             await teamArchive.mutateAsync(id);
           }}
-          extraActions={(row) => (
-            <select
-              className="btn btn-sm"
-              aria-label={t("organization.moveToDepartment", { name: row.name })}
-              value=""
-              disabled={teamMove.isPending}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                teamMove.mutate({
-                  id: row.id,
-                  departmentId: e.target.value === "__independent__" ? null : e.target.value,
-                });
-                e.target.value = "";
-              }}
-            >
-              <option value="">{t("organization.moveTo")}</option>
-              {row.department_id ? (
-                <option value="__independent__">{t("organization.makeIndependent")}</option>
-              ) : null}
-              {deptOptions
-                .filter((d) => d.value !== row.department_id)
-                .map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-            </select>
-          )}
+          moreActions={(row) => {
+            const items: { id: string; label: string; onClick: () => void }[] = [];
+            if (row.department_id) {
+              items.push({
+                id: "independent",
+                label: t("organization.makeIndependent"),
+                onClick: () => teamMove.mutate({ id: row.id, departmentId: null }),
+              });
+            }
+            for (const d of deptOptions.filter((opt) => opt.value !== row.department_id)) {
+              items.push({
+                id: `move-${d.value}`,
+                label: `${t("common.move")} → ${d.label}`,
+                onClick: () => teamMove.mutate({ id: row.id, departmentId: d.value }),
+              });
+            }
+            return items;
+          }}
         />
       ) : null}
 
@@ -807,7 +950,7 @@ export default function OrganizationPage() {
             {t("organization.teamMembership")}
           </h3>
           <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-            {t("organization.membershipHint")}
+            {t("organization.membershipHint")} {t("emptyStates.setupChecklist")}
           </p>
 
           <div className="form-group" style={{ maxWidth: 420, marginBottom: "1rem" }}>
@@ -845,37 +988,53 @@ export default function OrganizationPage() {
 
           {memberTeamId ? (
             <>
-              <form onSubmit={handleAssign} className="org-assign-row">
+              <form onSubmit={handleAssign} className="org-assign-row org-assign-multi">
                 <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label htmlFor="assign-employee">{t("organization.addEmployee")}</label>
-                  <select
-                    id="assign-employee"
-                    value={assignEmployeeId}
-                    onChange={(e) => setAssignEmployeeId(e.target.value)}
-                  >
-                    <option value="">{t("welcome.select")}</option>
-                    {assignableEmployees.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {employeeLabel(e)}
-                        {e.job_title ? ` · ${e.job_title}` : ""}
-                      </option>
+                  <label htmlFor="assign-search">{t("organization.addEmployee")}</label>
+                  <input
+                    id="assign-search"
+                    value={assignSearch}
+                    onChange={(e) => setAssignSearch(e.target.value)}
+                    placeholder={t("organization.searchEmployees")}
+                    aria-label={t("organization.searchEmployees")}
+                    style={{ marginBottom: "0.35rem" }}
+                  />
+                  <ul className="org-assign-checklist">
+                    {filteredAssignable.map((e) => (
+                      <li key={e.id}>
+                        <label className="org-assign-check">
+                          <input
+                            type="checkbox"
+                            checked={selectedAssignIds.includes(e.id)}
+                            onChange={() => toggleAssignSelection(e.id)}
+                          />
+                          <span>
+                            {employeeLabel(e)}
+                            {e.job_title ? ` · ${e.job_title}` : ""}
+                          </span>
+                        </label>
+                      </li>
                     ))}
-                  </select>
-                  {assignableEmployees.length === 0 ? (
+                  </ul>
+                  {filteredAssignable.length === 0 ? (
                     <p className="text-dim" style={{ fontSize: "0.78rem", marginTop: "0.35rem" }}>
-                      {t("organization.allEmployeesAssigned")}
+                      {assignableEmployees.length === 0
+                        ? t("organization.allEmployeesAssigned")
+                        : t("common.noResults")}
                     </p>
                   ) : null}
                 </div>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={assignMember.isPending}
+                  disabled={assignMember.isPending || selectedAssignIds.length === 0}
                   style={{ alignSelf: "flex-end" }}
                 >
                   {assignMember.isPending
                     ? t("organization.assigning")
-                    : t("organization.assignToTeam")}
+                    : selectedAssignIds.length > 1
+                      ? `${t("organization.assignToTeam")} (${selectedAssignIds.length})`
+                      : t("organization.assignToTeam")}
                 </button>
               </form>
               {memberError ? <p className="auth-error">{memberError}</p> : null}
@@ -938,12 +1097,7 @@ export default function OrganizationPage() {
                             <button
                               type="button"
                               className="btn btn-sm btn-danger"
-                              onClick={() =>
-                                removeMember.mutate({
-                                  employeeId: m.employee_id,
-                                  teamId: memberTeamId,
-                                })
-                              }
+                              onClick={() => setPendingRemove(m)}
                             >
                               {t("common.remove")}
                             </button>
@@ -960,6 +1114,30 @@ export default function OrganizationPage() {
           )}
         </section>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingRemove)}
+        title={t("common.confirmDelete")}
+        description={t("org.removeMemberConfirm")}
+        confirmLabel={t("common.remove")}
+        tone="danger"
+        busy={removeBusy}
+        onCancel={() => !removeBusy && setPendingRemove(null)}
+        onConfirm={() => {
+          if (!pendingRemove || !memberTeamId) return;
+          setRemoveBusy(true);
+          void removeMember
+            .mutateAsync({
+              employeeId: pendingRemove.employee_id,
+              teamId: memberTeamId,
+            })
+            .then(() => {
+              setPendingRemove(null);
+              showToast(t("org.removeMemberUndo"));
+            })
+            .finally(() => setRemoveBusy(false));
+        }}
+      />
     </div>
   );
 }

@@ -27,12 +27,12 @@ export interface CommandCenterLayout {
 
 export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: "kpis", defaultVisible: true, defaultSize: "full" },
+  { id: "quickActions", defaultVisible: true, defaultSize: "full" },
   { id: "charts", defaultVisible: true, defaultSize: "full" },
   { id: "myWork", defaultVisible: true, defaultSize: "half" },
   { id: "deadlines", defaultVisible: true, defaultSize: "half" },
   { id: "teamWorkload", defaultVisible: true, defaultSize: "half" },
   { id: "pipelineAlerts", defaultVisible: true, defaultSize: "half" },
-  { id: "quickActions", defaultVisible: true, defaultSize: "full" },
   { id: "assignments", defaultVisible: true, defaultSize: "full" },
   { id: "workflow", defaultVisible: true, defaultSize: "full" },
   { id: "departmentLoad", defaultVisible: false, defaultSize: "full" },

@@ -2,6 +2,7 @@ package planningapp
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -81,8 +82,13 @@ type CreateProjectInput struct {
 func (s *Service) CreateProject(ctx context.Context, companyID uuid.UUID, in CreateProjectInput) (*planning.Project, error) {
 	var out *planning.Project
 	err := s.db.WithinTx(ctx, func(ctx context.Context) error {
-		if _, err := s.products.FindByID(ctx, companyID, in.ProductID); err != nil {
+		prod, err := s.products.FindByID(ctx, companyID, in.ProductID)
+		if err != nil {
 			return err
+		}
+		cfg := prod.ResolvedConfig()
+		if !cfg.HasStorage(product.StorageProject) {
+			return planning.ErrLevelNotInModel
 		}
 		p, err := planning.NewProject(companyID, in.ProductID, in.Name, in.Description)
 		if err != nil {
@@ -308,6 +314,7 @@ func (s *Service) ListProjectMembers(ctx context.Context, companyID, projectID u
 
 type CreateFeatureInput struct {
 	ProjectID uuid.UUID
+	ProductID uuid.UUID // used when model skips visible projects (system parent)
 	Title     string
 	Priority  string
 	ActorID   *uuid.UUID
@@ -316,11 +323,46 @@ type CreateFeatureInput struct {
 func (s *Service) CreateFeature(ctx context.Context, companyID uuid.UUID, in CreateFeatureInput) (*planning.Feature, error) {
 	var out *planning.Feature
 	err := s.db.WithinTx(ctx, func(ctx context.Context) error {
-		proj, err := s.projects.FindByID(ctx, companyID, in.ProjectID)
-		if err != nil {
-			return err
+		var prod *product.Product
+		var projectID uuid.UUID
+		var productID uuid.UUID
+
+		if in.ProjectID != uuid.Nil {
+			proj, err := s.projects.FindByID(ctx, companyID, in.ProjectID)
+			if err != nil {
+				return err
+			}
+			if proj.IsSystem {
+				return planning.ErrLevelNotInModel
+			}
+			projectID = proj.ID
+			productID = proj.ProductID
+			prod, err = s.products.FindByID(ctx, companyID, productID)
+			if err != nil {
+				return err
+			}
+		} else if in.ProductID != uuid.Nil {
+			var err error
+			prod, err = s.products.FindByID(ctx, companyID, in.ProductID)
+			if err != nil {
+				return err
+			}
+			productID = prod.ID
+			sysProj, err := s.ensureSystemProject(ctx, companyID, prod)
+			if err != nil {
+				return err
+			}
+			projectID = sysProj.ID
+		} else {
+			return planning.ErrProjectRequired
 		}
-		f, err := planning.NewFeature(companyID, proj.ProductID, proj.ID, in.Title, in.Priority)
+
+		cfg := prod.ResolvedConfig()
+		if !cfg.HasStorage(product.StorageFeature) {
+			return planning.ErrLevelNotInModel
+		}
+
+		f, err := planning.NewFeature(companyID, productID, projectID, in.Title, in.Priority)
 		if err != nil {
 			return err
 		}
@@ -546,6 +588,8 @@ func (s *Service) ListFeatureMembers(ctx context.Context, companyID, featureID u
 
 type CreateTaskInput struct {
 	FeatureID  uuid.UUID
+	ProductID  uuid.UUID // when model has no visible feature (Direct / Kanban work items)
+	ProjectID  uuid.UUID // optional parent when creating under a visible project without feature
 	Title      string
 	Priority   string
 	AssigneeID *uuid.UUID
@@ -556,10 +600,74 @@ type CreateTaskInput struct {
 func (s *Service) CreateTask(ctx context.Context, companyID uuid.UUID, in CreateTaskInput) (*planning.Task, error) {
 	var out *planning.Task
 	err := s.db.WithinTx(ctx, func(ctx context.Context) error {
-		if _, err := s.features.FindByID(ctx, companyID, in.FeatureID); err != nil {
-			return err
+		featureID := in.FeatureID
+		var prod *product.Product
+
+		if featureID != uuid.Nil {
+			feat, err := s.features.FindByID(ctx, companyID, featureID)
+			if err != nil {
+				return err
+			}
+			if feat.IsSystem {
+				// Allow only when model intentionally hides features (Kanban / Direct).
+				prod, err = s.products.FindByID(ctx, companyID, feat.ProductID)
+				if err != nil {
+					return err
+				}
+				if prod.ResolvedConfig().HasStorage(product.StorageFeature) {
+					return planning.ErrLevelNotInModel
+				}
+			} else {
+				prod, err = s.products.FindByID(ctx, companyID, feat.ProductID)
+				if err != nil {
+					return err
+				}
+			}
+		} else if in.ProductID != uuid.Nil {
+			var err error
+			prod, err = s.products.FindByID(ctx, companyID, in.ProductID)
+			if err != nil {
+				return err
+			}
+			cfg := prod.ResolvedConfig()
+			if cfg.HasStorage(product.StorageFeature) {
+				return planning.ErrFeatureRequired
+			}
+			sysFeat, err := s.ensureSystemFeature(ctx, companyID, prod, in.ProjectID)
+			if err != nil {
+				return err
+			}
+			featureID = sysFeat.ID
+		} else if in.ProjectID != uuid.Nil {
+			proj, err := s.projects.FindByID(ctx, companyID, in.ProjectID)
+			if err != nil {
+				return err
+			}
+			prod, err = s.products.FindByID(ctx, companyID, proj.ProductID)
+			if err != nil {
+				return err
+			}
+			cfg := prod.ResolvedConfig()
+			if cfg.HasStorage(product.StorageFeature) {
+				return planning.ErrFeatureRequired
+			}
+			sysFeat, err := s.ensureSystemFeature(ctx, companyID, prod, proj.ID)
+			if err != nil {
+				return err
+			}
+			featureID = sysFeat.ID
+		} else {
+			return planning.ErrFeatureRequired
 		}
-		t, err := planning.NewTask(companyID, in.FeatureID, in.Title, in.Priority, in.AssigneeID, in.DueDate)
+
+		if prod == nil {
+			return product.ErrProductNotFound
+		}
+		if !prod.ResolvedConfig().HasStorage(product.StorageTask) {
+			return planning.ErrLevelNotInModel
+		}
+
+		t, err := planning.NewTask(companyID, featureID, in.Title, in.Priority, in.AssigneeID, in.DueDate)
 		if err != nil {
 			return err
 		}
@@ -573,6 +681,91 @@ func (s *Service) CreateTask(ctx context.Context, companyID uuid.UUID, in Create
 		return nil
 	})
 	return out, err
+}
+
+// ensureSystemProject creates or returns the hidden project container for models that skip projects.
+func (s *Service) ensureSystemProject(ctx context.Context, companyID uuid.UUID, prod *product.Product) (*planning.Project, error) {
+	existing, err := s.projects.FindSystemByProduct(ctx, companyID, prod.ID)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, planning.ErrProjectNotFound) {
+		return nil, err
+	}
+	p, err := planning.NewProject(companyID, prod.ID, "__system__", "System container")
+	if err != nil {
+		return nil, err
+	}
+	p.IsSystem = true
+	p.Status = planning.StatusActive
+	if err := s.projects.Create(ctx, p); err != nil {
+		// Race: another request created it.
+		if again, err2 := s.projects.FindSystemByProduct(ctx, companyID, prod.ID); err2 == nil {
+			return again, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
+// ensureSystemFeature creates or returns the hidden feature container.
+// preferredProjectID is used when the model has visible projects (e.g. Kanban).
+func (s *Service) ensureSystemFeature(ctx context.Context, companyID uuid.UUID, prod *product.Product, preferredProjectID uuid.UUID) (*planning.Feature, error) {
+	cfg := prod.ResolvedConfig()
+	projectID := preferredProjectID
+	if projectID == uuid.Nil || !cfg.HasStorage(product.StorageProject) {
+		sysProj, err := s.ensureSystemProject(ctx, companyID, prod)
+		if err != nil {
+			return nil, err
+		}
+		projectID = sysProj.ID
+	}
+
+	existing, err := s.features.FindSystemByProject(ctx, companyID, projectID)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, planning.ErrFeatureNotFound) {
+		return nil, err
+	}
+
+	f, err := planning.NewFeature(companyID, prod.ID, projectID, "__system__", planning.PriorityMedium)
+	if err != nil {
+		return nil, err
+	}
+	f.IsSystem = true
+	f.Status = planning.StatusActive
+	if err := s.features.Create(ctx, f); err != nil {
+		if again, err2 := s.features.FindSystemByProject(ctx, companyID, projectID); err2 == nil {
+			return again, nil
+		}
+		return nil, err
+	}
+	return f, nil
+}
+
+func (s *Service) ListFeaturesByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]planning.Feature, shared.PageMeta, error) {
+	items, total, err := s.features.ListByProduct(ctx, companyID, productID, q)
+	if err != nil {
+		return nil, shared.PageMeta{}, err
+	}
+	return items, shared.NewPageMeta(q, total), nil
+}
+
+func (s *Service) ListTasksByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]planning.Task, shared.PageMeta, error) {
+	items, total, err := s.tasks.ListByProduct(ctx, companyID, productID, q)
+	if err != nil {
+		return nil, shared.PageMeta{}, err
+	}
+	return items, shared.NewPageMeta(q, total), nil
+}
+
+func (s *Service) ListTasksByProject(ctx context.Context, companyID, projectID uuid.UUID, q shared.PageQuery) ([]planning.Task, shared.PageMeta, error) {
+	items, total, err := s.tasks.ListByProject(ctx, companyID, projectID, q)
+	if err != nil {
+		return nil, shared.PageMeta{}, err
+	}
+	return items, shared.NewPageMeta(q, total), nil
 }
 
 func (s *Service) GetTask(ctx context.Context, companyID, id uuid.UUID) (*planning.Task, error) {

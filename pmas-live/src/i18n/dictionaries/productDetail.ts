@@ -105,7 +105,11 @@ export const productDetailDict: DictModule = {
       executionModels: {
         projectFeatureTask: "Project → Feature → Task",
         featureTask: "Feature → Task",
-        directTask: "Direct task",
+        directTask: "Product → Task",
+        scrum: "Epic → Story → Task",
+        kanban: "Initiative → Work Item",
+        okrs: "Objective → Key Result → Initiative",
+        custom: "Custom",
       },
       visibility: { organization: "Organization", private: "Private", public: "Public" },
       roles: {
@@ -282,9 +286,13 @@ export const productDetailDict: DictModule = {
         memberFailed: "به‌روزرسانی عضو محصول ممکن نشد. لطفاً دوباره تلاش کنید.",
       },
       executionModels: {
-        projectFeatureTask: "پروژه ← قابلیت ← وظیفه",
-        featureTask: "قابلیت ← وظیفه",
-        directTask: "وظیفه مستقیم",
+        projectFeatureTask: "پروژه → قابلیت → تسک",
+        featureTask: "قابلیت → تسک",
+        directTask: "محصول → تسک",
+        scrum: "اپیک → استوری → تسک",
+        kanban: "ابتکار → آیتم کار",
+        okrs: "هدف → نتیجه کلیدی → ابتکار",
+        custom: "سفارشی",
       },
       visibility: { organization: "سازمانی", private: "خصوصی", public: "عمومی" },
       roles: {

@@ -16,6 +16,7 @@ type ProjectRepository interface {
 	Update(ctx context.Context, p *Project) error
 	Delete(ctx context.Context, companyID, id uuid.UUID) error
 	ListByOwner(ctx context.Context, companyID, ownerID uuid.UUID, q shared.PageQuery) ([]Project, int64, error)
+	FindSystemByProduct(ctx context.Context, companyID, productID uuid.UUID) (*Project, error)
 }
 
 type FeatureRepository interface {
@@ -26,6 +27,9 @@ type FeatureRepository interface {
 	Delete(ctx context.Context, companyID, id uuid.UUID) error
 	CountByProject(ctx context.Context, companyID, projectID uuid.UUID) (int64, error)
 	ListByOwner(ctx context.Context, companyID, ownerID uuid.UUID, q shared.PageQuery) ([]Feature, int64, error)
+	FindSystemByProduct(ctx context.Context, companyID, productID uuid.UUID) (*Feature, error)
+	FindSystemByProject(ctx context.Context, companyID, projectID uuid.UUID) (*Feature, error)
+	ListByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]Feature, int64, error)
 }
 
 type TaskRepository interface {
@@ -36,6 +40,8 @@ type TaskRepository interface {
 	Delete(ctx context.Context, companyID, id uuid.UUID) error
 	ListOverdue(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]Task, int64, error)
 	ListByAssignee(ctx context.Context, companyID, assigneeID uuid.UUID, q shared.PageQuery) ([]Task, int64, error)
+	ListByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]Task, int64, error)
+	ListByProject(ctx context.Context, companyID, projectID uuid.UUID, q shared.PageQuery) ([]Task, int64, error)
 }
 
 // ChecklistRepository manages task checklist items (MVP addition).

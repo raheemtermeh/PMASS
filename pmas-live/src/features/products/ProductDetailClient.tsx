@@ -5,7 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CollaborationPanel } from "@/components/CollaborationPanel";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
+import { FormStepper } from "@/components/FormStepper";
+import { PageGuide } from "@/components/PageGuide";
+import { ExecutionModelPicker } from "@/components/ExecutionModelPicker";
+import { WorkMapGuide } from "@/components/WorkMapGuide";
 import { httpClient } from "@/core/api/http-client";
 import { isSafeResourceId } from "@/shared/security";
 import { PRODUCT_MEMBER_ROLES } from "@/features/products/product-roles";
@@ -21,6 +26,7 @@ import {
   stageProgressPercent,
   type ProductDetailTab,
 } from "@/features/products/product-utils";
+import { cascadeLabels, hasStorage, resolveProductConfig } from "@/features/products/work-models";
 import type {
   Department,
   Employee,
@@ -62,9 +68,16 @@ export function ProductDetailClient({ productId }: { productId: string }) {
   const [exitMet, setExitMet] = useState(true);
   const [form, setForm] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState("");
+  const [modelKey, setModelKey] = useState("PROJECT_FEATURE_TASK");
+  const [customLevelsJson, setCustomLevelsJson] = useState(
+    JSON.stringify([{ label: "Theme" }, { label: "Ticket" }]),
+  );
   const [memberEmployeeId, setMemberEmployeeId] = useState("");
   const [memberRole, setMemberRole] = useState("CONTRIBUTOR");
   const [memberError, setMemberError] = useState("");
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [pipeStep, setPipeStep] = useState(0);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   useEffect(() => {
     if (!isSafeResourceId(productId)) router.replace("/products");
@@ -122,10 +135,16 @@ export function ProductDetailClient({ productId }: { productId: string }) {
   });
 
   const projectIds = projects.map((p) => p.id).join(",");
+  const productCfg = product ? resolveProductConfig(product) : null;
+  const detailShowProjects = !product || hasStorage(productCfg, "project");
+  const detailShowFeatures = !product || hasStorage(productCfg, "feature");
 
   const { data: features = [] } = useQuery({
-    queryKey: ["vsm-product-features", projectIds],
+    queryKey: ["vsm-product-features", productId, projectIds, detailShowProjects],
     queryFn: async () => {
+      if (!detailShowProjects && productId) {
+        return httpClient.get<Feature[]>(`/api/v1/features?product_id=${productId}&page_size=100`);
+      }
       const all: Feature[] = [];
       for (const p of projects) {
         const rows = await httpClient.get<Feature[]>(`/api/v1/features?project_id=${p.id}&page_size=100`);
@@ -133,14 +152,25 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       }
       return all;
     },
-    enabled: projects.length > 0,
+    enabled: Boolean(productId) && detailShowFeatures && (detailShowProjects ? projects.length > 0 : true),
   });
 
   const featureIds = features.map((f) => f.id).join(",");
 
   const { data: tasks = [] } = useQuery({
-    queryKey: ["vsm-product-tasks", featureIds],
+    queryKey: ["vsm-product-tasks", productId, featureIds, detailShowFeatures, detailShowProjects],
     queryFn: async () => {
+      if (!detailShowFeatures && productId) {
+        if (detailShowProjects) {
+          const all: Task[] = [];
+          for (const p of projects) {
+            const rows = await httpClient.get<Task[]>(`/api/v1/tasks?project_id=${p.id}&page_size=100`);
+            all.push(...rows);
+          }
+          return all;
+        }
+        return httpClient.get<Task[]>(`/api/v1/tasks?product_id=${productId}&page_size=100`);
+      }
       const all: Task[] = [];
       for (const f of features) {
         const rows = await httpClient.get<Task[]>(`/api/v1/tasks?feature_id=${f.id}&page_size=100`);
@@ -148,7 +178,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       }
       return all;
     },
-    enabled: features.length > 0,
+    enabled: Boolean(productId) && (detailShowFeatures ? features.length > 0 : true),
   });
 
   const { data: commentCount = 0 } = useQuery({
@@ -201,6 +231,12 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       success_metrics: product.success_metrics ?? "",
       business_value: product.business_value ?? "",
     });
+    setModelKey(product.execution_model || "PROJECT_FEATURE_TASK");
+    if (product.execution_model === "CUSTOM" && product.execution_config?.levels?.length) {
+      setCustomLevelsJson(
+        JSON.stringify(product.execution_config.levels.map((l) => ({ label: l.label }))),
+      );
+    }
     setPipeName(t("productDetail.namedPipeline", { name: product.name }));
   }, [product, t]);
 
@@ -402,8 +438,16 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       PROJECT_FEATURE_TASK: "projectFeatureTask",
       FEATURE_TASK: "featureTask",
       DIRECT_TASK: "directTask",
+      SCRUM: "scrum",
+      KANBAN: "kanban",
+      OKRS: "okrs",
+      CUSTOM: "custom",
     };
-    return keys[value] ? t(`productDetail.executionModels.${keys[value]}`) : executionModelLabel(value);
+    const named = keys[value] ? t(`productDetail.executionModels.${keys[value]}`) : "";
+    if (named && !named.startsWith("productDetail.")) return named;
+    const i18n = t(`workModels.${value}.name`);
+    if (i18n && !i18n.startsWith("workModels.")) return i18n;
+    return executionModelLabel(value);
   };
   const productRole = (value: string) =>
     t(`productDetail.roles.${value.toLowerCase()}`);
@@ -453,6 +497,9 @@ export function ProductDetailClient({ productId }: { productId: string }) {
 
   return (
     <div className="page-stack product-detail-page">
+      <PageGuide page="productDetail" />
+      <WorkMapGuide config={resolveProductConfig(product)} activeStorage="product" compact />
+
       <section className="data-panel product-header-panel">
         <div className="product-header-top">
           <div>
@@ -485,7 +532,14 @@ export function ProductDetailClient({ productId }: { productId: string }) {
           </div>
           <div className="product-meta-item">
             <span className="product-meta-label">{t("productDetail.execution")}</span>
-            <strong>{executionLabel(product.execution_model)}</strong>
+            <strong>
+              {executionLabel(product.execution_model)}
+              {product.execution_config?.levels?.length ? (
+                <span className="text-dim" style={{ display: "block", fontSize: "0.75rem", fontWeight: 400 }}>
+                  {cascadeLabels(product.execution_config)}
+                </span>
+              ) : null}
+            </strong>
           </div>
           <div className="product-meta-item">
             <span className="product-meta-label">{t("productDetail.pipelineStatus")}</span>
@@ -527,15 +581,7 @@ export function ProductDetailClient({ productId }: { productId: string }) {
               type="button"
               className="btn btn-sm btn-danger"
               disabled={archiveMut.isPending}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    t("productDetail.archiveConfirm", { name: product.name }),
-                  )
-                ) {
-                  archiveMut.mutate();
-                }
-              }}
+              onClick={() => setArchiveConfirmOpen(true)}
             >
               {t("productDetail.archive")}
             </button>
@@ -668,51 +714,105 @@ export function ProductDetailClient({ productId }: { productId: string }) {
           {!pipelineId ? (
             <>
               <h3 className="panel-title">{t("productDetail.createPipeline")}</h3>
-              <p className="text-dim product-section-lead">
-                {t("productDetail.pipelineLead")}
-              </p>
-              <p className="text-dim" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem" }}>
-                {t("productDetail.companyTemplates")}
-              </p>
-              <div className="pipeline-templates">
-                {COMPANY_PIPELINE_TEMPLATES.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    className="btn btn-sm pipeline-template-btn"
-                    onClick={() => {
-                      setPipeName(`${product.name} · ${t(`productDetail.templates.${tpl.id}`)}`);
-                      setStageDraft(tpl.stages.map(stageLabel).join(lang === "fa" ? "، " : ", "));
-                    }}
-                  >
-                    {t(`productDetail.templates.${tpl.id}`)}
-                    <span className="text-dim pipeline-template-stages">
-                      {tpl.stages.map(stageLabel).join(lang === "fa" ? " ← " : " → ")}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <form
-                className="auth-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setError("");
-                  createPipeline.mutate();
-                }}
-                style={{ marginTop: "1rem" }}
-              >
-                <div className="form-group">
+              <p className="text-dim product-section-lead">{t("productDetail.pipelineLead")}</p>
+
+              <FormStepper
+                steps={[
+                  { id: "template", label: t("productDetail.companyTemplates") },
+                  { id: "name", label: t("productDetail.pipelineName") },
+                  { id: "stages", label: t("productDetail.tabs.stages") },
+                  { id: "preview", label: t("common.confirm") },
+                ]}
+                current={pipeStep}
+                onStepClick={(i) => i <= pipeStep && setPipeStep(i)}
+              />
+
+              {pipeStep === 0 ? (
+                <div className="pipeline-templates" style={{ marginTop: "1rem" }}>
+                  {COMPANY_PIPELINE_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      className={`btn btn-sm pipeline-template-btn${selectedTemplateId === tpl.id ? " btn-primary" : ""}`}
+                      onClick={() => {
+                        setSelectedTemplateId(tpl.id);
+                        setPipeName(`${product.name} · ${t(`productDetail.templates.${tpl.id}`)}`);
+                        setStageDraft(tpl.stages.map(stageLabel).join(lang === "fa" ? "، " : ", "));
+                      }}
+                    >
+                      {t(`productDetail.templates.${tpl.id}`)}
+                      <span className="text-dim pipeline-template-stages">
+                        {tpl.stages.map(stageLabel).join(lang === "fa" ? " ← " : " → ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {pipeStep === 1 ? (
+                <div className="form-group" style={{ marginTop: "1rem" }}>
                   <label htmlFor="pipeName">{t("productDetail.pipelineName")}</label>
                   <input id="pipeName" value={pipeName} onChange={(e) => setPipeName(e.target.value)} required />
                 </div>
-                <div className="form-group">
+              ) : null}
+
+              {pipeStep === 2 ? (
+                <div className="form-group" style={{ marginTop: "1rem" }}>
                   <label htmlFor="stages">{t("productDetail.stagesCommaSeparated")}</label>
                   <input id="stages" value={stageDraft} onChange={(e) => setStageDraft(e.target.value)} required />
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={createPipeline.isPending}>
-                  {createPipeline.isPending ? t("productDetail.creating") : t("productDetail.createPipeline")}
-                </button>
-              </form>
+              ) : null}
+
+              {pipeStep === 3 ? (
+                <div className="pipeline-preview" style={{ marginTop: "1rem" }}>
+                  <p className="text-dim">{t("productDetail.pipelineName")}: <strong>{pipeName}</strong></p>
+                  <ol className="pipeline-preview-stages">
+                    {stageDraft
+                      .split(/[,،]/)
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .map((name, i) => (
+                        <li key={`${name}-${i}`}>{name}</li>
+                      ))}
+                  </ol>
+                </div>
+              ) : null}
+
+              <div className="modal-footer" style={{ marginTop: "1.25rem", paddingInline: 0 }}>
+                {pipeStep > 0 ? (
+                  <button type="button" className="btn" onClick={() => setPipeStep((s) => s - 1)}>
+                    {t("common.back")}
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {pipeStep < 3 ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={pipeStep === 0 && !selectedTemplateId}
+                    onClick={() => {
+                      if (pipeStep === 1 && !pipeName.trim()) return;
+                      if (pipeStep === 2 && !stageDraft.trim()) return;
+                      setPipeStep((s) => s + 1);
+                    }}
+                  >
+                    {t("common.continue")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={createPipeline.isPending}
+                    onClick={() => {
+                      setError("");
+                      createPipeline.mutate();
+                    }}
+                  >
+                    {createPipeline.isPending ? t("productDetail.creating") : t("productDetail.createPipeline")}
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -1053,6 +1153,40 @@ export function ProductDetailClient({ productId }: { productId: string }) {
       {tab === "settings" && (
         <section className="data-panel">
           <h3 className="panel-title">{t("settings.title")}</h3>
+          <div style={{ marginBottom: "1.25rem" }}>
+            <ExecutionModelPicker
+              model={modelKey}
+              customLevelsJson={customLevelsJson}
+              onModelChange={setModelKey}
+              onCustomLevelsChange={setCustomLevelsJson}
+              locked={!product.execution_model_unlocked}
+            />
+            {product.execution_model_unlocked ? (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ marginTop: "0.75rem" }}
+                disabled={updateProduct.isPending || modelKey === product.execution_model}
+                onClick={() => {
+                  setSaveError("");
+                  let execution_levels: { label: string }[] | undefined;
+                  if (modelKey === "CUSTOM") {
+                    try {
+                      execution_levels = JSON.parse(customLevelsJson) as { label: string }[];
+                    } catch {
+                      execution_levels = [{ label: "Theme" }, { label: "Ticket" }];
+                    }
+                  }
+                  updateProduct.mutate({
+                    execution_model: modelKey,
+                    execution_levels,
+                  });
+                }}
+              >
+                {t("workModels.saveModel")}
+              </button>
+            ) : null}
+          </div>
           <form
               className="auth-form"
               onSubmit={(e) => {
@@ -1137,6 +1271,19 @@ export function ProductDetailClient({ productId }: { productId: string }) {
           </div>
         </section>
       )}
+
+      <ConfirmDialog
+        open={archiveConfirmOpen}
+        title={t("common.confirmArchive")}
+        description={t("productDetail.archiveConfirm", { name: product.name })}
+        confirmLabel={t("productDetail.archive")}
+        tone="danger"
+        busy={archiveMut.isPending}
+        onCancel={() => !archiveMut.isPending && setArchiveConfirmOpen(false)}
+        onConfirm={() => {
+          archiveMut.mutate(undefined, { onSettled: () => setArchiveConfirmOpen(false) });
+        }}
+      />
     </div>
   );
 }

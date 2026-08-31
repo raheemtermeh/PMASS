@@ -18,6 +18,8 @@ type ProductRepository interface {
 	NameTaken(ctx context.Context, companyID uuid.UUID, name string, excludeID uuid.UUID) (bool, error)
 	CodeTaken(ctx context.Context, companyID uuid.UUID, code string, excludeID uuid.UUID) (bool, error)
 	ListSummaries(ctx context.Context, companyID uuid.UUID) ([]ProductSummary, error)
+	// HasUserPlanningWork is true when non-system projects/features or any tasks exist.
+	HasUserPlanningWork(ctx context.Context, companyID, productID uuid.UUID) (bool, error)
 }
 
 type PipelineRepository interface {

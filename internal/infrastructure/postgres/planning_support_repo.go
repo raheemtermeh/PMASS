@@ -36,14 +36,14 @@ func NewProjectRepo(db *DB) *ProjectRepo { return &ProjectRepo{db: db} }
 
 const projectColumns = `id, company_id, product_id, name, description, status,
 	COALESCE(code,''), COALESCE(goal,''), COALESCE(priority,''), owner_id, manager_id, start_date, target_end_date, estimated_duration_days,
-	deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at`
+	deleted_at, created_by, updated_by, archived_by, COALESCE(is_system,false), version, created_at, updated_at`
 
 func scanProject(row rowScanner) (*planning.Project, error) {
 	var p planning.Project
 	if err := row.Scan(
 		&p.ID, &p.CompanyID, &p.ProductID, &p.Name, &p.Description, &p.Status,
 		&p.Code, &p.Goal, &p.Priority, &p.OwnerID, &p.ManagerID, &p.StartDate, &p.TargetEndDate, &p.EstimatedDurationDays,
-		&p.DeletedAt, &p.CreatedBy, &p.UpdatedBy, &p.ArchivedBy, &p.Version, &p.CreatedAt, &p.UpdatedAt,
+		&p.DeletedAt, &p.CreatedBy, &p.UpdatedBy, &p.ArchivedBy, &p.IsSystem, &p.Version, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -55,11 +55,11 @@ func (r *ProjectRepo) Create(ctx context.Context, p *planning.Project) error {
 		INSERT INTO projects (
 			id, company_id, product_id, name, description, status,
 			code, goal, priority, owner_id, manager_id, start_date, target_end_date, estimated_duration_days,
-			deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+			deleted_at, created_by, updated_by, archived_by, is_system, version, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		p.ID, p.CompanyID, p.ProductID, p.Name, p.Description, p.Status,
 		nullStr(p.Code), p.Goal, nullStr(p.Priority), p.OwnerID, p.ManagerID, p.StartDate, p.TargetEndDate, p.EstimatedDurationDays,
-		p.DeletedAt, p.CreatedBy, p.UpdatedBy, p.ArchivedBy, p.Version, p.CreatedAt, p.UpdatedAt,
+		p.DeletedAt, p.CreatedBy, p.UpdatedBy, p.ArchivedBy, p.IsSystem, p.Version, p.CreatedAt, p.UpdatedAt,
 	)
 	return err
 }
@@ -83,7 +83,7 @@ func (r *ProjectRepo) ListByProduct(ctx context.Context, companyID, productID uu
 
 func (r *ProjectRepo) list(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]planning.Project, int64, error) {
 	q = q.Normalize()
-	where := `company_id=$1 AND deleted_at IS NULL`
+	where := `company_id=$1 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`
 	args := []any{companyID}
 	if productID != uuid.Nil {
 		args = append(args, productID)
@@ -120,9 +120,21 @@ func (r *ProjectRepo) list(ctx context.Context, companyID, productID uuid.UUID, 
 	return out, total, nil
 }
 
+func (r *ProjectRepo) FindSystemByProduct(ctx context.Context, companyID, productID uuid.UUID) (*planning.Project, error) {
+	row := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT `+projectColumns+` FROM projects
+		WHERE company_id=$1 AND product_id=$2 AND is_system=true AND deleted_at IS NULL
+		LIMIT 1`, companyID, productID)
+	p, err := scanProject(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, planning.ErrProjectNotFound
+	}
+	return p, err
+}
+
 func (r *ProjectRepo) ListByOwner(ctx context.Context, companyID, ownerID uuid.UUID, q shared.PageQuery) ([]planning.Project, int64, error) {
 	q = q.Normalize()
-	where := `company_id=$1 AND owner_id=$2 AND deleted_at IS NULL`
+	where := `company_id=$1 AND owner_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`
 	args := []any{companyID, ownerID}
 	if q.Status != "" {
 		args = append(args, q.Status)
@@ -191,7 +203,7 @@ func NewFeatureRepo(db *DB) *FeatureRepo { return &FeatureRepo{db: db} }
 const featureColumns = `id, company_id, product_id, project_id, title, status, priority,
 	COALESCE(code,''), COALESCE(description,''), COALESCE(goal,''), COALESCE(feature_type,''), owner_id, team_id, parent_feature_id,
 	start_date, target_end_date, estimated_effort, COALESCE(progress_pct,0),
-	deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at`
+	deleted_at, created_by, updated_by, archived_by, COALESCE(is_system,false), version, created_at, updated_at`
 
 func scanFeature(row rowScanner) (*planning.Feature, error) {
 	var f planning.Feature
@@ -199,7 +211,7 @@ func scanFeature(row rowScanner) (*planning.Feature, error) {
 		&f.ID, &f.CompanyID, &f.ProductID, &f.ProjectID, &f.Title, &f.Status, &f.Priority,
 		&f.Code, &f.Description, &f.Goal, &f.FeatureType, &f.OwnerID, &f.TeamID, &f.ParentFeatureID,
 		&f.StartDate, &f.TargetEndDate, &f.EstimatedEffort, &f.ProgressPct,
-		&f.DeletedAt, &f.CreatedBy, &f.UpdatedBy, &f.ArchivedBy, &f.Version, &f.CreatedAt, &f.UpdatedAt,
+		&f.DeletedAt, &f.CreatedBy, &f.UpdatedBy, &f.ArchivedBy, &f.IsSystem, &f.Version, &f.CreatedAt, &f.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -212,12 +224,12 @@ func (r *FeatureRepo) Create(ctx context.Context, f *planning.Feature) error {
 			id, company_id, product_id, project_id, title, status, priority,
 			code, description, goal, feature_type, owner_id, team_id, parent_feature_id,
 			start_date, target_end_date, estimated_effort, progress_pct,
-			deleted_at, created_by, updated_by, archived_by, version, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+			deleted_at, created_by, updated_by, archived_by, is_system, version, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
 		f.ID, f.CompanyID, f.ProductID, f.ProjectID, f.Title, f.Status, f.Priority,
 		nullStr(f.Code), f.Description, f.Goal, nullStr(f.FeatureType), f.OwnerID, f.TeamID, f.ParentFeatureID,
 		f.StartDate, f.TargetEndDate, f.EstimatedEffort, f.ProgressPct,
-		f.DeletedAt, f.CreatedBy, f.UpdatedBy, f.ArchivedBy, f.Version, f.CreatedAt, f.UpdatedAt,
+		f.DeletedAt, f.CreatedBy, f.UpdatedBy, f.ArchivedBy, f.IsSystem, f.Version, f.CreatedAt, f.UpdatedAt,
 	)
 	return err
 }
@@ -233,7 +245,7 @@ func (r *FeatureRepo) FindByID(ctx context.Context, companyID, id uuid.UUID) (*p
 
 func (r *FeatureRepo) ListByProject(ctx context.Context, companyID, projectID uuid.UUID, q shared.PageQuery) ([]planning.Feature, int64, error) {
 	q = q.Normalize()
-	where := `company_id=$1 AND project_id=$2 AND deleted_at IS NULL`
+	where := `company_id=$1 AND project_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`
 	args := []any{companyID, projectID}
 	if q.Status != "" {
 		args = append(args, q.Status)
@@ -266,9 +278,69 @@ func (r *FeatureRepo) ListByProject(ctx context.Context, companyID, projectID uu
 	return out, total, nil
 }
 
+func (r *FeatureRepo) ListByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]planning.Feature, int64, error) {
+	q = q.Normalize()
+	where := `company_id=$1 AND product_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`
+	args := []any{companyID, productID}
+	if q.Status != "" {
+		args = append(args, q.Status)
+		where += fmt.Sprintf(` AND status=$%d`, len(args))
+	}
+	if q.Search != "" {
+		args = append(args, "%"+strings.ToLower(q.Search)+"%")
+		where += fmt.Sprintf(` AND LOWER(title) LIKE $%d`, len(args))
+	}
+	var total int64
+	if err := r.db.Q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM features WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, q.PageSize, q.Offset())
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT `+featureColumns+` FROM features WHERE `+where+` ORDER BY created_at DESC
+		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]planning.Feature, 0)
+	for rows.Next() {
+		f, err := scanFeature(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, *f)
+	}
+	return out, total, nil
+}
+
+func (r *FeatureRepo) FindSystemByProduct(ctx context.Context, companyID, productID uuid.UUID) (*planning.Feature, error) {
+	row := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT `+featureColumns+` FROM features
+		WHERE company_id=$1 AND product_id=$2 AND is_system=true AND deleted_at IS NULL
+		ORDER BY created_at ASC
+		LIMIT 1`, companyID, productID)
+	f, err := scanFeature(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, planning.ErrFeatureNotFound
+	}
+	return f, err
+}
+
+func (r *FeatureRepo) FindSystemByProject(ctx context.Context, companyID, projectID uuid.UUID) (*planning.Feature, error) {
+	row := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT `+featureColumns+` FROM features
+		WHERE company_id=$1 AND project_id=$2 AND is_system=true AND deleted_at IS NULL
+		LIMIT 1`, companyID, projectID)
+	f, err := scanFeature(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, planning.ErrFeatureNotFound
+	}
+	return f, err
+}
+
 func (r *FeatureRepo) ListByOwner(ctx context.Context, companyID, ownerID uuid.UUID, q shared.PageQuery) ([]planning.Feature, int64, error) {
 	q = q.Normalize()
-	where := `company_id=$1 AND owner_id=$2 AND deleted_at IS NULL`
+	where := `company_id=$1 AND owner_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`
 	args := []any{companyID, ownerID}
 	if q.Status != "" {
 		args = append(args, q.Status)
@@ -304,7 +376,7 @@ func (r *FeatureRepo) ListByOwner(ctx context.Context, companyID, ownerID uuid.U
 func (r *FeatureRepo) CountByProject(ctx context.Context, companyID, projectID uuid.UUID) (int64, error) {
 	var total int64
 	err := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM features WHERE company_id=$1 AND project_id=$2 AND deleted_at IS NULL`,
+		SELECT COUNT(*) FROM features WHERE company_id=$1 AND project_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false`,
 		companyID, projectID).Scan(&total)
 	return total, err
 }
@@ -400,6 +472,54 @@ func (r *TaskRepo) ListByFeature(ctx context.Context, companyID, featureID uuid.
 	args = append(args, q.PageSize, q.Offset())
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
 		SELECT `+taskColumns+` FROM tasks WHERE `+where+` ORDER BY created_at DESC
+		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]planning.Task, 0)
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, *t)
+	}
+	return out, total, nil
+}
+
+func (r *TaskRepo) ListByProduct(ctx context.Context, companyID, productID uuid.UUID, q shared.PageQuery) ([]planning.Task, int64, error) {
+	return r.listJoined(ctx, companyID, `
+		t.company_id=$1 AND f.product_id=$2 AND t.deleted_at IS NULL`, []any{companyID, productID}, q)
+}
+
+func (r *TaskRepo) ListByProject(ctx context.Context, companyID, projectID uuid.UUID, q shared.PageQuery) ([]planning.Task, int64, error) {
+	return r.listJoined(ctx, companyID, `
+		t.company_id=$1 AND f.project_id=$2 AND t.deleted_at IS NULL`, []any{companyID, projectID}, q)
+}
+
+func (r *TaskRepo) listJoined(ctx context.Context, companyID uuid.UUID, where string, args []any, q shared.PageQuery) ([]planning.Task, int64, error) {
+	_ = companyID
+	q = q.Normalize()
+	if q.Status != "" {
+		args = append(args, q.Status)
+		where += fmt.Sprintf(` AND t.status=$%d`, len(args))
+	}
+	if q.Search != "" {
+		args = append(args, "%"+strings.ToLower(q.Search)+"%")
+		where += fmt.Sprintf(` AND LOWER(t.title) LIKE $%d`, len(args))
+	}
+	from := `tasks t INNER JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id`
+	var total int64
+	if err := r.db.Q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM `+from+` WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, q.PageSize, q.Offset())
+	cols := `t.id, t.company_id, t.feature_id, t.assignee_id, t.title, t.status, t.priority, t.due_date,
+		COALESCE(t.description,''), COALESCE(t.task_type,''), t.start_date, t.estimated_minutes, t.actual_minutes, COALESCE(t.progress_pct,0),
+		t.deleted_at, t.created_by, t.updated_by, t.archived_by, t.version, t.created_at, t.updated_at`
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT `+cols+` FROM `+from+` WHERE `+where+` ORDER BY t.created_at DESC
 		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
 		return nil, 0, err

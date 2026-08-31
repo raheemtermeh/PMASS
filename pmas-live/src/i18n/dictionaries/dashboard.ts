@@ -34,16 +34,15 @@ export const dashboardDict: DictModule = {
     filters: {
       searchProducts: "Search products",
       searchDepartments: "Search departments",
-      byStatus: "Filter by status",
-      byOwner: "Filter by owner",
-      byManager: "Filter by manager",
-      byCategory: "Filter by category",
-      byPriority: "Filter by priority",
-      sortProducts: "Sort products",
+      byStatus: "Status",
+      byOwner: "Owner",
+      byManager: "Manager",
+      byCategory: "Category",
+      byPriority: "Priority",
+      sortProducts: "Sort",
     },
     products: {
-      aggregateHint:
-        "Product is the aggregate root. Lifecycle: Draft → Ready → Active → Completed → Archived. Execution model is locked after create; products are archived, never deleted.",
+      aggregateHint: "Products own planning. Prefer archive over delete.",
       showArchived: "Show archived",
     },
     common: {
@@ -89,10 +88,9 @@ export const dashboardDict: DictModule = {
       newChecklistItem: "New checklist item",
       checklistPlaceholder: "e.g. Write tests",
       addItem: "Add item",
-      cascade: "Planning cascade",
-      cascadeHint:
-        "Product → Project → Feature → Task. Pick a product, then add items with the quick bar (Enter to create). Use Edit only when you need extra details.",
-      softDelete: "Soft delete",
+      cascade: "Plan work",
+      cascadeHint: "Pick a product, then add items with Enter. Edit only when you need more details.",
+      softDelete: "Remove",
       featureDependencies: "Feature dependencies",
       featureDependenciesHint:
         "This feature is blocked until the selected features complete.",
@@ -149,8 +147,7 @@ export const dashboardDict: DictModule = {
         "Business people in the company. Deactivate instead of deleting. Logins are managed in User Management.",
       departmentsHint:
         "Own Product responsibility at each Stage. Manager is required. Archive instead of deleting.",
-      teamsHint:
-        "Execution units may be independent or linked to a department. Department links improve structure and reporting. Capacity feeds reporting. A team cannot be archived while it still has members, open features or open task assignments — reassign them first.",
+      teamsHint: "Teams deliver work. Move members before archive.",
       independentTeam: "Independent team",
       independentTeams: "Independent teams",
       independentTeamsHint: "Teams that are not assigned to a department.",
@@ -224,16 +221,15 @@ export const dashboardDict: DictModule = {
     filters: {
       searchProducts: "جستجوی محصولات",
       searchDepartments: "جستجوی دپارتمان‌ها",
-      byStatus: "فیلتر بر اساس وضعیت",
-      byOwner: "فیلتر بر اساس مالک",
-      byManager: "فیلتر بر اساس مدیر",
-      byCategory: "فیلتر بر اساس دسته‌بندی",
-      byPriority: "فیلتر بر اساس اولویت",
-      sortProducts: "مرتب‌سازی محصولات",
+      byStatus: "وضعیت",
+      byOwner: "مالک",
+      byManager: "مدیر",
+      byCategory: "دسته",
+      byPriority: "اولویت",
+      sortProducts: "مرتب‌سازی",
     },
     products: {
-      aggregateHint:
-        "محصول ریشه اصلی ساختار است. چرخه عمر: پیش‌نویس ← آماده ← فعال ← تکمیل‌شده ← بایگانی‌شده. مدل اجرا پس از ایجاد قفل می‌شود؛ محصولات بایگانی می‌شوند و هرگز حذف نمی‌گردند.",
+      aggregateHint: "محصول ریشه برنامه‌ریزی است. به‌جای حذف، بایگانی کنید.",
       showArchived: "نمایش بایگانی‌شده‌ها",
     },
     organization: {
@@ -241,8 +237,7 @@ export const dashboardDict: DictModule = {
         "افراد شاغل در شرکت. به‌جای حذف، آن‌ها را غیرفعال کنید. حساب‌های ورود در بخش مدیریت کاربران اداره می‌شود.",
       departmentsHint:
         "مسئولیت محصول در هر مرحله را بر عهده دارند. تعیین مدیر الزامی است. به‌جای حذف، بایگانی کنید.",
-      teamsHint:
-        "واحدهای اجرایی می‌توانند مستقل باشند یا به دپارتمان متصل شوند. اتصال به دپارتمان، ساختاردهی و گزارش‌گیری را بهبود می‌دهد. ظرفیت تیم در گزارش‌ها لحاظ می‌شود. تا زمانی که تیم عضو، قابلیت باز یا وظیفه باز داشته باشد قابل بایگانی نیست؛ ابتدا آن‌ها را واگذار کنید.",
+      teamsHint: "تیم‌ها کار را اجرا می‌کنند. قبل از بایگانی، اعضا را جابه‌جا کنید.",
       independentTeam: "تیم مستقل",
       independentTeams: "تیم‌های مستقل",
       independentTeamsHint: "تیم‌هایی که به هیچ دپارتمانی تخصیص داده نشده‌اند.",
@@ -313,10 +308,9 @@ export const dashboardDict: DictModule = {
       newChecklistItem: "مورد جدید چک‌لیست",
       checklistPlaceholder: "مثلاً نوشتن تست‌ها",
       addItem: "افزودن مورد",
-      cascade: "زنجیره برنامه‌ریزی",
-      cascadeHint:
-        "محصول ← پروژه ← قابلیت ← وظیفه. ابتدا یک محصول انتخاب کنید، سپس با نوار سریع موارد را اضافه کنید (با Enter ساخته می‌شود). ویرایش را فقط زمانی به کار ببرید که به جزئیات بیشتری نیاز دارید.",
-      softDelete: "حذف نرم",
+      cascade: "برنامه‌ریزی کار",
+      cascadeHint: "محصول را انتخاب کنید، بعد با Enter آیتم بسازید. ویرایش فقط برای جزئیات بیشتر.",
+      softDelete: "حذف",
       featureDependencies: "وابستگی‌های قابلیت",
       featureDependenciesHint:
         "این قابلیت تا تکمیل‌شدن قابلیت‌های انتخاب‌شده مسدود می‌ماند.",

@@ -87,6 +87,7 @@ func (d *Dependencies) Register(mux *http.ServeMux, authz *middleware.Authentica
 	mux.HandleFunc("/api/v1/roles/", authz.RequirePermission(auth.PermUsers, d.Roles.HandleRoles))
 
 	// Product aggregate
+	mux.HandleFunc("/api/v1/execution-models", authz.RequirePermission(auth.PermProductView, d.Product.HandleExecutionModels))
 	mux.HandleFunc("/api/v1/products", authz.RequirePermission(auth.PermProductView, d.Product.HandleProducts))
 	mux.HandleFunc("/api/v1/products/", authz.RequirePermission(auth.PermProductView, d.Product.HandleProducts))
 	mux.HandleFunc("/api/v1/pipelines", authz.RequirePermission(auth.PermProductUpdate, d.Product.HandlePipelines))

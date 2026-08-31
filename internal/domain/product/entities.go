@@ -46,8 +46,11 @@ type Product struct {
 	Description    string     `json:"description"`
 	Category       string     `json:"category"`
 	Status         string     `json:"status"`
-	ExecutionModel string     `json:"execution_model"`
-	PipelineID     *uuid.UUID `json:"pipeline_id,omitempty"`
+	ExecutionModel  string           `json:"execution_model"`
+	ExecutionConfig *ExecutionConfig `json:"execution_config,omitempty"`
+	// ExecutionModelUnlocked is computed by the application layer (not persisted).
+	ExecutionModelUnlocked bool `json:"execution_model_unlocked,omitempty"`
+	PipelineID             *uuid.UUID `json:"pipeline_id,omitempty"`
 
 	// MVP Feature Planning additions (all optional/additive; zero values are safe defaults).
 	Code           string     `json:"code,omitempty"`
@@ -62,7 +65,7 @@ type Product struct {
 	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 }
 
-func NewProduct(companyID, ownerID uuid.UUID, name, description, category, executionModel string) (*Product, error) {
+func NewProduct(companyID, ownerID uuid.UUID, name, description, category, executionModel string, customLevels ...CustomLevelInput) (*Product, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, ErrProductNameRequired
@@ -80,16 +83,21 @@ func NewProduct(companyID, ownerID uuid.UUID, name, description, category, execu
 	if !ValidExecutionModels[executionModel] {
 		return nil, ErrInvalidExecutionModel
 	}
+	cfg, err := ResolveConfig(executionModel, customLevels)
+	if err != nil {
+		return nil, err
+	}
 	return &Product{
-		BaseModel:      shared.NewBase(),
-		CompanyID:      companyID,
-		OwnerID:        ownerID,
-		Name:           name,
-		Description:    strings.TrimSpace(description),
-		Category:       strings.TrimSpace(category),
-		Status:         StatusDraft,
-		ExecutionModel: executionModel,
-		Visibility:     VisibilityOrganization,
+		BaseModel:       shared.NewBase(),
+		CompanyID:       companyID,
+		OwnerID:         ownerID,
+		Name:            name,
+		Description:     strings.TrimSpace(description),
+		Category:        strings.TrimSpace(category),
+		Status:          StatusDraft,
+		ExecutionModel:  executionModel,
+		ExecutionConfig: &cfg,
+		Visibility:      VisibilityOrganization,
 	}, nil
 }
 
@@ -120,9 +128,32 @@ func (p *Product) AssignPipeline(pipelineID uuid.UUID) error {
 	return nil
 }
 
-// ChangeExecutionModel is always rejected after create (PDF §2.11 / EXECUTION_MODEL_LOCKED).
-func (p *Product) ChangeExecutionModel(_ string) error {
-	return ErrExecutionModelLocked
+// ChangeExecutionModel updates the model when the application layer confirms no
+// user planning work exists yet (lock-if-work). When canChange is false, returns locked.
+func (p *Product) ChangeExecutionModel(executionModel string, customLevels []CustomLevelInput, canChange bool) error {
+	if !canChange {
+		return ErrExecutionModelLocked
+	}
+	executionModel = strings.TrimSpace(strings.ToUpper(executionModel))
+	if executionModel == "" {
+		return ErrInvalidExecutionModel
+	}
+	if !ValidExecutionModels[executionModel] {
+		return ErrInvalidExecutionModel
+	}
+	cfg, err := ResolveConfig(executionModel, customLevels)
+	if err != nil {
+		return err
+	}
+	p.ExecutionModel = executionModel
+	p.ExecutionConfig = &cfg
+	p.touch()
+	return nil
+}
+
+// ResolvedConfig returns the effective work map for this product.
+func (p *Product) ResolvedConfig() ExecutionConfig {
+	return EffectiveConfig(p.ExecutionModel, p.ExecutionConfig)
 }
 
 func (p *Product) MarkActive() error {

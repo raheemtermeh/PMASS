@@ -49,6 +49,7 @@ type CreateProductInput struct {
 	Description    string
 	Category       string
 	ExecutionModel string
+	ExecutionLevels []product.CustomLevelInput
 
 	// MVP Feature Planning additions — all optional.
 	Code           string
@@ -73,7 +74,7 @@ func (s *Service) CreateProduct(ctx context.Context, companyID uuid.UUID, in Cre
 		if in.ManagerID == nil || *in.ManagerID == uuid.Nil {
 			return product.ErrProductManagerRequired
 		}
-		p, err := product.NewProduct(companyID, in.OwnerID, in.Name, in.Description, in.Category, in.ExecutionModel)
+		p, err := product.NewProduct(companyID, in.OwnerID, in.Name, in.Description, in.Category, in.ExecutionModel, in.ExecutionLevels...)
 		if err != nil {
 			return err
 		}
@@ -109,6 +110,7 @@ func (s *Service) CreateProduct(ctx context.Context, companyID uuid.UUID, in Cre
 		if err := s.activities.Append(ctx, act); err != nil {
 			return err
 		}
+		p.ExecutionModelUnlocked = true
 		out = p
 		return nil
 	})
@@ -116,7 +118,12 @@ func (s *Service) CreateProduct(ctx context.Context, companyID uuid.UUID, in Cre
 }
 
 func (s *Service) GetProduct(ctx context.Context, companyID, id uuid.UUID) (*product.Product, error) {
-	return s.products.FindByID(ctx, companyID, id)
+	p, err := s.products.FindByID(ctx, companyID, id)
+	if err != nil {
+		return nil, err
+	}
+	s.annotateUnlock(ctx, companyID, p)
+	return p, nil
 }
 
 // ListProductSummaries returns pipeline position, progress and last activity for
@@ -155,14 +162,30 @@ func (s *Service) ListProducts(ctx context.Context, companyID uuid.UUID, q share
 	if err != nil {
 		return nil, shared.PageMeta{}, err
 	}
+	for i := range items {
+		s.annotateUnlock(ctx, companyID, &items[i])
+	}
 	return items, shared.NewPageMeta(q, total), nil
+}
+
+func (s *Service) annotateUnlock(ctx context.Context, companyID uuid.UUID, p *product.Product) {
+	if p == nil {
+		return
+	}
+	hasWork, err := s.products.HasUserPlanningWork(ctx, companyID, p.ID)
+	if err != nil {
+		p.ExecutionModelUnlocked = false
+		return
+	}
+	p.ExecutionModelUnlocked = !hasWork
 }
 
 type UpdateProductInput struct {
 	Name        *string
 	Description *string
 	Category    *string
-	// ExecutionModel intentionally omitted — immutable
+	ExecutionModel  *string
+	ExecutionLevels []product.CustomLevelInput
 
 	// MVP Feature Planning additions — all optional.
 	Code           *string
@@ -185,6 +208,15 @@ func (s *Service) UpdateProduct(ctx context.Context, companyID, id uuid.UUID, in
 	}
 	if p.Status == product.StatusArchived {
 		return nil, product.ErrProductArchived
+	}
+	if in.ExecutionModel != nil {
+		hasWork, err := s.products.HasUserPlanningWork(ctx, companyID, id)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.ChangeExecutionModel(*in.ExecutionModel, in.ExecutionLevels, !hasWork); err != nil {
+			return nil, err
+		}
 	}
 	if in.Name != nil {
 		name := strings.TrimSpace(*in.Name)
@@ -237,7 +269,12 @@ func (s *Service) UpdateProduct(ctx context.Context, companyID, id uuid.UUID, in
 	if err := s.products.Update(ctx, p); err != nil {
 		return nil, err
 	}
+	s.annotateUnlock(ctx, companyID, p)
 	return p, nil
+}
+
+func (s *Service) ListExecutionModels() []product.WorkModelDefinition {
+	return product.Catalog()
 }
 
 func (s *Service) ChangeProductOwner(ctx context.Context, companyID, productID, ownerID uuid.UUID, actorID *uuid.UUID) (*product.Product, error) {

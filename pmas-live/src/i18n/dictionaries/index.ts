@@ -5,6 +5,7 @@ import { platformDict } from "./platform";
 import { productDetailDict } from "./productDetail";
 import { routesDict } from "./routes";
 import { sectionsDict } from "./sections";
+import { uxAuditDict } from "./uxAudit";
 
 /** Feature dictionaries merged on top of the base locale objects. */
 export const dictModules: DictModule[] = [
@@ -14,4 +15,5 @@ export const dictModules: DictModule[] = [
   platformDict,
   productDetailDict,
   componentsDict,
+  uxAuditDict,
 ];

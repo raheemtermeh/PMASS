@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
+import { PageGuide } from "@/components/PageGuide";
+import { WorkMapGuide } from "@/components/WorkMapGuide";
 import { httpClient } from "@/core/api/http-client";
 import { useI18n } from "@/core/providers/I18nProvider";
 import { useVisibleRefetchInterval } from "@/shared/hooks/usePageVisible";
@@ -81,6 +83,7 @@ export default function StatusBoardPage() {
   const { lang, t } = useI18n();
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   const dashboardPollMs = useVisibleRefetchInterval(30_000);
 
@@ -141,6 +144,9 @@ export default function StatusBoardPage() {
 
   return (
     <div className="page-stack status-board">
+      <PageGuide page="status" />
+      <WorkMapGuide activeStorage="product" compact />
+
       <section className="sb-hero">
         <div>
           <p className="command-eyebrow">{t("statusBoard.liveStatus")}</p>
@@ -152,10 +158,15 @@ export default function StatusBoardPage() {
           <p className="sb-hero-sub">{t("statusBoard.description")}</p>
         </div>
         <div className="sb-hero-meta">
-          <span className="cc-chip cyan">{t("statusBoard.activeProducts", { count: summary?.active_products ?? 0 })}</span>
-          <span className="cc-chip amber">{t("statusBoard.openFeatures", { count: summary?.open_features ?? 0 })}</span>
-          <span className="cc-chip emerald">{t("statusBoard.projects", { count: summary?.projects ?? 0 })}</span>
-          <span className="cc-chip rose">{t("statusBoard.openTasks", { count: summary?.open_tasks ?? 0 })}</span>
+          <span className="cc-chip cyan">
+            {t("statusBoard.activeProducts", { count: summary?.active_products ?? 0 })}
+          </span>
+          <span className="cc-chip amber">
+            {t("statusBoard.openFeatures", { count: summary?.open_features ?? 0 })}
+          </span>
+          <span className="cc-chip rose">
+            {t("statusBoard.onHold", { count: summary?.on_hold_products ?? 0 })}
+          </span>
           {refreshed ? (
             <span className="cc-chip muted">
               {isFetching ? t("dashboard.syncing") : t("statusBoard.synced", { time: refreshed })}
@@ -163,25 +174,6 @@ export default function StatusBoardPage() {
           ) : null}
         </div>
       </section>
-
-      <div className="cc-kpi-grid">
-        <div className="cc-kpi cc-kpi-cyan">
-          <span className="cc-kpi-label">{t("statusBoard.productsTracked")}</span>
-          <strong className="cc-kpi-value">{products.length}</strong>
-        </div>
-        <div className="cc-kpi cc-kpi-emerald">
-          <span className="cc-kpi-label">{t("statusBoard.completedProducts")}</span>
-          <strong className="cc-kpi-value">{summary?.completed_products ?? 0}</strong>
-        </div>
-        <div className="cc-kpi cc-kpi-amber">
-          <span className="cc-kpi-label">{t("products.features")}</span>
-          <strong className="cc-kpi-value">{summary?.open_features ?? 0}</strong>
-        </div>
-        <div className="cc-kpi cc-kpi-rose">
-          <span className="cc-kpi-label">{t("statusBoard.onHold")}</span>
-          <strong className="cc-kpi-value">{summary?.on_hold_products ?? 0}</strong>
-        </div>
-      </div>
 
       <section className="data-panel">
         <div className="panel-header sb-toolbar">
@@ -194,13 +186,11 @@ export default function StatusBoardPage() {
               placeholder={t("statusBoard.searchPlaceholder")}
               aria-label={t("statusBoard.searchLabel")}
             />
-            <div className="sb-filters" role="tablist" aria-label={t("statusBoard.statusFilters")}>
+            <div className="sb-filters sb-filters-primary" role="tablist" aria-label={t("statusBoard.statusFilters")}>
               {(
                 [
                   ["all", t("statusBoard.all", { count: counts.all })],
                   ["active", t("statusBoard.active", { count: counts.active })],
-                  ["no-pipeline", t("statusBoard.noPipeline", { count: counts.noPipeline })],
-                  ["blocked", t("statusBoard.blockedHold", { count: counts.blocked })],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -214,7 +204,36 @@ export default function StatusBoardPage() {
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                className="btn btn-sm sb-filter-more"
+                aria-expanded={showMoreFilters}
+                onClick={() => setShowMoreFilters((v) => !v)}
+              >
+                {t("statusBoard.filterPanel")}
+              </button>
             </div>
+            {showMoreFilters ? (
+              <div className="sb-filters sb-filters-secondary" role="tablist">
+                {(
+                  [
+                    ["no-pipeline", t("statusBoard.noPipeline", { count: counts.noPipeline })],
+                    ["blocked", t("statusBoard.blockedHold", { count: counts.blocked })],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === key}
+                    className={`btn btn-sm${filter === key ? " btn-primary" : ""}`}
+                    onClick={() => setFilter(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -225,12 +244,19 @@ export default function StatusBoardPage() {
             title={t("statusBoard.nothingToShow")}
             description={
               products.length === 0
-                ? t("statusBoard.createProductHint")
-                : t("statusBoard.noMatch")
+                ? t("statusBoard.emptyNoProducts")
+                : filter === "no-pipeline"
+                  ? t("statusBoard.emptyNoPipeline")
+                  : filter === "blocked"
+                    ? t("statusBoard.emptyNoStage")
+                    : t("statusBoard.noMatch")
             }
             action={
-              <Link href="/products" className="btn btn-primary">
-                {t("statusBoard.goToProducts")}
+              <Link
+                href={products.length === 0 ? "/products?new=1" : "/products"}
+                className="btn btn-primary"
+              >
+                {products.length === 0 ? t("dashboard.primaryCreate") : t("statusBoard.goToProducts")}
               </Link>
             }
           />
@@ -278,6 +304,9 @@ export default function StatusBoardPage() {
                       <span className="sb-pointer-label">{t("statusBoard.nextStage")}</span>
                       <strong>{product.next_stage || "—"}</strong>
                     </div>
+                    <Link href={`/products/${product.id}`} className="btn btn-sm btn-primary">
+                      {t("statusBoard.drillDown")}
+                    </Link>
                   </div>
                 </header>
 

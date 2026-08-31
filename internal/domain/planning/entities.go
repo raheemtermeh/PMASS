@@ -56,6 +56,7 @@ type Project struct {
 	CreatedBy             *uuid.UUID `json:"created_by,omitempty"`
 	UpdatedBy             *uuid.UUID `json:"updated_by,omitempty"`
 	ArchivedBy            *uuid.UUID `json:"archived_by,omitempty"`
+	IsSystem              bool       `json:"is_system,omitempty"`
 }
 
 func NewProject(companyID, productID uuid.UUID, name, description string) (*Project, error) {
@@ -138,6 +139,7 @@ type Feature struct {
 	CreatedBy       *uuid.UUID `json:"created_by,omitempty"`
 	UpdatedBy       *uuid.UUID `json:"updated_by,omitempty"`
 	ArchivedBy      *uuid.UUID `json:"archived_by,omitempty"`
+	IsSystem        bool       `json:"is_system,omitempty"`
 }
 
 func NewFeature(companyID, productID, projectID uuid.UUID, title, priority string) (*Feature, error) {

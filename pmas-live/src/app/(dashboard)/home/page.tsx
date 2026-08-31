@@ -31,6 +31,7 @@ import {
 } from "@/features/dashboard/commandCenterLayout";
 import { useUILayout } from "@/shared/hooks/useUILayout";
 import { useVisibleRefetchInterval } from "@/shared/hooks/usePageVisible";
+import { PageGuide } from "@/components/PageGuide";
 
 const chartLoading = () => (
   <div className="cc-chart-empty" aria-busy="true">
@@ -72,13 +73,32 @@ const DepartmentLoadChart = dynamic(
 );
 
 const QUICK_ACTIONS = [
-  { href: "/products", key: "createProduct", tone: "cyan" },
-  { href: "/planning", key: "createProject", tone: "emerald" },
-  { href: "/planning", key: "createFeature", tone: "amber" },
-  { href: "/planning", key: "createTask", tone: "rose" },
+  { href: "/products?new=1", key: "createProduct", tone: "cyan" },
+  { href: "/planning?new=project", key: "createProject", tone: "emerald" },
+  { href: "/planning?new=feature", key: "createFeature", tone: "amber" },
+  { href: "/planning?new=task", key: "createTask", tone: "rose" },
   { href: "/organization", key: "organization", tone: "violet" },
   { href: "/settings", key: "companySettings", tone: "blue" },
 ] as const;
+
+function notificationTone(type: string): string {
+  const t = type.toUpperCase();
+  if (t.includes("MENTION")) return "mention";
+  if (t.includes("ASSIGN")) return "assignment";
+  if (t.includes("ALERT") || t.includes("WARN")) return "alert";
+  return "info";
+}
+
+function quickActionClass(index: number): string {
+  if (index === 0) return "quick-action-primary";
+  if (index <= 3) return "quick-action-secondary";
+  return "quick-action-muted";
+}
+
+function activityEntityHref(entityType: string, entityId: string): string {
+  if (entityType.toUpperCase() === "PRODUCT" && entityId) return `/products/${entityId}`;
+  return "/planning";
+}
 
 export default function HomePage() {
   const { t } = useI18n();
@@ -86,6 +106,7 @@ export default function HomePage() {
   const [customizing, setCustomizing] = useState(false);
   const [dragId, setDragId] = useState<WidgetId | null>(null);
   const [overId, setOverId] = useState<WidgetId | null>(null);
+  const [lifecycleOpen, setLifecycleOpen] = useState(false);
   const [ccLayout, setCcLayout] = useState<CommandCenterLayout>(() => defaultCommandCenterLayout());
 
   const dashboardPollMs = useVisibleRefetchInterval(30_000);
@@ -245,18 +266,33 @@ export default function HomePage() {
             className={hiddenClass}
             {...extras}
           >
-            <div className="cc-kpi-grid">
-              <Kpi tone="cyan" label={t("dashboard.activeProducts")} value={s?.active_products ?? 0} href="/products" />
-              <Kpi tone="amber" label={t("dashboard.draftReady")} value={s?.draft_ready_products ?? 0} href="/products" />
-              <Kpi tone="emerald" label={t("dashboard.completed")} value={s?.completed_products ?? 0} href="/products" />
-              <Kpi tone="rose" label={t("dashboard.openTasks")} value={s?.open_tasks ?? 0} href="/planning" />
-              <Kpi tone="violet" label={t("dashboard.projects")} value={s?.projects ?? 0} href="/planning" />
-              <Kpi tone="blue" label={t("dashboard.departments")} value={s?.departments ?? 0} href="/organization" />
-              <Kpi tone="teal" label={t("dashboard.employees")} value={s?.employees ?? 0} href="/organization" />
-              <Kpi tone="pink" label={t("dashboard.unread")} value={s?.unread_notifications ?? 0} />
-              <Kpi tone="amber" label={t("dashboard.onHold")} value={s?.on_hold_products ?? 0} href="/products" />
-              <Kpi tone="rose" label={t("dashboard.overdueTasks")} value={overdueTasks} href="/planning" />
-              <Kpi tone="emerald" label={t("dashboard.features")} value={s?.features ?? 0} href="/planning" />
+            <div className="cc-kpi-sections">
+              <section className="cc-kpi-section">
+                <h4 className="cc-kpi-section-title">{t("dashboard.kpiWork")}</h4>
+                <div className="cc-kpi-grid">
+                  <Kpi tone="cyan" label={t("dashboard.activeProducts")} value={s?.active_products ?? 0} href="/products" />
+                  <Kpi tone="amber" label={t("dashboard.draftReady")} value={s?.draft_ready_products ?? 0} href="/products" />
+                  <Kpi tone="rose" label={t("dashboard.openTasks")} value={s?.open_tasks ?? 0} href="/planning" />
+                  <Kpi tone="violet" label={t("dashboard.projects")} value={s?.projects ?? 0} href="/planning" />
+                  <Kpi tone="emerald" label={t("dashboard.features")} value={s?.features ?? 0} href="/planning" />
+                  <Kpi tone="emerald" label={t("dashboard.completed")} value={s?.completed_products ?? 0} href="/products" />
+                </div>
+              </section>
+              <section className="cc-kpi-section">
+                <h4 className="cc-kpi-section-title">{t("dashboard.kpiAlerts")}</h4>
+                <div className="cc-kpi-grid">
+                  <Kpi tone="pink" label={t("dashboard.unread")} value={s?.unread_notifications ?? 0} href="/home" />
+                  <Kpi tone="amber" label={t("dashboard.onHold")} value={s?.on_hold_products ?? 0} href="/products" />
+                  <Kpi tone="rose" label={t("dashboard.overdueTasks")} value={overdueTasks} href="/planning" />
+                </div>
+              </section>
+              <section className="cc-kpi-section">
+                <h4 className="cc-kpi-section-title">{t("dashboard.kpiResources")}</h4>
+                <div className="cc-kpi-grid">
+                  <Kpi tone="blue" label={t("dashboard.departments")} value={s?.departments ?? 0} href="/organization" />
+                  <Kpi tone="teal" label={t("dashboard.employees")} value={s?.employees ?? 0} href="/organization" />
+                </div>
+              </section>
             </div>
           </CommandWidgetShell>
         );
@@ -275,7 +311,7 @@ export default function HomePage() {
               <ChartPanel title={t("dashboard.tasksByStatus")} subtitle={t("dashboard.tasksByStatus")} accent="emerald">
                 <TasksStatusChart data={charts?.tasks_by_status ?? []} />
               </ChartPanel>
-              <ChartPanel title={t("dashboard.activity14")} subtitle={t("dashboard.activity14")} accent="info" wide>
+              <ChartPanel title={t("dashboard.activity14")} subtitle={t("dashboard.activityRangeHint")} accent="info" wide>
                 <ActivityTrendChart data={charts?.activity_by_day ?? []} />
               </ChartPanel>
               <ChartPanel title={t("dashboard.tasksByPriority")} subtitle={t("dashboard.tasksByPriority")} accent="amber">
@@ -288,7 +324,9 @@ export default function HomePage() {
           </CommandWidgetShell>
         );
       case "myWork":
-        return <MyWorkWidget key={id} data={dash?.my_work} {...extras} />;
+        return (
+          <MyWorkWidget key={id} data={dash?.my_work} tasks={dash?.my_tasks} {...extras} />
+        );
       case "deadlines":
         return <UpcomingDeadlinesWidget key={id} items={dash?.upcoming_deadlines} {...extras} />;
       case "teamWorkload":
@@ -304,13 +342,19 @@ export default function HomePage() {
             {...extras}
           >
             <div className="quick-actions-grid">
-              {QUICK_ACTIONS.map((action) => (
+              {QUICK_ACTIONS.map((action, index) => (
                 <Link
                   key={action.key}
                   href={action.href}
-                  className={`quick-action-card cc-action cc-action-${action.tone}`}
+                  className={`quick-action-card cc-action cc-action-${action.tone} ${quickActionClass(index)}`}
                 >
-                  <strong>{t(`quickActions.${action.key}`)}</strong>
+                  <strong>
+                    {action.key === "createProduct"
+                      ? t("dashboard.primaryCreate")
+                      : action.key === "createProject"
+                        ? t("dashboard.secondaryCreateProject")
+                        : t(`quickActions.${action.key}`)}
+                  </strong>
                   <span className="text-dim">{t(`quickActions.${action.key}Hint`)}</span>
                 </Link>
               ))}
@@ -401,12 +445,14 @@ export default function HomePage() {
                 </thead>
                 <tbody>
                   {(dash?.pipeline_statuses ?? []).map((p) => (
-                    <tr key={p.product_id}>
+                    <tr key={p.product_id} className={p.status.toUpperCase() === "ON_HOLD" ? "row-critical" : undefined}>
                       <td>
                         <Link href={`/products/${p.product_id}`}>{p.product_name}</Link>
                       </td>
                       <td>
-                        <span className="status-pill">{p.status}</span>
+                        <span className={`status-pill${p.status.toUpperCase() === "ON_HOLD" ? " badge-danger" : ""}`}>
+                          {p.status}
+                        </span>
                       </td>
                       <td>{p.active_stage || "—"}</td>
                     </tr>
@@ -442,16 +488,18 @@ export default function HomePage() {
             className={hiddenClass}
             {...extras}
           >
-            <ul className="command-list compact">
+            <ul className="command-list compact cc-activity-list">
               {(dash?.recent_activities ?? []).map((a) => (
                 <li key={a.id}>
-                  <div>
-                    <span className="font-mono">{a.action}</span>
-                    <span className="text-dim"> · {a.entity_type}</span>
-                  </div>
-                  <span className="text-dim" style={{ fontSize: "0.72rem" }}>
-                    {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
-                  </span>
+                  <Link href={activityEntityHref(a.entity_type, a.entity_id)} className="cc-activity-link">
+                    <div>
+                      <span className="font-mono">{a.action}</span>
+                      <span className="text-dim"> · {a.entity_type}</span>
+                    </div>
+                    <span className="text-dim cc-activity-time">
+                      {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
+                    </span>
+                  </Link>
                 </li>
               ))}
               {(dash?.recent_activities ?? []).length === 0 ? (
@@ -467,6 +515,8 @@ export default function HomePage() {
 
   return (
     <div className={`page-stack command-center cc-modern${customizing ? " cc-customizing" : ""}`}>
+      <PageGuide page="home" />
+
       <section className="cc-hero">
         <div className="cc-hero-glow" aria-hidden />
         <div className="cc-hero-copy">
@@ -475,7 +525,6 @@ export default function HomePage() {
             {dash?.flow?.company_name || t("dashboard.orgFallback")}
             <span> {t("dashboard.liveWorkspace")}</span>
           </h2>
-          <p className="cc-hero-sub">{t("dashboard.heroSub")}</p>
           <div className="cc-hero-chips">
             <span className="cc-chip cyan">
               {s?.unread_notifications ?? 0} {t("dashboard.unread")}
@@ -494,6 +543,14 @@ export default function HomePage() {
                 {isFetching ? t("dashboard.syncing") : `${t("dashboard.synced")} ${refreshed}`}
               </span>
             ) : null}
+          </div>
+          <div className="cc-hero-actions">
+            <Link href="/products?new=1" className="btn btn-primary btn-sm">
+              {t("dashboard.primaryCreate")}
+            </Link>
+            <Link href="/planning?new=project" className="btn btn-secondary btn-sm">
+              {t("dashboard.secondaryCreateProject")}
+            </Link>
           </div>
         </div>
         <div className="cc-hero-side">
@@ -534,10 +591,50 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <LifecycleFlowGraph
-        flow={dash?.flow ?? { company_name: "", products: [] }}
-        companyName={dash?.flow?.company_name}
-      />
+      <section className="cc-lifecycle-panel">
+        <div className="cc-lifecycle-panel-head">
+          <h3 className="cc-lifecycle-panel-title">{t("dashboard.workflowPipeline")}</h3>
+          <button
+            type="button"
+            className="btn btn-sm cc-lifecycle-toggle"
+            onClick={() => setLifecycleOpen((open) => !open)}
+            aria-expanded={lifecycleOpen}
+          >
+            {lifecycleOpen ? t("dashboard.collapseLifecycle") : t("dashboard.expandLifecycle")}
+          </button>
+        </div>
+        {lifecycleOpen ? (
+          <LifecycleFlowGraph
+            flow={dash?.flow ?? { company_name: "", products: [] }}
+            companyName={dash?.flow?.company_name}
+          />
+        ) : null}
+      </section>
+
+      {!isLoading && (dash?.notifications?.length ?? 0) > 0 ? (
+        <section className="cc-panel cc-notifications-panel">
+          <header className="cc-notifications-head">
+            <h3>{t("dashboard.notifications")}</h3>
+          </header>
+          <ul className="command-list compact cc-notifications-list">
+            {dash!.notifications.map((n) => (
+              <li
+                key={n.id}
+                className={`cc-notif-item${n.is_read ? "" : " cc-notif-unread"} cc-notif-${notificationTone(n.type)}`}
+              >
+                <div>
+                  <span className="cc-notif-type">{n.type}</span>
+                  <strong>{n.title}</strong>
+                  {n.body ? <p className="text-dim cc-notif-body">{n.body}</p> : null}
+                </div>
+                <span className="text-dim cc-notif-time">
+                  {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {isLoading ? <p className="text-dim">{t("dashboard.loading")}</p> : null}
 
@@ -576,7 +673,13 @@ function Kpi({
       <strong className="cc-kpi-value">{value}</strong>
     </div>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
+  return href ? (
+    <Link href={href} className="cc-kpi-clickable">
+      {inner}
+    </Link>
+  ) : (
+    inner
+  );
 }
 
 function ChartPanel({

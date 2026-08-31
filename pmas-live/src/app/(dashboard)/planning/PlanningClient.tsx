@@ -5,6 +5,10 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { PageGuide } from "@/components/PageGuide";
+import { WorkMapGuide } from "@/components/WorkMapGuide";
+import { MoreMenu } from "@/components/MoreMenu";
 import { ResourceManager, optInt } from "@/components/ResourceManager";
 import { httpClient } from "@/core/api/http-client";
 import type {
@@ -23,6 +27,12 @@ import {
 } from "@/features/planning/badges";
 import { useI18n } from "@/core/providers/I18nProvider";
 import { localizedEnumLabel, priorityTranslationKey, statusTranslationKey } from "@/lib/localized-labels";
+import {
+  hasStorage,
+  labelForStorage,
+  resolveProductConfig,
+} from "@/features/products/work-models";
+import { useScrollOnDependency } from "@/shared/hooks/useScrollOnDependency";
 
 // MVP Feature Planning additions layered on top of the original lifecycle —
 // existing statuses keep working exactly as before.
@@ -101,6 +111,7 @@ export default function PlanningClient() {
   }));
   const search = useSearchParams();
   const initialProduct = search.get("product_id") ?? "";
+  const newIntent = search.get("new");
   const [productId, setProductId] = useState(initialProduct);
   const [projectId, setProjectId] = useState("");
   const [featureId, setFeatureId] = useState("");
@@ -109,6 +120,7 @@ export default function PlanningClient() {
   const [depsError, setDepsError] = useState("");
   const [checklistTitle, setChecklistTitle] = useState("");
   const [checklistError, setChecklistError] = useState("");
+  const [softDeleteTarget, setSoftDeleteTarget] = useState<Project | null>(null);
   const featureSelectSeq = useRef(0);
 
   const selectProject = (id: string | number) => {
@@ -138,9 +150,17 @@ export default function PlanningClient() {
   const { data: teams = [] } = useQuery({
     queryKey: ["vsm-teams", "list", 100],
     queryFn: () => httpClient.get<Team[]>("/api/v1/teams?page_size=100"),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) || Boolean(productId),
     staleTime: 60_000,
   });
+
+  const selectedProduct = products.find((p) => p.id === productId) ?? null;
+  const execConfig = selectedProduct ? resolveProductConfig(selectedProduct) : null;
+  const showProjects = !productId || hasStorage(execConfig, "project");
+  const showFeatures = !productId || hasStorage(execConfig, "feature");
+  const projectLabel = labelForStorage(execConfig, "project", t("planning.projects"));
+  const featureLabel = labelForStorage(execConfig, "feature", t("planning.features"));
+  const taskLabel = labelForStorage(execConfig, "task", t("planning.tasks"));
 
   const projectsPath = productId
     ? `/api/v1/projects?product_id=${productId}`
@@ -149,24 +169,44 @@ export default function PlanningClient() {
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
     queryKey: ["vsm-projects", productId],
     queryFn: () => httpClient.get<Project[]>(projectsPath),
+    enabled: showProjects,
     staleTime: 20_000,
   });
+
+  const featuresQueryUrl = (() => {
+    if (showFeatures && showProjects && projectId) {
+      return `/api/v1/features?project_id=${projectId}&page_size=100`;
+    }
+    if (showFeatures && !showProjects && productId) {
+      return `/api/v1/features?product_id=${productId}&page_size=100`;
+    }
+    return "";
+  })();
 
   const { data: features = [], isLoading: featuresLoading } = useQuery({
-    queryKey: ["vsm-features", projectId],
-    queryFn: () =>
-      httpClient.get<Feature[]>(`/api/v1/features?project_id=${projectId}&page_size=100`),
-    enabled: Boolean(projectId),
+    queryKey: ["vsm-features", projectId, productId, showProjects],
+    queryFn: () => httpClient.get<Feature[]>(featuresQueryUrl),
+    enabled: Boolean(featuresQueryUrl),
     staleTime: 20_000,
   });
 
+  const tasksQueryUrl = (() => {
+    if (showFeatures && featureId) {
+      return `/api/v1/tasks?feature_id=${featureId}&page_size=100`;
+    }
+    if (!showFeatures && showProjects && projectId) {
+      return `/api/v1/tasks?project_id=${projectId}&page_size=100`;
+    }
+    if (!showFeatures && !showProjects && productId) {
+      return `/api/v1/tasks?product_id=${productId}&page_size=100`;
+    }
+    return "";
+  })();
+
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ["vsm-tasks", featureId],
-    queryFn: ({ queryKey }) => {
-      const [, fid] = queryKey as [string, string];
-      return httpClient.get<Task[]>(`/api/v1/tasks?feature_id=${fid}&page_size=100`);
-    },
-    enabled: Boolean(featureId),
+    queryKey: ["vsm-tasks", featureId, projectId, productId, showFeatures, showProjects],
+    queryFn: () => httpClient.get<Task[]>(tasksQueryUrl),
+    enabled: Boolean(tasksQueryUrl),
     staleTime: 20_000,
   });
 
@@ -324,6 +364,24 @@ export default function PlanningClient() {
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
   const selectedFeature = features.find((f) => String(f.id) === featureId) ?? null;
 
+  // Auto-scroll to the next cascade level when a parent selection changes.
+  const projectsScrollKey = showProjects && productId ? productId : "";
+  const featuresScrollKey =
+    showFeatures && (showProjects ? projectId : productId)
+      ? showProjects
+        ? projectId
+        : productId
+      : "";
+  const tasksScrollKey = showFeatures
+    ? featureId
+    : showProjects
+      ? projectId
+      : productId;
+  const projectsSectionRef = useScrollOnDependency<HTMLDivElement>(projectsScrollKey, { block: "start" });
+  const featuresSectionRef = useScrollOnDependency<HTMLDivElement>(featuresScrollKey, { block: "start" });
+  const tasksSectionRef = useScrollOnDependency<HTMLDivElement>(tasksScrollKey, { block: "start" });
+  const checklistSectionRef = useScrollOnDependency<HTMLElement>(selectedTaskId, { block: "start" });
+
   function onAddChecklistItem(e: FormEvent) {
     e.preventDefault();
     setChecklistError("");
@@ -333,13 +391,36 @@ export default function PlanningClient() {
 
   return (
     <div className="page-stack">
+      <PageGuide page="planning" />
+      <WorkMapGuide
+        config={execConfig}
+        activeStorage={
+          !showProjects && !showFeatures
+            ? "task"
+            : !showProjects
+              ? "feature"
+              : "project"
+        }
+        compact
+      />
+
       <section className="data-panel">
         <h2 className="panel-title" style={{ marginBottom: "0.5rem" }}>
           {t("planning.cascade")}
         </h2>
-        <p className="text-dim" style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-          {t("planning.cascadeHint")}
+        <p className="text-dim planning-cascade-hint">
+          {execConfig?.levels?.length
+            ? `${t("planning.workMapIntro")} · ${execConfig.levels.map((l) => l.label).join(" → ")}`
+            : t("planning.workMapIntro")}
         </p>
+        {productId && products.find((p) => p.id === productId) ? (
+          <p className="text-dim" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem" }}>
+            {t("planning.productContext")}:{" "}
+            <Link href={`/products/${productId}`} className="planning-product-link">
+              {products.find((p) => p.id === productId)?.name}
+            </Link>
+          </p>
+        ) : null}
         <div className="form-group" style={{ maxWidth: 420 }}>
           <label htmlFor="product">{t("products.product")}</label>
           <select
@@ -362,10 +443,12 @@ export default function PlanningClient() {
         </div>
       </section>
 
+      {showProjects ? (
+      <div ref={projectsSectionRef}>
       <ResourceManager
-        title={t("planning.projects")}
+        title={projectLabel}
         description={t("planning.selectProductHint")}
-        createLabel={t("planning.createProject")}
+        createLabel={`${t("common.create")} ${projectLabel}`}
         emptyTitle={t("planning.noProjects")}
         emptyDescription={
           productId
@@ -377,6 +460,7 @@ export default function PlanningClient() {
         selectedRowId={projectId || null}
         onRowSelect={(row) => selectProject(row.id)}
         createDefaults={productId ? { product_id: productId } : undefined}
+        autoOpenCreate={newIntent === "project"}
         createFields={[
           {
             name: "product_id",
@@ -529,38 +613,48 @@ export default function PlanningClient() {
           await archiveProject.mutateAsync(id);
         }}
         extraActions={(row) => (
-          <>
-            {row.deleted_at ? (
-              <button type="button" className="btn btn-sm" onClick={() => restoreProject.mutate(row.id)}>
-                Restore
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
-                onClick={() => softDeleteProject.mutate(row.id)}
-              >
-                {t("planning.softDelete")}
-              </button>
-            )}
-          </>
+          <MoreMenu
+            items={
+              row.deleted_at
+                ? [
+                    {
+                      id: "restore",
+                      label: t("common.restore"),
+                      onClick: () => restoreProject.mutate(row.id),
+                    },
+                  ]
+                : [
+                    {
+                      id: "soft-delete",
+                      label: t("planning.softDelete"),
+                      tone: "danger",
+                      onClick: () => setSoftDeleteTarget(row),
+                    },
+                  ]
+            }
+          />
         )}
       />
+      </div>
+      ) : null}
 
-      {projectId ? (
+      {showFeatures && (showProjects ? Boolean(projectId) : Boolean(productId)) ? (
+        <div ref={featuresSectionRef}>
         <ResourceManager
-          title={t("planning.features")}
+          title={featureLabel}
           description={t("planning.projectQuickHint")}
-          createLabel={t("planning.createFeature")}
+          createLabel={`${t("common.create")} ${featureLabel}`}
           emptyTitle={t("planning.noFeatures")}
           emptyDescription={t("emptyStates.noFeatures")}
           isLoading={featuresLoading}
           items={features}
           selectedRowId={featureId || null}
           onRowSelect={(row) => selectFeature(row.id)}
+          autoOpenCreate={newIntent === "feature"}
           quickCreate={{
             placeholder: t("planning.quickFeaturePlaceholder"),
             fieldName: "title",
+            showAddHint: true,
             defaults: { priority: "MEDIUM" },
           }}
           createFields={[
@@ -665,11 +759,16 @@ export default function PlanningClient() {
           })}
           onCreate={async (v) => {
             const seqAtCreate = featureSelectSeq.current;
-            const created = await createFeature.mutateAsync({
-              project_id: projectId,
+            const body: Record<string, unknown> = {
               title: v.title,
               priority: v.priority || "MEDIUM",
-            });
+            };
+            if (showProjects) {
+              body.project_id = projectId;
+            } else {
+              body.product_id = productId;
+            }
+            const created = await createFeature.mutateAsync(body);
             const id = (created as Feature | undefined)?.id;
             if (id && seqAtCreate === featureSelectSeq.current) {
               setFeatureId(String(id));
@@ -699,33 +798,42 @@ export default function PlanningClient() {
             await archiveFeature.mutateAsync(id);
           }}
           extraActions={(row) => (
-            <>
-              <select
-                className="btn btn-sm"
-                aria-label={`Change status for ${row.title}`}
-                value={row.status}
-                onChange={(e) =>
-                  changeFeatureStatus.mutate({ id: row.id, status: e.target.value })
-                }
-                style={{ maxWidth: 140 }}
-              >
-                {featureStatusOptions.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              {row.status === "ARCHIVED" || row.deleted_at ? (
-                <button type="button" className="btn btn-sm" onClick={() => restoreFeature.mutate(row.id)}>
-                  Restore
-                </button>
-              ) : null}
-            </>
+            <MoreMenu
+              leading={
+                <select
+                  className="btn btn-sm"
+                  aria-label={`${t("common.status")}: ${row.title}`}
+                  value={row.status}
+                  onChange={(e) =>
+                    changeFeatureStatus.mutate({ id: row.id, status: e.target.value })
+                  }
+                  style={{ maxWidth: 140 }}
+                >
+                  {featureStatusOptions.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              }
+              items={
+                row.status === "ARCHIVED" || row.deleted_at
+                  ? [
+                      {
+                        id: "restore",
+                        label: t("common.restore"),
+                        onClick: () => restoreFeature.mutate(row.id),
+                      },
+                    ]
+                  : []
+              }
+            />
           )}
         />
+        </div>
       ) : null}
 
-      {featureId ? (
+      {showFeatures && featureId ? (
         <section className="data-panel">
           <h3 className="panel-title" style={{ marginBottom: "0.5rem" }}>
             {t("planning.featureDependencies")}
@@ -764,7 +872,7 @@ export default function PlanningClient() {
         </section>
       ) : null}
 
-      {projectId && !featureId ? (
+      {showFeatures && showProjects && projectId && !featureId ? (
         <section className="data-panel">
           <EmptyState
             title={t("planning.selectFeature")}
@@ -773,8 +881,8 @@ export default function PlanningClient() {
         </section>
       ) : null}
 
-      {featureId ? (
-        <>
+      {(showFeatures ? Boolean(featureId) : showProjects ? Boolean(projectId) : Boolean(productId)) ? (
+        <div ref={tasksSectionRef} className="page-stack">
           <div className="org-tab-row" style={{ marginBottom: "-0.5rem" }}>
             {(
               [
@@ -797,11 +905,11 @@ export default function PlanningClient() {
           <ResourceManager
             title={
               selectedFeature
-                ? `${t("planning.tasks")} — ${selectedFeature.title}`
-                : t("planning.tasks")
+                ? `${taskLabel} — ${selectedFeature.title}`
+                : taskLabel
             }
             description={t("planning.taskHint")}
-            createLabel={t("planning.createTask")}
+            createLabel={`${t("common.create")} ${taskLabel}`}
             emptyTitle={t("planning.noTasks")}
             emptyDescription={t("emptyStates.noTasks")}
             isLoading={tasksLoading}
@@ -810,7 +918,9 @@ export default function PlanningClient() {
               placeholder: t("planning.quickTaskPlaceholder"),
               fieldName: "title",
               defaults: { priority: "MEDIUM" },
+              showAddHint: true,
             }}
+            autoOpenCreate={newIntent === "task"}
             createFields={[
               { name: "title", label: t("common.title"), required: true },
               {
@@ -919,13 +1029,20 @@ export default function PlanningClient() {
             })}
             onCreate={async (v) => {
               const assignee = v.assignee_id?.trim() ? v.assignee_id : null;
-              const created = await createTask.mutateAsync({
-                feature_id: featureId,
+              const body: Record<string, unknown> = {
                 title: v.title,
                 priority: v.priority || "MEDIUM",
                 assignee_id: assignee,
                 due_date: fromDateInput(v.due_date ?? ""),
-              });
+              };
+              if (showFeatures) {
+                body.feature_id = featureId;
+              } else if (showProjects) {
+                body.project_id = projectId;
+              } else {
+                body.product_id = productId;
+              }
+              const created = await createTask.mutateAsync(body);
               const id = (created as Task | undefined)?.id;
               if (id) setSelectedTaskId(id);
             }}
@@ -950,50 +1067,57 @@ export default function PlanningClient() {
             onDelete={async (id) => {
               await archiveTask.mutateAsync(id);
             }}
-            extraActions={(row) => (
-              <>
-                {row.status !== "COMPLETED" && row.status !== "ARCHIVED" && row.status !== "DONE" ? (
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => completeTask.mutate(row.id)}
-                  >
-                    Complete
-                  </button>
-                ) : null}
-                {row.status !== "BLOCKED" && row.status !== "ARCHIVED" ? (
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => rejectTask.mutate(row.id)}
-                  >
-                    Block
-                  </button>
-                ) : null}
-                {row.status === "ON_HOLD" ? (
-                  <button type="button" className="btn btn-sm" onClick={() => resumeTask.mutate(row.id)}>
-                    Resume
-                  </button>
-                ) : row.status !== "COMPLETED" && row.status !== "CANCELLED" && row.status !== "ARCHIVED" ? (
-                  <button type="button" className="btn btn-sm" onClick={() => pauseTask.mutate(row.id)}>
-                    Pause
-                  </button>
-                ) : null}
-                {row.status === "COMPLETED" || row.status === "CANCELLED" ? (
-                  <button type="button" className="btn btn-sm" onClick={() => reopenTask.mutate(row.id)}>
-                    Reopen
-                  </button>
-                ) : null}
-              </>
-            )}
+            extraActions={(row) => {
+              const items: { id: string; label: string; onClick: () => void; tone?: "danger" | "default" }[] = [];
+              if (row.status !== "COMPLETED" && row.status !== "ARCHIVED" && row.status !== "DONE") {
+                items.push({
+                  id: "complete",
+                  label: t("planning.completeTask"),
+                  onClick: () => completeTask.mutate(row.id),
+                });
+              }
+              if (row.status !== "BLOCKED" && row.status !== "ARCHIVED") {
+                items.push({
+                  id: "block",
+                  label: t("planning.blockTask"),
+                  tone: "danger",
+                  onClick: () => rejectTask.mutate(row.id),
+                });
+              }
+              if (row.status === "ON_HOLD") {
+                items.push({
+                  id: "resume",
+                  label: t("planning.resumeTask"),
+                  onClick: () => resumeTask.mutate(row.id),
+                });
+              } else if (
+                row.status !== "COMPLETED" &&
+                row.status !== "CANCELLED" &&
+                row.status !== "ARCHIVED"
+              ) {
+                items.push({
+                  id: "pause",
+                  label: t("planning.pauseTask"),
+                  onClick: () => pauseTask.mutate(row.id),
+                });
+              }
+              if (row.status === "COMPLETED" || row.status === "CANCELLED") {
+                items.push({
+                  id: "reopen",
+                  label: t("planning.reopenTask"),
+                  onClick: () => reopenTask.mutate(row.id),
+                });
+              }
+              return <MoreMenu items={items} />;
+            }}
           />
 
           {selectedTask ? (
-            <section className="data-panel">
+            <section ref={checklistSectionRef} className="data-panel">
               <div className="panel-header">
                 <h3 className="panel-title">Checklist — {selectedTask.title}</h3>
                 <button type="button" className="btn btn-sm" onClick={() => setSelectedTaskId("")}>
-                  Close
+                  {t("planning.closeChecklist")}
                 </button>
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem" }}>
@@ -1050,8 +1174,28 @@ export default function PlanningClient() {
               </form>
             </section>
           ) : null}
-        </>
+        </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(softDeleteTarget)}
+        title={t("common.confirmDelete")}
+        description={
+          softDeleteTarget
+            ? `${t("planning.softDelete")}: «${softDeleteTarget.name}»`
+            : undefined
+        }
+        confirmLabel={t("planning.softDelete")}
+        tone="danger"
+        busy={softDeleteProject.isPending}
+        onCancel={() => !softDeleteProject.isPending && setSoftDeleteTarget(null)}
+        onConfirm={() => {
+          if (!softDeleteTarget) return;
+          softDeleteProject.mutate(softDeleteTarget.id, {
+            onSettled: () => setSoftDeleteTarget(null),
+          });
+        }}
+      />
     </div>
   );
 }

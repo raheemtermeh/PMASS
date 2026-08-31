@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useI18n } from "@/core/providers/I18nProvider";
-import type { MyWorkSummary } from "../types";
+import type { DashboardData, MyWorkSummary } from "../types";
 import { CommandWidgetShell } from "./CommandWidgetShell";
 import type { WidgetSize } from "../commandCenterLayout";
 
 interface Props {
   data?: MyWorkSummary;
+  tasks?: DashboardData["my_tasks"];
   size?: WidgetSize;
   customize?: React.ReactNode;
   dragHandleProps?: React.ComponentProps<typeof CommandWidgetShell>["dragHandleProps"];
@@ -26,6 +27,7 @@ const ROWS: { key: keyof MyWorkSummary; labelKey: string; href?: string }[] = [
 
 export function MyWorkWidget({
   data,
+  tasks = [],
   size = "half",
   customize,
   dragHandleProps,
@@ -41,6 +43,8 @@ export function MyWorkWidget({
     mentions: 0,
     approvals: 0,
   };
+
+  const topTasks = tasks.slice(0, 5);
 
   return (
     <CommandWidgetShell
@@ -66,12 +70,38 @@ export function MyWorkWidget({
             </>
           );
           return (
-            <li key={row.key} className={count > 0 && (row.key === "overdue" || row.key === "due_today") ? "cc-mywork-hot" : undefined}>
+            <li
+              key={row.key}
+              className={
+                count > 0 && (row.key === "overdue" || row.key === "due_today")
+                  ? "cc-mywork-hot"
+                  : undefined
+              }
+            >
               {row.href ? <Link href={row.href}>{label}</Link> : <div>{label}</div>}
             </li>
           );
         })}
       </ul>
+
+      <div className="cc-mytasks">
+        <h4 className="cc-mytasks-title">{t("dashboard.myTasksList")}</h4>
+        {topTasks.length === 0 ? (
+          <p className="text-dim cc-mytasks-empty">{t("dashboard.noMyTasks")}</p>
+        ) : (
+          <ul className="command-list compact">
+            {topTasks.map((task) => (
+              <li key={task.id}>
+                <Link href={`/planning?new=task`}>{task.title}</Link>
+                <span className="status-pill">{task.status}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link href="/planning?new=task" className="btn btn-sm cc-mytasks-cta">
+          {t("dashboard.openTask")}
+        </Link>
+      </div>
     </CommandWidgetShell>
   );
 }

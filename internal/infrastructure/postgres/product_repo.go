@@ -21,6 +21,7 @@ func NewProductRepo(db *DB) *ProductRepo { return &ProductRepo{db: db} }
 const productColumns = `id, company_id, owner_id, name, description, category, status, execution_model, pipeline_id,
 	COALESCE(code,''), COALESCE(product_type,''), manager_id, COALESCE(priority,''), COALESCE(vision,''), COALESCE(goal,''),
 	COALESCE(success_metrics,''), COALESCE(business_value,''), COALESCE(visibility,'ORGANIZATION'), deleted_at,
+	execution_config,
 	version, created_at, updated_at`
 
 // rowScanner (shared with planning_support_repo.go) is satisfied by both
@@ -28,10 +29,12 @@ const productColumns = `id, company_id, owner_id, name, description, category, s
 
 func scanProductRow(row rowScanner) (*product.Product, error) {
 	var p product.Product
+	var cfgRaw []byte
 	err := row.Scan(
 		&p.ID, &p.CompanyID, &p.OwnerID, &p.Name, &p.Description, &p.Category, &p.Status, &p.ExecutionModel, &p.PipelineID,
 		&p.Code, &p.ProductType, &p.ManagerID, &p.Priority, &p.Vision, &p.Goal,
 		&p.SuccessMetrics, &p.BusinessValue, &p.Visibility, &p.DeletedAt,
+		&cfgRaw,
 		&p.Version, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -40,22 +43,45 @@ func scanProductRow(row rowScanner) (*product.Product, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := attachExecutionConfig(&p, cfgRaw); err != nil {
+		return nil, err
+	}
 	return &p, nil
 }
 
 func scanProductRowTotal(row rowScanner) (*product.Product, int64, error) {
 	var p product.Product
 	var total int64
+	var cfgRaw []byte
 	err := row.Scan(
 		&p.ID, &p.CompanyID, &p.OwnerID, &p.Name, &p.Description, &p.Category, &p.Status, &p.ExecutionModel, &p.PipelineID,
 		&p.Code, &p.ProductType, &p.ManagerID, &p.Priority, &p.Vision, &p.Goal,
 		&p.SuccessMetrics, &p.BusinessValue, &p.Visibility, &p.DeletedAt,
+		&cfgRaw,
 		&p.Version, &p.CreatedAt, &p.UpdatedAt, &total,
 	)
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := attachExecutionConfig(&p, cfgRaw); err != nil {
+		return nil, 0, err
+	}
 	return &p, total, nil
+}
+
+func attachExecutionConfig(p *product.Product, cfgRaw []byte) error {
+	cfg, err := product.ParseExecutionConfig(cfgRaw)
+	if err != nil {
+		return err
+	}
+	if len(cfg.Levels) > 0 {
+		p.ExecutionConfig = &cfg
+	} else {
+		// Derive for legacy rows so API always returns a usable work map.
+		derived := product.EffectiveConfig(p.ExecutionModel, nil)
+		p.ExecutionConfig = &derived
+	}
+	return nil
 }
 
 func (r *ProductRepo) Create(ctx context.Context, p *product.Product) error {
@@ -63,19 +89,36 @@ func (r *ProductRepo) Create(ctx context.Context, p *product.Product) error {
 	if visibility == "" {
 		visibility = product.VisibilityOrganization
 	}
+	var cfgBytes []byte
+	if p.ExecutionConfig != nil {
+		var err error
+		cfgBytes, err = p.ExecutionConfig.MarshalJSONBytes()
+		if err != nil {
+			return err
+		}
+	}
 	_, err := r.db.Q(ctx).ExecContext(ctx, `
 		INSERT INTO products (
 			id, company_id, owner_id, name, description, category, status, execution_model, pipeline_id,
 			code, product_type, manager_id, priority, vision, goal, success_metrics, business_value, visibility, deleted_at,
+			execution_config,
 			version, created_at, updated_at
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		p.ID, p.CompanyID, p.OwnerID, p.Name, p.Description, p.Category, p.Status, p.ExecutionModel, p.PipelineID,
 		nullStr(p.Code), nullStr(p.ProductType), p.ManagerID, nullStr(p.Priority), p.Vision, p.Goal,
 		p.SuccessMetrics, p.BusinessValue, visibility, p.DeletedAt,
+		nullableJSON(cfgBytes),
 		p.Version, p.CreatedAt, p.UpdatedAt,
 	)
 	return translateProductConflict(err)
+}
+
+func nullableJSON(b []byte) any {
+	if len(b) == 0 {
+		return nil
+	}
+	return b
 }
 
 func translateProductConflict(err error) error {
@@ -153,16 +196,26 @@ func (r *ProductRepo) Update(ctx context.Context, p *product.Product) error {
 	if visibility == "" {
 		visibility = product.VisibilityOrganization
 	}
+	var cfgBytes []byte
+	if p.ExecutionConfig != nil {
+		var err error
+		cfgBytes, err = p.ExecutionConfig.MarshalJSONBytes()
+		if err != nil {
+			return err
+		}
+	}
 	res, err := r.db.Q(ctx).ExecContext(ctx, `
 		UPDATE products SET
 			owner_id=$1, name=$2, description=$3, category=$4, status=$5, pipeline_id=$6,
 			code=$7, product_type=$8, manager_id=$9, priority=$10, vision=$11, goal=$12,
 			success_metrics=$13, business_value=$14, visibility=$15, deleted_at=$16,
-			version=version+1, updated_at=$17
-		WHERE company_id=$18 AND id=$19 AND version=$20`,
+			execution_model=$17, execution_config=$18,
+			version=version+1, updated_at=$19
+		WHERE company_id=$20 AND id=$21 AND version=$22`,
 		p.OwnerID, p.Name, p.Description, p.Category, p.Status, p.PipelineID,
 		nullStr(p.Code), nullStr(p.ProductType), p.ManagerID, nullStr(p.Priority), p.Vision, p.Goal,
 		p.SuccessMetrics, p.BusinessValue, visibility, p.DeletedAt,
+		p.ExecutionModel, nullableJSON(cfgBytes),
 		time.Now().UTC(), p.CompanyID, p.ID, p.Version,
 	)
 	if err != nil {
@@ -174,6 +227,25 @@ func (r *ProductRepo) Update(ctx context.Context, p *product.Product) error {
 	}
 	p.Version++
 	return nil
+}
+
+// HasUserPlanningWork reports whether the product has any non-system planning rows
+// (or any tasks). Used to lock execution_model after real work exists.
+func (r *ProductRepo) HasUserPlanningWork(ctx context.Context, companyID, productID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM projects
+			WHERE company_id=$1 AND product_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false
+			UNION ALL
+			SELECT 1 FROM features
+			WHERE company_id=$1 AND product_id=$2 AND deleted_at IS NULL AND COALESCE(is_system,false)=false
+			UNION ALL
+			SELECT 1 FROM tasks t
+			INNER JOIN features f ON f.id = t.feature_id AND f.company_id = t.company_id
+			WHERE t.company_id=$1 AND f.product_id=$2 AND t.deleted_at IS NULL
+		)`, companyID, productID).Scan(&exists)
+	return exists, err
 }
 
 func (r *ProductRepo) NameTaken(ctx context.Context, companyID uuid.UUID, name string, excludeID uuid.UUID) (bool, error) {

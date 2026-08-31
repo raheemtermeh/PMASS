@@ -10,6 +10,7 @@ import (
 	organizationapp "PMAS/internal/application/organization"
 	planningapp "PMAS/internal/application/planning"
 	productapp "PMAS/internal/application/product"
+	"PMAS/internal/domain/product"
 	"PMAS/internal/domain/shared"
 	"PMAS/internal/middleware"
 )
@@ -481,6 +482,17 @@ type ProductHandler struct {
 	Svc   *productapp.Service
 }
 
+func (h *ProductHandler) HandleExecutionModels(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.Scope.Require(w, r); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		WriteErr(w, shared.New("METHOD_NOT_ALLOWED", "Method not allowed", 405))
+		return
+	}
+	WriteOK(w, http.StatusOK, h.Svc.ListExecutionModels(), nil)
+}
+
 func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) {
 	companyID, ok := h.Scope.Require(w, r)
 	if !ok {
@@ -499,20 +511,21 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			OwnerID        uuid.UUID  `json:"owner_id"`
-			Name           string     `json:"name"`
-			Description    string     `json:"description"`
-			Category       string     `json:"category"`
-			ExecutionModel string     `json:"execution_model"`
-			Code           string     `json:"code"`
-			ProductType    string     `json:"product_type"`
-			ManagerID      *uuid.UUID `json:"manager_id"`
-			Priority       string     `json:"priority"`
-			Vision         string     `json:"vision"`
-			Goal           string     `json:"goal"`
-			SuccessMetrics string     `json:"success_metrics"`
-			BusinessValue  string     `json:"business_value"`
-			Visibility     string     `json:"visibility"`
+			OwnerID         uuid.UUID                   `json:"owner_id"`
+			Name            string                      `json:"name"`
+			Description     string                      `json:"description"`
+			Category        string                      `json:"category"`
+			ExecutionModel  string                      `json:"execution_model"`
+			ExecutionLevels []product.CustomLevelInput  `json:"execution_levels"`
+			Code            string                      `json:"code"`
+			ProductType     string                      `json:"product_type"`
+			ManagerID       *uuid.UUID                  `json:"manager_id"`
+			Priority        string                      `json:"priority"`
+			Vision          string                      `json:"vision"`
+			Goal            string                      `json:"goal"`
+			SuccessMetrics  string                      `json:"success_metrics"`
+			BusinessValue   string                      `json:"business_value"`
+			Visibility      string                      `json:"visibility"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
@@ -520,7 +533,7 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		}
 		p, err := h.Svc.CreateProduct(r.Context(), companyID, productapp.CreateProductInput{
 			OwnerID: body.OwnerID, Name: body.Name, Description: body.Description,
-			Category: body.Category, ExecutionModel: body.ExecutionModel,
+			Category: body.Category, ExecutionModel: body.ExecutionModel, ExecutionLevels: body.ExecutionLevels,
 			Code: body.Code, ProductType: body.ProductType, ManagerID: body.ManagerID,
 			Priority: body.Priority, Vision: body.Vision, Goal: body.Goal,
 			SuccessMetrics: body.SuccessMetrics, BusinessValue: body.BusinessValue, Visibility: body.Visibility,
@@ -556,29 +569,27 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		var body struct {
-			Name           *string `json:"name"`
-			Description    *string `json:"description"`
-			Category       *string `json:"category"`
-			ExecutionModel *string `json:"execution_model"`
-			Code           *string `json:"code"`
-			ProductType    *string `json:"product_type"`
-			Priority       *string `json:"priority"`
-			Vision         *string `json:"vision"`
-			Goal           *string `json:"goal"`
-			SuccessMetrics *string `json:"success_metrics"`
-			BusinessValue  *string `json:"business_value"`
-			Visibility     *string `json:"visibility"`
+			Name            *string                    `json:"name"`
+			Description     *string                    `json:"description"`
+			Category        *string                    `json:"category"`
+			ExecutionModel  *string                    `json:"execution_model"`
+			ExecutionLevels []product.CustomLevelInput `json:"execution_levels"`
+			Code            *string                    `json:"code"`
+			ProductType     *string                    `json:"product_type"`
+			Priority        *string                    `json:"priority"`
+			Vision          *string                    `json:"vision"`
+			Goal            *string                    `json:"goal"`
+			SuccessMetrics  *string                    `json:"success_metrics"`
+			BusinessValue   *string                    `json:"business_value"`
+			Visibility      *string                    `json:"visibility"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))
 			return
 		}
-		if body.ExecutionModel != nil {
-			WriteErr(w, shared.New("EXECUTION_MODEL_LOCKED", "Execution model cannot be changed after create", 409))
-			return
-		}
 		p, err := h.Svc.UpdateProduct(r.Context(), companyID, id, productapp.UpdateProductInput{
 			Name: body.Name, Description: body.Description, Category: body.Category,
+			ExecutionModel: body.ExecutionModel, ExecutionLevels: body.ExecutionLevels,
 			Code: body.Code, ProductType: body.ProductType, Priority: body.Priority,
 			Vision: body.Vision, Goal: body.Goal, SuccessMetrics: body.SuccessMetrics,
 			BusinessValue: body.BusinessValue, Visibility: body.Visibility,
@@ -1272,9 +1283,23 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 			WriteOK(w, http.StatusOK, items, meta)
 			return
 		}
+		if pid := r.URL.Query().Get("product_id"); pid != "" {
+			productID, err := ParseUUIDParam(pid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid product_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListFeaturesByProduct(r.Context(), companyID, productID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
 		projectID, err := ParseUUIDParam(r.URL.Query().Get("project_id"))
 		if err != nil {
-			WriteErr(w, shared.New("INVALID_ID", "project_id is required", 400))
+			WriteErr(w, shared.New("INVALID_ID", "project_id or product_id is required", 400))
 			return
 		}
 		items, meta, err := h.Svc.ListFeaturesByProject(r.Context(), companyID, projectID, q)
@@ -1286,6 +1311,7 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
 			ProjectID uuid.UUID `json:"project_id"`
+			ProductID uuid.UUID `json:"product_id"`
 			Title     string    `json:"title"`
 			Priority  string    `json:"priority"`
 		}
@@ -1294,7 +1320,7 @@ func (h *PlanningHandler) HandleFeatures(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		f, err := h.Svc.CreateFeature(r.Context(), companyID, planningapp.CreateFeatureInput{
-			ProjectID: body.ProjectID, Title: body.Title, Priority: body.Priority,
+			ProjectID: body.ProjectID, ProductID: body.ProductID, Title: body.Title, Priority: body.Priority,
 		})
 		if err != nil {
 			WriteErr(w, err)
@@ -1528,9 +1554,37 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			WriteOK(w, http.StatusOK, items, meta)
 			return
 		}
+		if pid := r.URL.Query().Get("product_id"); pid != "" {
+			productID, err := ParseUUIDParam(pid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid product_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListTasksByProduct(r.Context(), companyID, productID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
+		if prid := r.URL.Query().Get("project_id"); prid != "" {
+			projectID, err := ParseUUIDParam(prid)
+			if err != nil {
+				WriteErr(w, shared.New("INVALID_ID", "Invalid project_id", 400))
+				return
+			}
+			items, meta, err := h.Svc.ListTasksByProject(r.Context(), companyID, projectID, q)
+			if err != nil {
+				WriteErr(w, err)
+				return
+			}
+			WriteOK(w, http.StatusOK, items, meta)
+			return
+		}
 		featureID, err := ParseUUIDParam(r.URL.Query().Get("feature_id"))
 		if err != nil {
-			WriteErr(w, shared.New("INVALID_ID", "feature_id is required", 400))
+			WriteErr(w, shared.New("INVALID_ID", "feature_id, project_id, or product_id is required", 400))
 			return
 		}
 		items, meta, err := h.Svc.ListTasksByFeature(r.Context(), companyID, featureID, q)
@@ -1542,6 +1596,8 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
 			FeatureID  uuid.UUID  `json:"feature_id"`
+			ProductID  uuid.UUID  `json:"product_id"`
+			ProjectID  uuid.UUID  `json:"project_id"`
 			Title      string     `json:"title"`
 			Priority   string     `json:"priority"`
 			AssigneeID *uuid.UUID `json:"assignee_id"`
@@ -1552,7 +1608,8 @@ func (h *PlanningHandler) HandleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		t, err := h.Svc.CreateTask(r.Context(), companyID, planningapp.CreateTaskInput{
-			FeatureID: body.FeatureID, Title: body.Title, Priority: body.Priority, AssigneeID: body.AssigneeID, DueDate: body.DueDate,
+			FeatureID: body.FeatureID, ProductID: body.ProductID, ProjectID: body.ProjectID,
+			Title: body.Title, Priority: body.Priority, AssigneeID: body.AssigneeID, DueDate: body.DueDate,
 		})
 		if err != nil {
 			WriteErr(w, err)

@@ -79,6 +79,8 @@ export interface Product {
   category: string;
   status: string;
   execution_model: string;
+  execution_config?: ExecutionConfig | null;
+  execution_model_unlocked?: boolean;
   pipeline_id?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -94,6 +96,26 @@ export interface Product {
   business_value?: string;
   visibility?: string;
   deleted_at?: string | null;
+}
+
+export type WorkStorage = "project" | "feature" | "task";
+
+export interface WorkLevel {
+  key: string;
+  label: string;
+  storage: WorkStorage;
+}
+
+export interface ExecutionConfig {
+  levels: WorkLevel[];
+}
+
+export interface WorkModelDefinition {
+  key: string;
+  name: string;
+  description: string;
+  levels: WorkLevel[];
+  customizable?: boolean;
 }
 
 /** Roll-up shown in the product list (GET /api/v1/products/summary). */

@@ -81,7 +81,15 @@ export function executionModelLabel(model: string): string {
     case "FEATURE_TASK":
       return "Feature → Task";
     case "DIRECT_TASK":
-      return "Direct Task";
+      return "Product → Task";
+    case "SCRUM":
+      return "Epic → Story → Task";
+    case "KANBAN":
+      return "Initiative → Work Item";
+    case "OKRS":
+      return "Objective → Key Result → Initiative";
+    case "CUSTOM":
+      return "Custom";
     default:
       return model;
   }

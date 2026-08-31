@@ -1,11 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore, type AuthUser } from "@/core/auth/auth-store";
 import { httpClient } from "@/core/api/http-client";
 import { createPasskeyCredential, isPasskeySupported } from "@/core/auth/webauthn";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { PageGuide } from "@/components/PageGuide";
 import { PasswordField } from "@/components/PasswordField";
 import { useToast } from "@/components/Toast";
 import { COUNTRY_DIAL_CODES, splitPhone, joinPhone } from "@/shared/phone";
@@ -79,6 +82,7 @@ export default function ProfilePage() {
 
   const [pkName, setPkName] = useState("");
   const [pkBusy, setPkBusy] = useState(false);
+  const [passkeyRemoveTarget, setPasskeyRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const [pkError, setPkError] = useState("");
   const [pkSuccess, setPkSuccess] = useState("");
   const [passkeysOk, setPasskeysOk] = useState(false);
@@ -154,7 +158,7 @@ export default function ProfilePage() {
       if (!token) throw new Error(t("errors.sessionExpired"));
       const updated = await httpClient.put<AuthUser>("/api/v1/auth/me", body);
       setSession(token, updated);
-      showToast(t("profile.profileUpdated"));
+      showToast(t("profile.profileSaved"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("errors.saveProfileFailed");
       setError(msg);
@@ -242,20 +246,29 @@ export default function ProfilePage() {
     }
   }
 
-  async function onDeletePasskey(id: string, name: string) {
-    if (!window.confirm(t("profile.removePasskeyConfirm", { name }))) return;
+  function onDeletePasskey(id: string, name: string) {
+    setPasskeyRemoveTarget({ id, name });
+  }
+
+  async function confirmDeletePasskey() {
+    if (!passkeyRemoveTarget) return;
     setPkError("");
     try {
-      await httpClient.delete(`/api/v1/auth/passkeys/${id}`);
+      await httpClient.delete(`/api/v1/auth/passkeys/${passkeyRemoveTarget.id}`);
       setPkSuccess(t("profile.passkeyRemoved"));
+      showToast(t("profile.passkeyRemoved"));
       void qc.invalidateQueries({ queryKey: ["passkeys"] });
     } catch (err) {
       setPkError(err instanceof Error ? err.message : t("errors.removePasskeyFailed"));
+    } finally {
+      setPasskeyRemoveTarget(null);
     }
   }
 
   return (
     <div className="atelier profile-page">
+      <PageGuide page="profile" />
+
       <section className="atelier-hero atelier-hero-profile">
         <div className="atelier-orbit" aria-hidden>
           <span className="atelier-orb atelier-orb-a" />
@@ -462,6 +475,11 @@ export default function ProfilePage() {
                   {busy ? t("common.saving") : isDirty ? t("common.saveChanges") : t("common.done")}
                 </button>
               </div>
+
+              <p className="profile-access-note">
+                {t("profile.accessMapMoved")}{" "}
+                <Link href="/admin/users">{t("profile.goToUserManagement")}</Link>
+              </p>
             </form>
           ) : null}
 
@@ -469,8 +487,8 @@ export default function ProfilePage() {
             <form className="atelier-card atelier-enter" onSubmit={onChangePassword} style={{ ["--i" as string]: 0 }}>
               <header className="atelier-card-head">
                 <div>
-                  <h2>{t("profile.password")}</h2>
-                  <p>{t("profile.passwordChangeHint")}</p>
+                  <h2>{t("profile.securitySection")}</h2>
+                  <p>{t("profile.securityHint")}</p>
                 </div>
                 <span className="atelier-shield" aria-hidden>◈</span>
               </header>
@@ -663,6 +681,20 @@ export default function ProfilePage() {
           </button>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(passkeyRemoveTarget)}
+        title={t("common.confirmDelete")}
+        description={
+          passkeyRemoveTarget
+            ? t("profile.removePasskeyConfirm", { name: passkeyRemoveTarget.name })
+            : undefined
+        }
+        confirmLabel={t("common.remove")}
+        tone="danger"
+        onCancel={() => setPasskeyRemoveTarget(null)}
+        onConfirm={() => void confirmDeletePasskey()}
+      />
     </div>
   );
 }

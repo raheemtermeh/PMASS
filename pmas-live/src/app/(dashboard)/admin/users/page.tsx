@@ -2,8 +2,12 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { ModalPortal } from "@/components/ModalPortal";
+import { MoreMenu, type MoreMenuItem } from "@/components/MoreMenu";
+import { PageGuide } from "@/components/PageGuide";
+import { PasswordField } from "@/components/PasswordField";
 import { httpClient } from "@/core/api/http-client";
 import { useAuthStore } from "@/core/auth/auth-store";
 import { useI18n } from "@/core/providers/I18nProvider";
@@ -61,9 +65,11 @@ function avatarTone(seed: string): number {
 function PermCategories({
   selected,
   onToggle,
+  onSetGroup,
 }: {
   selected: Permission[];
   onToggle: (perm: Permission) => void;
+  onSetGroup?: (perms: Permission[], on: boolean) => void;
 }) {
   const { t } = useI18n();
   const categoryLabels: Record<string, string> = {
@@ -98,6 +104,24 @@ function PermCategories({
               {cat.permissions.filter((p) => selected.includes(p)).length}/
               {cat.permissions.length}
             </span>
+            {onSetGroup ? (
+              <div className="um-perm-group-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => onSetGroup(cat.permissions, true)}
+                >
+                  {t("users.selectAllGroup")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => onSetGroup(cat.permissions, false)}
+                >
+                  {t("users.clearGroup")}
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="um-perm-chips">
             {cat.permissions.map((perm) => {
@@ -151,6 +175,18 @@ export default function AdminUsersPage() {
   const [roleName, setRoleName] = useState("");
   const [roleDesc, setRoleDesc] = useState("");
   const [rolePerms, setRolePerms] = useState<Permission[]>([]);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [removeLoginTarget, setRemoveLoginTarget] = useState<WorkspaceUser | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<WorkspaceUser | null>(null);
+  const [passwordDraft, setPasswordDraft] = useState("");
+  const [enableLoginTarget, setEnableLoginTarget] = useState<WorkspaceUser | null>(null);
+  const [enablePasswordDraft, setEnablePasswordDraft] = useState("");
+  const [deleteRoleTarget, setDeleteRoleTarget] = useState<CompanyRole | null>(null);
+
+  function bootstrapPassword(value: string): string {
+    return value.trim() || `Pmas-${Math.random().toString(36).slice(2, 10)}!`;
+  }
 
   const { data: roles = [] } = useQuery({
     queryKey: ["company-roles", tenantId],
@@ -212,7 +248,7 @@ export default function AdminUsersPage() {
     mutationFn: () =>
       httpClient.post<WorkspaceUser>("/api/v1/users", {
         email,
-        password,
+        password: bootstrapPassword(password),
         full_name: fullName,
         job_title: jobTitle,
         role_id: roleId || undefined,
@@ -226,6 +262,7 @@ export default function AdminUsersPage() {
       setJobTitle("");
       setRoleId("");
       setSelectedPerms([]);
+      setCreateOpen(false);
     },
   });
 
@@ -267,7 +304,7 @@ export default function AdminUsersPage() {
         email: row.email,
         full_name: row.full_name,
         job_title: row.job_title,
-        password,
+        password: bootstrapPassword(password),
         role_id: baseline?.id,
         permissions: baseline?.permissions ?? [],
       });
@@ -346,6 +383,52 @@ export default function AdminUsersPage() {
     setter(list.includes(perm) ? list.filter((p) => p !== perm) : [...list, perm]);
   }
 
+  function setGroupPerms(
+    list: Permission[],
+    group: Permission[],
+    on: boolean,
+    setter: (v: Permission[]) => void,
+  ) {
+    if (on) {
+      setter(Array.from(new Set([...list, ...group])));
+      return;
+    }
+    setter(list.filter((p) => !group.includes(p)));
+  }
+
+  function userMoreActions(row: WorkspaceUser): MoreMenuItem[] {
+    if (!row.has_login || !row.user_id) return [];
+    const items: MoreMenuItem[] = [
+      { id: "edit", label: t("users.editPermissions"), onClick: () => openEdit(row) },
+      {
+        id: "password",
+        label: t("profile.changePassword"),
+        onClick: () => {
+          setPasswordTarget(row);
+          setPasswordDraft("");
+        },
+      },
+      {
+        id: "toggle",
+        label: row.is_active ? t("users.disableUser") : t("users.enableUser"),
+        onClick: () =>
+          toggleMutation.mutate({
+            id: row.user_id!,
+            is_active: !row.is_active,
+          }),
+      },
+    ];
+    if (row.user_id !== currentUser?.id) {
+      items.push({
+        id: "remove-login",
+        label: `${t("common.remove")} ${t("common.signIn")}`,
+        tone: "danger",
+        onClick: () => setRemoveLoginTarget(row),
+      });
+    }
+    return items;
+  }
+
   function openEdit(row: WorkspaceUser) {
     setEditingUser(row);
     setEditName(row.full_name);
@@ -374,6 +457,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="page-stack um-studio">
+      <PageGuide page="users" />
+
       <header className="um-hero">
         <div className="um-hero-glow" aria-hidden />
         <div className="um-hero-scan" aria-hidden />
@@ -409,90 +494,17 @@ export default function AdminUsersPage() {
         <div className="um-panel-head">
           <div>
             <p className="um-kicker">{t("common.create")}</p>
-            <h2 className="um-panel-title">{t("organization.createEmployee")}</h2>
-            <p className="um-panel-sub">{t("userManagement.createHint")}</p>
+            <h2 className="um-panel-title">{t("users.createUserTitle")}</h2>
+            <p className="um-panel-sub">{t("users.inviteHint")}</p>
           </div>
-          <div className="um-badge-stack">
-            <span className="um-soft-badge">{t("role.employee")} + {t("common.signIn")}</span>
-            <span className="um-soft-badge um-soft-badge-cyan">
-              {t("userManagement.role")} → {t("settings.access")}
-            </span>
-          </div>
+          <button
+            type="button"
+            className="btn btn-primary um-cta"
+            onClick={() => setCreateOpen(true)}
+          >
+            {t("users.createUserTitle")}
+          </button>
         </div>
-
-        <form
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            createMutation.mutate();
-          }}
-          className="um-create-form"
-        >
-          <div className="um-create-grid">
-            <div className="form-group">
-              <label htmlFor="u-name">{t("userManagement.fullName")}</label>
-              <input id="u-name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label htmlFor="u-email">{t("userManagement.email")}</label>
-              <input id="u-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label htmlFor="u-pass">{t("common.password")}</label>
-              <input
-                id="u-pass"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="u-job">{t("common.jobTitle")}</label>
-              <input id="u-job" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
-            </div>
-            <div className="form-group um-span-2">
-              <label htmlFor="u-role">{t("userManagement.role")}</label>
-              <select
-                id="u-role"
-                value={roleId}
-                onChange={(e) => setRoleId(e.target.value)}
-                required
-              >
-                <option value="">{t("organization.selectRole")}</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <fieldset className="um-perm-fieldset">
-            <legend>
-              {t("settings.access")} <span>— {t("common.edit")}</span>
-            </legend>
-            <PermCategories
-              selected={selectedPerms}
-              onToggle={(p) => togglePerm(selectedPerms, p, setSelectedPerms)}
-            />
-          </fieldset>
-
-          {createMutation.isError ? (
-            <p className="auth-error">
-              {createMutation.error instanceof Error
-                ? createMutation.error.message
-                : t("errors.createFailed")}
-            </p>
-          ) : null}
-
-          <div className="um-form-actions">
-            <button type="submit" className="btn btn-primary um-cta" disabled={createMutation.isPending}>
-              {createMutation.isPending ? t("common.processing") : t("organization.createEmployee")}
-            </button>
-          </div>
-        </form>
       </section>
 
       <section className="um-panel">
@@ -520,7 +532,7 @@ export default function AdminUsersPage() {
                 setStatus(e.target.value);
                 setPage(1);
               }}
-              aria-label={t("userManagement.status")}
+              aria-label={t("users.filterByStatus")}
             >
               <option value="">{t("common.allStatuses")}</option>
               <option value="ACTIVE">{t("statuses.active")}</option>
@@ -533,7 +545,7 @@ export default function AdminUsersPage() {
                 setRoleFilter(e.target.value);
                 setPage(1);
               }}
-              aria-label={t("userManagement.role")}
+              aria-label={t("users.filterByRole")}
             >
               <option value="">{t("common.all")} {t("userManagement.role")}</option>
               {roles.map((r) => (
@@ -620,68 +632,21 @@ export default function AdminUsersPage() {
 
                     <div className="um-person-actions">
                       {row.has_login && row.user_id ? (
-                        <>
-                          <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
-                            {t("common.edit")}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => {
-                              const next = window.prompt(
-                                `New password for ${row.full_name}\n(min 12 chars, upper/lower/digit/symbol)`,
-                              );
-                              if (!next) return;
-                              setPasswordMutation.mutate({ id: row.user_id!, password: next });
-                            }}
-                          >
-                            {t("profile.changePassword")}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() =>
-                              toggleMutation.mutate({
-                                id: row.user_id!,
-                                is_active: !row.is_active,
-                              })
-                            }
-                          >
-                            {row.is_active ? t("organization.deactivate") : t("statuses.active")}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-sm um-btn-danger"
-                            disabled={row.user_id === currentUser?.id}
-                            title={
-                              row.user_id === currentUser?.id
-                                ? t("userManagement.cannotRemoveOwnLogin")
-                                : t("userManagement.deleteLoginHint")
-                            }
-                            onClick={() => {
-                              if (
-                                !window.confirm(
-                                  `Remove the login for ${row.full_name}?\n\nThey keep their employee record in Organization and can be given a new login later.`,
-                                )
-                              ) {
-                                return;
-                              }
-                              removeLoginMutation.mutate(row.user_id!);
-                            }}
-                          >
-                            {t("common.remove")} {t("common.signIn")}
-                          </button>
-                        </>
+                        <MoreMenu
+                          items={userMoreActions(row)}
+                          leading={
+                            <button type="button" className="btn btn-sm" onClick={() => openEdit(row)}>
+                              {t("common.edit")}
+                            </button>
+                          }
+                        />
                       ) : (
                         <button
                           type="button"
                           className="btn btn-sm btn-primary"
                           onClick={() => {
-                            const password = window.prompt(
-                              `Initial password for ${row.full_name}\n(min 12 chars, upper/lower/digit/symbol)`,
-                            );
-                            if (!password) return;
-                            enableLoginMutation.mutate({ row, password });
+                            setEnableLoginTarget(row);
+                            setEnablePasswordDraft("");
                           }}
                         >
                           {t("common.active")} {t("common.signIn")}
@@ -763,11 +728,7 @@ export default function AdminUsersPage() {
                     <button
                       type="button"
                       className="btn btn-sm btn-danger"
-                      onClick={() => {
-                        if (window.confirm(`Delete role “${role.name}”?`)) {
-                          deleteRoleMutation.mutate(role.id);
-                        }
-                      }}
+                      onClick={() => setDeleteRoleTarget(role)}
                     >
                       {t("common.delete")}
                     </button>
@@ -817,7 +778,7 @@ export default function AdminUsersPage() {
                   />
                 </div>
                 <div className="form-group um-span-2">
-                  <label htmlFor="edit-role">{t("userManagement.role")}</label>
+                  <label htmlFor="edit-role">{t("users.rolePreset")}</label>
                   <select
                     id="edit-role"
                     value={editRoleId}
@@ -838,7 +799,7 @@ export default function AdminUsersPage() {
               </div>
               <fieldset className="um-perm-fieldset">
                 <legend>
-                  {t("settings.access")}
+                  {t("users.customPermissions")}
                   {editDiff.total > 0 ? (
                     <span className="um-diff-badge">
                       {editDiff.added.length > 0 ? `+${editDiff.added.length}` : ""}
@@ -872,6 +833,7 @@ export default function AdminUsersPage() {
                 <PermCategories
                   selected={editPerms}
                   onToggle={(p) => togglePerm(editPerms, p, setEditPerms)}
+                  onSetGroup={(group, on) => setGroupPerms(editPerms, group, on, setEditPerms)}
                 />
               </fieldset>
               <div className="modal-footer">
@@ -954,6 +916,7 @@ export default function AdminUsersPage() {
                 <PermCategories
                   selected={rolePerms}
                   onToggle={(p) => togglePerm(rolePerms, p, setRolePerms)}
+                  onSetGroup={(group, on) => setGroupPerms(rolePerms, group, on, setRolePerms)}
                 />
               </fieldset>
               {saveRoleMutation.isError ? (
@@ -981,6 +944,221 @@ export default function AdminUsersPage() {
         </div>
         </ModalPortal>
       ) : null}
+
+      {createOpen ? (
+        <ModalPortal>
+          <div className="modal-backdrop active um-modal" role="dialog" aria-modal="true">
+            <div className="modal-content um-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header um-modal-header">
+                <div>
+                  <p className="um-kicker">{t("common.create")}</p>
+                  <h3 className="modal-title">{t("users.createUserTitle")}</h3>
+                  <p className="text-dim" style={{ fontSize: "0.8125rem" }}>
+                    {t("users.inviteHint")}
+                  </p>
+                </div>
+                <button type="button" className="modal-close" onClick={() => setCreateOpen(false)}>
+                  ×
+                </button>
+              </div>
+              <form
+                className="modal-body auth-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createMutation.mutate();
+                }}
+              >
+                <div className="grid grid-cols-2">
+                  <div className="form-group">
+                    <label htmlFor="create-full-name">{t("userManagement.fullName")} *</label>
+                    <input
+                      id="create-full-name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="create-email">{t("common.email")} *</label>
+                    <input
+                      id="create-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="create-job">{t("common.jobTitle")}</label>
+                    <input id="create-job" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="create-role">{t("users.rolePreset")}</label>
+                    <select id="create-role" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+                      <option value="">—</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                    <PasswordField
+                      id="create-password"
+                      label={`${t("common.password")} (${t("common.optional")})`}
+                      value={password}
+                      onChange={setPassword}
+                      autoComplete="new-password"
+                      hint={t("users.inviteHint")}
+                    />
+                  </div>
+                </div>
+                <fieldset className="um-perm-fieldset">
+                  <legend>{t("users.permissionGroups")}</legend>
+                  <p className="um-perm-hint">{t("users.rolePresetHint")}</p>
+                  <PermCategories
+                    selected={selectedPerms}
+                    onToggle={(p) => togglePerm(selectedPerms, p, setSelectedPerms)}
+                    onSetGroup={(group, on) => setGroupPerms(selectedPerms, group, on, setSelectedPerms)}
+                  />
+                </fieldset>
+                {createMutation.isError ? (
+                  <p className="auth-error">
+                    {createMutation.error instanceof Error
+                      ? createMutation.error.message
+                      : t("errors.createFailed")}
+                  </p>
+                ) : null}
+                <div className="modal-footer">
+                  <button type="button" className="btn" onClick={() => setCreateOpen(false)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? t("common.saving") : t("users.createUserTitle")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {enableLoginTarget ? (
+        <ModalPortal>
+          <div className="modal-backdrop active" role="dialog" aria-modal="true">
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title">{t("users.enableUser")}</h3>
+                <button type="button" className="modal-close" onClick={() => setEnableLoginTarget(null)}>
+                  ×
+                </button>
+              </div>
+              <form
+                className="modal-body auth-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  enableLoginMutation.mutate(
+                    { row: enableLoginTarget, password: enablePasswordDraft },
+                    { onSuccess: () => setEnableLoginTarget(null) },
+                  );
+                }}
+              >
+                <p className="text-dim">{enableLoginTarget.full_name}</p>
+                <PasswordField
+                  id="enable-pw"
+                  label={`${t("common.password")} (${t("common.optional")})`}
+                  value={enablePasswordDraft}
+                  onChange={setEnablePasswordDraft}
+                  autoComplete="new-password"
+                  hint={t("users.inviteHint")}
+                />
+                <div className="modal-footer">
+                  <button type="button" className="btn" onClick={() => setEnableLoginTarget(null)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={enableLoginMutation.isPending}>
+                    {t("users.enableUser")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {passwordTarget ? (
+        <ModalPortal>
+          <div className="modal-backdrop active" role="dialog" aria-modal="true">
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title">{t("profile.changePassword")}</h3>
+                <button type="button" className="modal-close" onClick={() => setPasswordTarget(null)}>
+                  ×
+                </button>
+              </div>
+              <form
+                className="modal-body auth-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!passwordTarget.user_id || !passwordDraft.trim()) return;
+                  setPasswordMutation.mutate(
+                    { id: passwordTarget.user_id, password: passwordDraft },
+                    { onSuccess: () => setPasswordTarget(null) },
+                  );
+                }}
+              >
+                <PasswordField
+                  id="set-pw"
+                  label={t("common.password")}
+                  value={passwordDraft}
+                  onChange={setPasswordDraft}
+                />
+                <div className="modal-footer">
+                  <button type="button" className="btn" onClick={() => setPasswordTarget(null)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={setPasswordMutation.isPending}>
+                    {t("common.save")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      <ConfirmDialog
+        open={Boolean(removeLoginTarget)}
+        title={t("common.confirmDelete")}
+        description={`${t("common.remove")} ${t("common.signIn")}?`}
+        confirmLabel={t("common.remove")}
+        tone="danger"
+        busy={removeLoginMutation.isPending}
+        onCancel={() => !removeLoginMutation.isPending && setRemoveLoginTarget(null)}
+        onConfirm={() => {
+          if (!removeLoginTarget?.user_id) return;
+          removeLoginMutation.mutate(removeLoginTarget.user_id, {
+            onSuccess: () => setRemoveLoginTarget(null),
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteRoleTarget)}
+        title={t("common.confirmDelete")}
+        description={deleteRoleTarget ? `«${deleteRoleTarget.name}»` : undefined}
+        confirmLabel={t("common.delete")}
+        tone="danger"
+        busy={deleteRoleMutation.isPending}
+        onCancel={() => !deleteRoleMutation.isPending && setDeleteRoleTarget(null)}
+        onConfirm={() => {
+          if (!deleteRoleTarget) return;
+          deleteRoleMutation.mutate(deleteRoleTarget.id, {
+            onSuccess: () => setDeleteRoleTarget(null),
+          });
+        }}
+      />
     </div>
   );
 }

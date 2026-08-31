@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ExecutionModelPicker } from "@/components/ExecutionModelPicker";
+import { PageGuide } from "@/components/PageGuide";
+import { WorkMapGuide } from "@/components/WorkMapGuide";
+import { MoreMenu } from "@/components/MoreMenu";
 import { ResourceManager, type FieldDef } from "@/components/ResourceManager";
+import { useToast } from "@/components/Toast";
 import { httpClient } from "@/core/api/http-client";
 import {
   HealthCell,
@@ -35,9 +42,24 @@ const STATUS_OPTIONS = [
   "ARCHIVED",
 ];
 
+const DEFAULT_CUSTOM_LEVELS = JSON.stringify([{ label: "Theme" }, { label: "Ticket" }]);
+
 export default function ProductsPage() {
   const { t } = useI18n();
+  return (
+    <Suspense fallback={<p className="text-dim">{t("common.loading")}</p>}>
+      <ProductsPageContent />
+    </Suspense>
+  );
+}
+
+function ProductsPageContent() {
+  const { t } = useI18n();
+  const { showToast } = useToast();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const autoOpenCreate = searchParams.get("new") === "1";
+
   const priorityOptions = ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => ({
     value,
     label: localizedEnumLabel(value, priorityTranslationKey(value), t),
@@ -56,6 +78,7 @@ export default function ProductsPage() {
   const [priorityFilter, setPriorityFilter] = useState("");
   const [sort, setSort] = useState<ProductSortValue>("updated_desc");
   const [showArchived, setShowArchived] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Product | null>(null);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["vsm-products", "list", 100],
@@ -187,37 +210,106 @@ export default function ProductsPage() {
 
   const employeeOptions = employees.map((e) => ({ value: e.id, label: employeeLabel(e) }));
 
-  // Execution model is only offered at creation — Rule 3 locks it afterwards.
   const editFields: FieldDef[] = [
     { name: "name", label: t("common.name"), required: true },
     { name: "code", label: t("products.code") },
-    { name: "owner_id", label: t("products.productOwner"), type: "select", required: true, options: employeeOptions },
-    { name: "manager_id", label: t("products.productManager"), type: "select", required: true, options: employeeOptions },
+    {
+      name: "owner_id",
+      label: t("products.productOwner"),
+      type: "select",
+      required: true,
+      options: employeeOptions,
+    },
+    {
+      name: "manager_id",
+      label: t("products.productManager"),
+      type: "select",
+      required: true,
+      options: employeeOptions,
+    },
     { name: "category", label: t("products.category") },
     { name: "product_type", label: t("products.productType") },
     { name: "priority", label: t("products.priority"), type: "select", options: priorityOptions },
     { name: "visibility", label: t("products.visibility"), type: "select", options: visibilityOptions },
-    { name: "description", label: t("common.description"), type: "textarea" },
-    { name: "vision", label: t("products.vision"), type: "textarea" },
-    { name: "goal", label: t("products.goal"), type: "textarea" },
-    { name: "success_metrics", label: t("products.successMetrics"), type: "textarea" },
-    { name: "business_value", label: t("products.businessValue"), type: "textarea" },
+    { name: "description", label: t("common.description"), type: "textarea", collapsible: true },
+    { name: "vision", label: t("products.vision"), type: "textarea", collapsible: true },
+    { name: "goal", label: t("products.goal"), type: "textarea", collapsible: true },
+    { name: "success_metrics", label: t("products.successMetrics"), type: "textarea", collapsible: true },
+    { name: "business_value", label: t("products.businessValue"), type: "textarea", collapsible: true },
   ];
 
   const createFieldDefs: FieldDef[] = [
-    ...editFields.slice(0, 4),
+    { name: "name", label: t("common.name"), required: true, createStep: 1 },
+    { name: "code", label: t("products.code"), createStep: 1 },
     {
-      name: "execution_model",
-      label: t("products.executionModel"),
+      name: "owner_id",
+      label: t("products.productOwner"),
       type: "select",
       required: true,
-      options: [
-        { value: "PROJECT_FEATURE_TASK", label: "Project → Feature → Task" },
-        { value: "FEATURE_TASK", label: "Feature → Task" },
-        { value: "DIRECT_TASK", label: "Direct Task" },
-      ],
+      options: employeeOptions,
+      helperText: t("productWizard.ownerHelp"),
+      createStep: 1,
     },
-    ...editFields.slice(4),
+    {
+      name: "manager_id",
+      label: t("products.productManager"),
+      type: "select",
+      required: true,
+      options: employeeOptions,
+      helperText: t("productWizard.managerHelp"),
+      createStep: 1,
+    },
+    { name: "category", label: t("products.category"), createStep: 2 },
+    { name: "product_type", label: t("products.productType"), createStep: 2 },
+    {
+      name: "priority",
+      label: t("products.priority"),
+      type: "select",
+      options: priorityOptions,
+      createStep: 2,
+    },
+    {
+      name: "visibility",
+      label: t("products.visibility"),
+      type: "select",
+      options: visibilityOptions,
+      createStep: 2,
+    },
+    {
+      name: "description",
+      label: t("common.description"),
+      type: "textarea",
+      collapsible: true,
+      createStep: 2,
+    },
+    {
+      name: "vision",
+      label: t("products.vision"),
+      type: "textarea",
+      collapsible: true,
+      createStep: 3,
+    },
+    {
+      name: "goal",
+      label: t("products.goal"),
+      type: "textarea",
+      collapsible: true,
+      createStep: 3,
+    },
+    {
+      name: "success_metrics",
+      label: t("products.successMetrics"),
+      type: "textarea",
+      collapsible: true,
+      createStep: 3,
+    },
+    {
+      name: "business_value",
+      label: t("products.businessValue"),
+      type: "textarea",
+      collapsible: true,
+      createStep: 3,
+    },
   ];
 
   const toolbar = (
@@ -333,6 +425,8 @@ export default function ProductsPage() {
 
   return (
     <div className="page-stack products-page">
+      <PageGuide page="products" />
+      <WorkMapGuide activeStorage="product" />
       {isLoading ? null : <ProductPulseStrip metrics={pulseMetrics} />}
 
       <ResourceManager
@@ -343,13 +437,36 @@ export default function ProductsPage() {
         emptyDescription={
           filtersActive
             ? t("emptyStates.noResults")
-            : t("emptyStates.noProducts")
+            : `${t("emptyStates.noProducts")} ${t("emptyStates.noProductsHint")}`
         }
         isLoading={isLoading}
         items={visibleProducts}
         toolbar={toolbar}
         pageSize={12}
         hideDelete
+        wideModal
+        autoOpenCreate={autoOpenCreate}
+        createStepHints={{
+          1: `${t("productWizard.basicsHint")} ${t("productWizard.lifecycleGuide")}`,
+          2: t("productWizard.detailsHint"),
+          3: t("productWizard.strategyHint"),
+        }}
+        createDefaults={{
+          execution_model: "PROJECT_FEATURE_TASK",
+          execution_levels: DEFAULT_CUSTOM_LEVELS,
+          priority: "MEDIUM",
+          visibility: "ORGANIZATION",
+        }}
+        createSlot={({ values, setValue, step }) =>
+          step === 1 ? (
+            <ExecutionModelPicker
+              model={values.execution_model || "PROJECT_FEATURE_TASK"}
+              customLevelsJson={values.execution_levels || DEFAULT_CUSTOM_LEVELS}
+              onModelChange={(m) => setValue("execution_model", m)}
+              onCustomLevelsChange={(json) => setValue("execution_levels", json)}
+            />
+          ) : null
+        }
         columns={[
           {
             key: "name",
@@ -441,12 +558,21 @@ export default function ProductsPage() {
           business_value: r.business_value ?? "",
         })}
         onCreate={async (v) => {
+          let execution_levels: { label: string }[] | undefined;
+          if (v.execution_model === "CUSTOM") {
+            try {
+              execution_levels = JSON.parse(v.execution_levels || "[]") as { label: string }[];
+            } catch {
+              execution_levels = [{ label: "Theme" }, { label: "Ticket" }];
+            }
+          }
           await createMut.mutateAsync({
             name: v.name,
             code: v.code,
             owner_id: v.owner_id,
             manager_id: v.manager_id,
             execution_model: v.execution_model || "PROJECT_FEATURE_TASK",
+            execution_levels,
             category: v.category,
             product_type: v.product_type,
             priority: v.priority,
@@ -457,6 +583,7 @@ export default function ProductsPage() {
             success_metrics: v.success_metrics,
             business_value: v.business_value,
           });
+          showToast(t("productWizard.createSuccess"), "success");
         }}
         onUpdate={async (id, v) => {
           await updateMut.mutateAsync({
@@ -481,43 +608,66 @@ export default function ProductsPage() {
             });
           }
         }}
-        extraActions={(row) => (
-          <>
-            <Link href={`/products/${row.id}`} className="btn btn-sm">
-              Open
-            </Link>
-            {row.status === "ON_HOLD" ? (
-              <button type="button" className="btn btn-sm" onClick={() => resumeMut.mutate(row.id)}>
-                Resume
-              </button>
-            ) : row.status !== "ARCHIVED" ? (
-              <button type="button" className="btn btn-sm" onClick={() => holdMut.mutate(row.id)}>
-                Hold
-              </button>
-            ) : null}
-            {row.status === "ARCHIVED" ? (
-              <button type="button" className="btn btn-sm" onClick={() => restoreMut.mutate(row.id)}>
-                Restore
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Archive “${row.name}”?\nProjects, features and tasks are kept — the product is only moved out of the active list.`,
-                    )
-                  ) {
-                    archiveMut.mutate(row.id);
-                  }
-                }}
-              >
-                Archive
-              </button>
-            )}
-          </>
-        )}
+        extraActions={(row) => {
+          const menuItems = [];
+          if (row.status === "ON_HOLD") {
+            menuItems.push({
+              id: "resume",
+              label: t("common.resume"),
+              onClick: () => resumeMut.mutate(row.id),
+            });
+          } else if (row.status !== "ARCHIVED") {
+            menuItems.push({
+              id: "hold",
+              label: t("common.hold"),
+              onClick: () => holdMut.mutate(row.id),
+            });
+          }
+          if (row.status === "ARCHIVED") {
+            menuItems.push({
+              id: "restore",
+              label: t("common.restore"),
+              onClick: () => restoreMut.mutate(row.id),
+            });
+          } else {
+            menuItems.push({
+              id: "archive",
+              label: t("common.archive"),
+              tone: "danger" as const,
+              onClick: () => setArchiveTarget(row),
+            });
+          }
+
+          return (
+            <MoreMenu
+              items={menuItems}
+              leading={
+                <Link href={`/products/${row.id}`} className="btn btn-sm btn-primary">
+                  {t("common.open")}
+                </Link>
+              }
+            />
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        title={t("common.confirmArchive")}
+        description={
+          archiveTarget
+            ? t("productDetail.archiveConfirm", { name: archiveTarget.name })
+            : undefined
+        }
+        confirmLabel={t("common.archive")}
+        tone="danger"
+        busy={archiveMut.isPending}
+        onCancel={() => !archiveMut.isPending && setArchiveTarget(null)}
+        onConfirm={async () => {
+          if (!archiveTarget) return;
+          await archiveMut.mutateAsync(archiveTarget.id);
+          setArchiveTarget(null);
+        }}
       />
     </div>
   );
