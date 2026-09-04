@@ -44,12 +44,15 @@ func NewActivity(companyID uuid.UUID, entityType string, entityID uuid.UUID, act
 
 type Notification struct {
 	shared.BaseModel
-	CompanyID  uuid.UUID `json:"company_id"`
-	ReceiverID uuid.UUID `json:"receiver_id"` // employee id
-	Type       string    `json:"type"`
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	IsRead     bool      `json:"is_read"`
+	CompanyID  uuid.UUID  `json:"company_id"`
+	ReceiverID uuid.UUID  `json:"receiver_id"` // employee id
+	Type       string     `json:"type"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	IsRead     bool       `json:"is_read"`
+	SourceType string     `json:"source_type,omitempty"`
+	SourceID   *uuid.UUID `json:"source_id,omitempty"`
+	ActionURL  string     `json:"action_url,omitempty"`
 }
 
 func NewNotification(companyID, receiverID uuid.UUID, notifType, title, body string) *Notification {
@@ -62,4 +65,14 @@ func NewNotification(companyID, receiverID uuid.UUID, notifType, title, body str
 		Body:       body,
 		IsRead:     false,
 	}
+}
+
+func (n *Notification) WithSource(sourceType string, sourceID uuid.UUID, actionURL string) *Notification {
+	n.SourceType = sourceType
+	if sourceID != uuid.Nil {
+		id := sourceID
+		n.SourceID = &id
+	}
+	n.ActionURL = actionURL
+	return n
 }

@@ -19,7 +19,7 @@ type contextKey string
 
 const (
 	ClaimsContextKey contextKey = "claims"
-	maxJSONBody                = 1 << 20 // 1 MiB
+	maxJSONBody                 = 1 << 20 // 1 MiB
 )
 
 // SecurityOptions configures transport-level protections.
@@ -328,6 +328,15 @@ func (a *Authenticator) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// AuthenticateToken validates a bearer token and returns fresh claims (for WebSocket upgrade).
+func (a *Authenticator) AuthenticateToken(ctx context.Context, token string) (*auth.Claims, error) {
+	claims, err := auth.ParseToken(token)
+	if err != nil {
+		return nil, err
+	}
+	return a.loadFreshClaims(ctx, claims)
+}
+
 func (a *Authenticator) RequirePermission(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return a.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		claims := ClaimsFromContext(r.Context())
@@ -419,15 +428,15 @@ func (a *Authenticator) loadFreshClaims(ctx context.Context, tokenClaims *auth.C
 	}
 
 	out := &auth.Claims{
-		UserID:         tokenClaims.UserID,
-		TenantID:       tenantID,
-		TenantSlug:     tenantSlug,
-		TenantName:     tenantName,
-		Email:          email,
-		FullName:       fullName,
-		Role:           role,
-		Permissions:    []string(perms),
-		SessionVersion: sv,
+		UserID:           tokenClaims.UserID,
+		TenantID:         tenantID,
+		TenantSlug:       tenantSlug,
+		TenantName:       tenantName,
+		Email:            email,
+		FullName:         fullName,
+		Role:             role,
+		Permissions:      []string(perms),
+		SessionVersion:   sv,
 		RegisteredClaims: tokenClaims.RegisteredClaims,
 	}
 	if companyID.Valid {

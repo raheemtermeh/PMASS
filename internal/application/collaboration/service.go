@@ -12,11 +12,11 @@ import (
 )
 
 type Service struct {
-	db   *postgres.DB
-	cmt  support.CommentRepository
-	att  support.AttachmentRepository
-	act  support.ActivityRepository
-	ntf  support.NotificationRepository
+	db  *postgres.DB
+	cmt support.CommentRepository
+	att support.AttachmentRepository
+	act support.ActivityRepository
+	ntf support.NotificationRepository
 }
 
 func NewService(
@@ -30,13 +30,13 @@ func NewService(
 }
 
 type CreateCommentInput struct {
-	EntityType          string
-	EntityID            uuid.UUID
-	AuthorID            uuid.UUID
-	Body                string
-	ParentID            *uuid.UUID
-	MentionEmployeeIDs  []uuid.UUID
-	MentionTeamIDs      []uuid.UUID
+	EntityType         string
+	EntityID           uuid.UUID
+	AuthorID           uuid.UUID
+	Body               string
+	ParentID           *uuid.UUID
+	MentionEmployeeIDs []uuid.UUID
+	MentionTeamIDs     []uuid.UUID
 }
 
 func (s *Service) CreateComment(ctx context.Context, companyID uuid.UUID, in CreateCommentInput) (*support.Comment, error) {
@@ -155,6 +155,7 @@ func (s *Service) ListActivity(ctx context.Context, companyID uuid.UUID, entityT
 }
 
 func (s *Service) ListNotifications(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]support.Notification, shared.PageMeta, error) {
+	// Deprecated: company-wide listing is privacy-unsafe. Prefer ListMyNotifications.
 	items, total, err := s.ntf.ListByCompany(ctx, companyID, q)
 	if err != nil {
 		return nil, shared.PageMeta{}, err
@@ -171,6 +172,36 @@ func (s *Service) ListNotificationsForReceiver(ctx context.Context, companyID, r
 	return items, shared.NewPageMeta(q, total), nil
 }
 
-func (s *Service) MarkNotificationRead(ctx context.Context, companyID, id uuid.UUID) error {
-	return s.ntf.MarkRead(ctx, companyID, id)
+type NotificationInbox struct {
+	Items      []support.Notification `json:"items"`
+	NextCursor string                 `json:"next_cursor,omitempty"`
+	HasMore    bool                   `json:"has_more"`
+	Unread     int64                  `json:"unread_count"`
+}
+
+// ListMyNotifications returns cursor-paginated inbox for the authenticated employee only.
+func (s *Service) ListMyNotifications(ctx context.Context, companyID, receiverID uuid.UUID, cursor string, limit int, unreadOnly bool) (*NotificationInbox, error) {
+	items, next, err := s.ntf.ListByReceiverCursor(ctx, companyID, receiverID, cursor, limit, unreadOnly)
+	if err != nil {
+		return nil, err
+	}
+	unread, err := s.ntf.CountUnread(ctx, companyID, receiverID)
+	if err != nil {
+		return nil, err
+	}
+	return &NotificationInbox{
+		Items: items, NextCursor: next, HasMore: next != "", Unread: unread,
+	}, nil
+}
+
+func (s *Service) MarkNotificationRead(ctx context.Context, companyID, receiverID, id uuid.UUID) error {
+	return s.ntf.MarkRead(ctx, companyID, receiverID, id)
+}
+
+func (s *Service) MarkAllNotificationsRead(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error) {
+	return s.ntf.MarkAllRead(ctx, companyID, receiverID)
+}
+
+func (s *Service) CountUnreadNotifications(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error) {
+	return s.ntf.CountUnread(ctx, companyID, receiverID)
 }

@@ -39,6 +39,11 @@ export function NavIcon({ viewId }: { viewId: ViewId }) {
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
       </svg>
     ),
+    chat: (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+      </svg>
+    ),
     profile: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -89,6 +94,7 @@ export const navLabels: Record<ViewId, string> = {
   organization: "nav.organization",
   products: "nav.products",
   planning: "nav.planning",
+  chat: "nav.chat",
   profile: "nav.profile",
   "admin-users": "nav.admin-users",
   "platform-tenants": "nav.platform-tenants",

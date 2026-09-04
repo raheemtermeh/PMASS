@@ -15,14 +15,14 @@ const (
 var latencyBounds = [...]int64{5, 10, 25, 50, 100, 250, 500, 1000, 2500}
 
 type Metrics struct {
-	requests      atomic.Int64
-	inFlight      atomic.Int64
-	status4xx     atomic.Int64
-	status5xx     atomic.Int64
-	latencyCount  atomic.Int64
-	latencySumMS  atomic.Int64
-	buckets       [bucketCount]atomic.Int64
-	started       time.Time
+	requests     atomic.Int64
+	inFlight     atomic.Int64
+	status4xx    atomic.Int64
+	status5xx    atomic.Int64
+	latencyCount atomic.Int64
+	latencySumMS atomic.Int64
+	buckets      [bucketCount]atomic.Int64
+	started      time.Time
 }
 
 func NewMetrics() *Metrics {
@@ -74,26 +74,26 @@ func (m *Metrics) Snapshot(dbStats any, goroutines int, mem runtime.MemStats) ma
 		rps = float64(m.requests.Load()) / elapsed
 	}
 	return map[string]any{
-		"requests":        m.requests.Load(),
+		"requests":         m.requests.Load(),
 		"requests_per_sec": rps,
-		"in_flight":       m.inFlight.Load(),
-		"status_4xx":      m.status4xx.Load(),
-		"status_5xx":      m.status5xx.Load(),
+		"in_flight":        m.inFlight.Load(),
+		"status_4xx":       m.status4xx.Load(),
+		"status_5xx":       m.status5xx.Load(),
 		"latency_ms": map[string]any{
-			"avg": avg,
-			"p50": m.percentile(50),
-			"p95": m.percentile(95),
-			"p99": m.percentile(99),
+			"avg":   avg,
+			"p50":   m.percentile(50),
+			"p95":   m.percentile(95),
+			"p99":   m.percentile(99),
 			"count": count,
 		},
 		"goroutines": goroutines,
 		"memory": map[string]any{
-			"alloc_bytes":       mem.Alloc,
-			"heap_alloc_bytes":  mem.HeapAlloc,
-			"sys_bytes":         mem.Sys,
-			"num_gc":            mem.NumGC,
+			"alloc_bytes":      mem.Alloc,
+			"heap_alloc_bytes": mem.HeapAlloc,
+			"sys_bytes":        mem.Sys,
+			"num_gc":           mem.NumGC,
 		},
-		"db": dbStats,
+		"db":         dbStats,
 		"uptime_sec": elapsed,
 	}
 }

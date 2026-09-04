@@ -14,6 +14,31 @@ interface NotificationItem {
   body: string;
   is_read: boolean;
   created_at: string;
+  action_url?: string | null;
+}
+
+interface NotificationInboxView {
+  items: NotificationItem[];
+  unread: number;
+}
+
+/** Backend returns `{ items, unread_count }`; older clients expected a bare array. */
+async function fetchNotificationInbox(): Promise<NotificationInboxView> {
+  const raw = await httpClient.get<unknown>("/api/v1/notifications?page_size=20");
+  if (Array.isArray(raw)) {
+    const items = raw as NotificationItem[];
+    return { items, unread: items.filter((n) => !n.is_read).length };
+  }
+  if (raw && typeof raw === "object") {
+    const page = raw as { items?: unknown; unread_count?: unknown };
+    const items = Array.isArray(page.items) ? (page.items as NotificationItem[]) : [];
+    const unread =
+      typeof page.unread_count === "number"
+        ? page.unread_count
+        : items.filter((n) => !n.is_read).length;
+    return { items, unread };
+  }
+  return { items: [], unread: 0 };
 }
 
 export function NotificationBell() {
@@ -24,18 +49,22 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const { data: items = [] } = useQuery({
-    queryKey: ["vsm-notifications", "mine"],
-    queryFn: () =>
-      httpClient.get<NotificationItem[]>("/api/v1/notifications?mine=true&page_size=20"),
+  const { data } = useQuery({
+    // v2: cache previously stored the raw API page object under this key.
+    queryKey: ["vsm-notifications", "mine", "v2"],
+    queryFn: fetchNotificationInbox,
     enabled: hasTenant,
     staleTime: 20_000,
     retry: false,
   });
 
+  const items = data?.items ?? [];
+  const unread = data?.unread ?? 0;
+
   const markRead = useMutation({
     mutationFn: (id: string) => httpClient.post(`/api/v1/notifications/${id}/read`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["vsm-notifications", "mine"] }),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: ["vsm-notifications", "mine", "v2"] }),
   });
 
   useEffect(() => {
@@ -47,8 +76,6 @@ export function NotificationBell() {
   }, []);
 
   if (!hasTenant) return null;
-
-  const unread = items.filter((item) => !item.is_read).length;
 
   return (
     <div className="notif-bell" ref={rootRef}>

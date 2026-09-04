@@ -16,20 +16,25 @@ import (
 
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	chatapp "PMAS/internal/application/chat"
 	"PMAS/internal/auth"
 	"PMAS/internal/config"
 	"PMAS/internal/database"
 	httpapi "PMAS/internal/delivery/http"
+	chatdomain "PMAS/internal/domain/chat"
 	"PMAS/internal/handlers"
+	redisx "PMAS/internal/infrastructure/redis"
 	"PMAS/internal/logging"
 	"PMAS/internal/middleware"
 	"PMAS/internal/observability"
+	"PMAS/internal/realtime"
 )
 
 func main() {
 	config.LoadDotEnv(".env")
 	cfg := config.Load()
 	logging.Init(cfg.AppEnv)
+	chatdomain.SetMaxMessageLength(cfg.ChatMaxMessageLength)
 
 	logging.Info("bootstrap_start", "env", cfg.AppEnv, "port", cfg.ServerPort)
 
@@ -171,6 +176,75 @@ func main() {
 	vsm := httpapi.NewDependencies(db)
 	vsm.Register(mux, authz)
 
+	var chatHub *realtime.Hub
+	var chatRedis *redisx.Client
+	var chatSub *redisx.Subscriber
+	var chatMetrics *realtime.Metrics
+	chatShutdown := func(context.Context) {}
+
+	if cfg.ChatEnabled {
+		chatMetrics = &realtime.Metrics{}
+		hubCfg := realtime.Config{
+			MaxConnectionsPerEmployee: cfg.ChatWSMaxConnectionsPerEmployee,
+			MaxConnectionsGlobal:      cfg.ChatWSMaxConnectionsGlobal,
+			MaxSubscriptions:          cfg.ChatWSMaxSubscriptions,
+			MaxMessageSize:            int64(cfg.ChatWSMaxMessageSize),
+			WriteQueueSize:            cfg.ChatWSWriteQueueSize,
+			PingInterval:              cfg.ChatWSPingInterval,
+			PongTimeout:               cfg.ChatWSPongTimeout,
+			AllowedOrigins:            cfg.CORSOrigins,
+			AppEnv:                    cfg.AppEnv,
+		}
+
+		// Wire service first (membership checker), then hub with that checker.
+		stack := httpapi.NewChatStack(db, cfg.ChatMessageRateRPM, nil, authz)
+		chatHub = realtime.NewHub(hubCfg, stack.Service, chatMetrics)
+		if backend := stack.Service.PresenceBackend(); backend != nil {
+			chatHub.SetPresenceBackend(backend)
+		}
+		stack.Service.WithMetrics(chatMetrics)
+		stack.Hub = chatHub
+		stack.Handler.Hub = chatHub
+
+		var publisher chatapp.EventPublisher = chatapp.HubPublisher{Hub: chatHub}
+		if cfg.ChatRedisEnabled {
+			client, err := redisx.NewClient(cfg.RedisURL)
+			if err != nil {
+				logging.Warn("chat_redis_unavailable_falling_back_local", "error", err.Error())
+			} else {
+				chatRedis = client
+				publisher = redisx.NewPublisher(client, chatMetrics)
+				chatSub = redisx.NewSubscriber(client, chatHub, chatMetrics)
+				chatSub.Start(context.Background())
+				logging.Info("chat_redis_pubsub_enabled")
+			}
+		}
+		stack.Service.SetPublisher(publisher)
+		stack.Realtime = &httpapi.ChatRealtime{Hub: chatHub, Authz: authz, Scope: stack.Handler.Scope}
+		chatHub.SetLocalPublishHook(func(e realtime.Event) {
+			_ = publisher.Publish(context.Background(), e)
+		})
+		chatCtx, chatCancel := context.WithCancel(context.Background())
+		chatHub.StartBackground(chatCtx)
+
+		httpapi.RegisterChatRoutes(mux, authz, stack.Handler)
+		httpapi.RegisterChatRealtimeRoutes(mux, stack.Realtime)
+		logging.Info("chat_routes_enabled", "redis", chatRedis != nil)
+
+		chatShutdown = func(ctx context.Context) {
+			chatCancel()
+			if chatSub != nil {
+				chatSub.Stop(ctx)
+			}
+			if chatHub != nil {
+				chatHub.Shutdown(ctx)
+			}
+			if chatRedis != nil {
+				_ = chatRedis.Close()
+			}
+		}
+	}
+
 	health := newHealthChecker(db)
 	mux.HandleFunc("/health", health.ServeHTTP)
 	mux.HandleFunc("/ready", serveReady)
@@ -179,15 +253,20 @@ func main() {
 	observability.RegisterMetrics(mux, cfg.MetricsToken, metrics, func() any {
 		s := db.Stats()
 		return map[string]any{
-			"open_connections":     s.OpenConnections,
-			"in_use":               s.InUse,
-			"idle":                 s.Idle,
-			"wait_count":           s.WaitCount,
-			"wait_duration_ms":     s.WaitDuration.Milliseconds(),
-			"max_idle_closed":      s.MaxIdleClosed,
-			"max_lifetime_closed":  s.MaxLifetimeClosed,
-			"max_open_conns":       cfg.DBMaxOpenConns,
+			"open_connections":    s.OpenConnections,
+			"in_use":              s.InUse,
+			"idle":                s.Idle,
+			"wait_count":          s.WaitCount,
+			"wait_duration_ms":    s.WaitDuration.Milliseconds(),
+			"max_idle_closed":     s.MaxIdleClosed,
+			"max_lifetime_closed": s.MaxLifetimeClosed,
+			"max_open_conns":      cfg.DBMaxOpenConns,
 		}
+	}, func() map[string]any {
+		if chatMetrics == nil {
+			return nil
+		}
+		return map[string]any{"chat": chatMetrics.Snapshot()}
 	})
 	if cfg.PprofEnabled && cfg.PprofToken != "" {
 		observability.RegisterPprof(mux, cfg.PprofToken)
@@ -202,11 +281,19 @@ func main() {
 	handler := middleware.WithRequestLog(observability.WithMetrics(metrics, cfg.SlowRequest, observability.WithTimeout(cfg.RequestTimeout, security)))
 
 	serverAddr := ":" + cfg.ServerPort
+	// WebSocket connections are long-lived; disable server-level read/write deadlines
+	// when chat is enabled and rely on per-connection ping/pong + write wait.
+	readTimeout := cfg.HTTPReadTimeout
+	writeTimeout := cfg.HTTPWriteTimeout
+	if cfg.ChatEnabled {
+		readTimeout = 0
+		writeTimeout = 0
+	}
 	server := &http.Server{
 		Addr:              serverAddr,
 		Handler:           handler,
-		WriteTimeout:      cfg.HTTPWriteTimeout,
-		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      writeTimeout,
+		ReadTimeout:       readTimeout,
 		IdleTimeout:       cfg.HTTPIdleTimeout,
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
@@ -233,6 +320,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	security.Stop()
+	chatShutdown(ctx)
 	if err := server.Shutdown(ctx); err != nil {
 		logging.Error("shutdown_forced", "error", err.Error())
 		_ = server.Close()

@@ -25,8 +25,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       />
       <div className="main-viewport">
         <TopBar />
-        <main className="content-area">
-          <div key={pathname} className="page-enter">
+        <main className={`content-area${pathname.startsWith("/chat") ? " content-area-chat" : ""}`}>
+          <div key={pathname.startsWith("/chat") ? "/chat" : pathname} className="page-enter">
             {children}
           </div>
         </main>

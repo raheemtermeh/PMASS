@@ -37,6 +37,8 @@ func (r *ActivityRepo) ListRecent(ctx context.Context, companyID uuid.UUID, limi
 }
 
 func (r *NotificationRepo) ListByCompany(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]support.Notification, int64, error) {
+	// Deprecated for HTTP: company-wide inbox leaks recipient privacy.
+	// Kept for internal tooling / migration compatibility only.
 	q = q.Normalize()
 	var total int64
 	if err := r.db.Q(ctx).QueryRowContext(ctx, `
@@ -44,7 +46,7 @@ func (r *NotificationRepo) ListByCompany(ctx context.Context, companyID uuid.UUI
 		return nil, 0, err
 	}
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT id, company_id, receiver_id, type, title, body, is_read, version, created_at, updated_at
+		SELECT `+notificationColumns+`
 		FROM notifications WHERE company_id=$1 AND COALESCE(is_archived,false)=false
 		ORDER BY created_at DESC LIMIT $2 OFFSET $3`, companyID, q.PageSize, q.Offset())
 	if err != nil {
@@ -53,11 +55,11 @@ func (r *NotificationRepo) ListByCompany(ctx context.Context, companyID uuid.UUI
 	defer rows.Close()
 	out := make([]support.Notification, 0)
 	for rows.Next() {
-		var n support.Notification
-		if err := rows.Scan(&n.ID, &n.CompanyID, &n.ReceiverID, &n.Type, &n.Title, &n.Body, &n.IsRead, &n.Version, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		n, err := scanNotification(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		out = append(out, n)
+		out = append(out, *n)
 	}
 	return out, total, nil
 }

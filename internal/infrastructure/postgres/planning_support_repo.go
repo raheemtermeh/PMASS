@@ -676,25 +676,56 @@ type NotificationRepo struct{ db *DB }
 
 func NewNotificationRepo(db *DB) *NotificationRepo { return &NotificationRepo{db: db} }
 
+const notificationColumns = `id, company_id, receiver_id, type, title, body, is_read,
+	COALESCE(source_type,''), source_id, COALESCE(action_url,''),
+	version, created_at, updated_at`
+
+func scanNotification(row rowScanner) (*support.Notification, error) {
+	var n support.Notification
+	if err := row.Scan(
+		&n.ID, &n.CompanyID, &n.ReceiverID, &n.Type, &n.Title, &n.Body, &n.IsRead,
+		&n.SourceType, &n.SourceID, &n.ActionURL,
+		&n.Version, &n.CreatedAt, &n.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
 func (r *NotificationRepo) Create(ctx context.Context, n *support.Notification) error {
-	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		INSERT INTO notifications (id, company_id, receiver_id, type, title, body, is_read, version, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		n.ID, n.CompanyID, n.ReceiverID, n.Type, n.Title, n.Body, n.IsRead, n.Version, n.CreatedAt, n.UpdatedAt,
+	res, err := r.db.Q(ctx).ExecContext(ctx, `
+		INSERT INTO notifications (
+			id, company_id, receiver_id, type, title, body, is_read,
+			source_type, source_id, action_url,
+			version, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		ON CONFLICT (company_id, receiver_id, type, source_id) WHERE source_id IS NOT NULL DO NOTHING`,
+		n.ID, n.CompanyID, n.ReceiverID, n.Type, n.Title, n.Body, n.IsRead,
+		nullStr(n.SourceType), n.SourceID, nullStr(n.ActionURL),
+		n.Version, n.CreatedAt, n.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if af, _ := res.RowsAffected(); af == 0 && n.SourceID != nil {
+		return shared.ErrConflict
+	}
+	return nil
 }
 
 func (r *NotificationRepo) ListByReceiver(ctx context.Context, companyID, receiverID uuid.UUID, q shared.PageQuery) ([]support.Notification, int64, error) {
 	q = q.Normalize()
 	var total int64
 	if err := r.db.Q(ctx).QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM notifications WHERE company_id=$1 AND receiver_id=$2`, companyID, receiverID).Scan(&total); err != nil {
+		SELECT COUNT(*) FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false`,
+		companyID, receiverID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.db.Q(ctx).QueryContext(ctx, `
-		SELECT id, company_id, receiver_id, type, title, body, is_read, version, created_at, updated_at
-		FROM notifications WHERE company_id=$1 AND receiver_id=$2
+		SELECT `+notificationColumns+`
+		FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false
 		ORDER BY created_at DESC LIMIT $3 OFFSET $4`, companyID, receiverID, q.PageSize, q.Offset())
 	if err != nil {
 		return nil, 0, err
@@ -702,18 +733,99 @@ func (r *NotificationRepo) ListByReceiver(ctx context.Context, companyID, receiv
 	defer rows.Close()
 	out := make([]support.Notification, 0)
 	for rows.Next() {
-		var n support.Notification
-		if err := rows.Scan(&n.ID, &n.CompanyID, &n.ReceiverID, &n.Type, &n.Title, &n.Body, &n.IsRead, &n.Version, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		n, err := scanNotification(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		out = append(out, n)
+		out = append(out, *n)
 	}
 	return out, total, nil
 }
 
-func (r *NotificationRepo) MarkRead(ctx context.Context, companyID, id uuid.UUID) error {
-	_, err := r.db.Q(ctx).ExecContext(ctx, `
-		UPDATE notifications SET is_read=true, updated_at=$1 WHERE company_id=$2 AND id=$3`,
-		time.Now().UTC(), companyID, id)
-	return err
+func (r *NotificationRepo) ListByReceiverCursor(ctx context.Context, companyID, receiverID uuid.UUID, cursor string, limit int, unreadOnly bool) ([]support.Notification, string, error) {
+	if limit < 1 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	args := []any{companyID, receiverID}
+	where := `company_id=$1 AND receiver_id=$2 AND COALESCE(is_archived,false)=false`
+	if unreadOnly {
+		where += ` AND is_read=false`
+	}
+	if strings.TrimSpace(cursor) != "" {
+		cursorTime, cursorID, err := decodeSupportCursor(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		where += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, len(args)+1, len(args)+2)
+		args = append(args, cursorTime, cursorID)
+	}
+	args = append(args, limit+1)
+	rows, err := r.db.Q(ctx).QueryContext(ctx, `
+		SELECT `+notificationColumns+`
+		FROM notifications WHERE `+where+`
+		ORDER BY created_at DESC, id DESC
+		LIMIT $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	out := make([]support.Notification, 0, limit)
+	for rows.Next() {
+		n, err := scanNotification(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		out = append(out, *n)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	var next string
+	if len(out) > limit {
+		out = out[:limit]
+		last := out[len(out)-1]
+		next, err = encodeSupportCursor(last.CreatedAt, last.ID)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return out, next, nil
+}
+
+func (r *NotificationRepo) MarkRead(ctx context.Context, companyID, receiverID, id uuid.UUID) error {
+	res, err := r.db.Q(ctx).ExecContext(ctx, `
+		UPDATE notifications SET is_read=true, updated_at=$1
+		WHERE company_id=$2 AND receiver_id=$3 AND id=$4 AND COALESCE(is_archived,false)=false`,
+		time.Now().UTC(), companyID, receiverID, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return shared.ErrNotFound
+	}
+	return nil
+}
+
+func (r *NotificationRepo) MarkAllRead(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error) {
+	res, err := r.db.Q(ctx).ExecContext(ctx, `
+		UPDATE notifications SET is_read=true, updated_at=$1
+		WHERE company_id=$2 AND receiver_id=$3 AND is_read=false AND COALESCE(is_archived,false)=false`,
+		time.Now().UTC(), companyID, receiverID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (r *NotificationRepo) CountUnread(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.Q(ctx).QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM notifications
+		WHERE company_id=$1 AND receiver_id=$2 AND is_read=false AND COALESCE(is_archived,false)=false`,
+		companyID, receiverID).Scan(&n)
+	return n, err
 }

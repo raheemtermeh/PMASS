@@ -511,21 +511,21 @@ func (h *ProductHandler) HandleProducts(w http.ResponseWriter, r *http.Request) 
 		WriteOK(w, http.StatusOK, items, meta)
 	case len(parts) == 0 && r.Method == http.MethodPost:
 		var body struct {
-			OwnerID         uuid.UUID                   `json:"owner_id"`
-			Name            string                      `json:"name"`
-			Description     string                      `json:"description"`
-			Category        string                      `json:"category"`
-			ExecutionModel  string                      `json:"execution_model"`
-			ExecutionLevels []product.CustomLevelInput  `json:"execution_levels"`
-			Code            string                      `json:"code"`
-			ProductType     string                      `json:"product_type"`
-			ManagerID       *uuid.UUID                  `json:"manager_id"`
-			Priority        string                      `json:"priority"`
-			Vision          string                      `json:"vision"`
-			Goal            string                      `json:"goal"`
-			SuccessMetrics  string                      `json:"success_metrics"`
-			BusinessValue   string                      `json:"business_value"`
-			Visibility      string                      `json:"visibility"`
+			OwnerID         uuid.UUID                  `json:"owner_id"`
+			Name            string                     `json:"name"`
+			Description     string                     `json:"description"`
+			Category        string                     `json:"category"`
+			ExecutionModel  string                     `json:"execution_model"`
+			ExecutionLevels []product.CustomLevelInput `json:"execution_levels"`
+			Code            string                     `json:"code"`
+			ProductType     string                     `json:"product_type"`
+			ManagerID       *uuid.UUID                 `json:"manager_id"`
+			Priority        string                     `json:"priority"`
+			Vision          string                     `json:"vision"`
+			Goal            string                     `json:"goal"`
+			SuccessMetrics  string                     `json:"success_metrics"`
+			BusinessValue   string                     `json:"business_value"`
+			Visibility      string                     `json:"visibility"`
 		}
 		if err := DecodeJSON(r, &body); err != nil {
 			WriteErr(w, shared.New("INVALID_PAYLOAD", "Invalid request payload", 400))

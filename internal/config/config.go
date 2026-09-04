@@ -45,6 +45,20 @@ type Config struct {
 	PprofEnabled bool
 	PprofToken   string
 	MetricsToken string
+
+	ChatEnabled          bool
+	ChatMaxMessageLength int
+	ChatMessageRateRPM   int
+
+	ChatRedisEnabled                bool
+	RedisURL                        string
+	ChatWSMaxConnectionsPerEmployee int
+	ChatWSMaxConnectionsGlobal      int
+	ChatWSMaxSubscriptions          int
+	ChatWSMaxMessageSize            int
+	ChatWSWriteQueueSize            int
+	ChatWSPingInterval              time.Duration
+	ChatWSPongTimeout               time.Duration
 }
 
 // Load reads config from environment variables. Fails closed on missing secrets in production.
@@ -104,35 +118,47 @@ func Load() *Config {
 	}
 
 	return &Config{
-		SupabaseDBURL:      dbURL,
-		ServerPort:         port,
-		JWTSecret:          jwtSecret,
-		EncryptionKey:      encKey,
-		CORSOrigins:        origins,
-		AppEnv:             appEnv,
-		CookieSecure:       appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
-		WebAuthnRPID:       waRPID,
-		WebAuthnRPDisplay:  waDisplay,
-		WebAuthnRPOrigins:  waOrigins,
-		DBMaxOpenConns:     envInt("DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns:     envInt("DB_MAX_IDLE_CONNS", 10),
-		DBConnMaxLifetime:  envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
-		DBConnMaxIdleTime:  envDuration("DB_CONN_MAX_IDLE_TIME", 1*time.Minute),
-		DBStatementTimeout: stmtTimeout,
-		RequestTimeout:        envDuration("HTTP_REQUEST_TIMEOUT", 25*time.Second),
-		ShutdownTimeout:       envDuration("HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
-		SlowRequest:           envDuration("SLOW_REQUEST_THRESHOLD", 500*time.Millisecond),
-		HTTPReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-		HTTPReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 30*time.Second),
-		HTTPWriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
-		HTTPIdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
-		HTTPMaxHeaderBytes:    envInt("HTTP_MAX_HEADER_BYTES", 1<<20),
-		RateLimitRPM:          envInt("RATE_LIMIT_RPM", 600),
-		AuthRateLimitRPM:      envInt("AUTH_RATE_LIMIT_RPM", 20),
-		RateLimitMaxIPs:       envInt("RATE_LIMIT_MAX_IPS", 10000),
-		PprofEnabled:       envBool("PPROF_ENABLED", false),
-		PprofToken:         strings.TrimSpace(os.Getenv("PPROF_TOKEN")),
-		MetricsToken:       strings.TrimSpace(firstNonEmpty(os.Getenv("METRICS_TOKEN"), os.Getenv("PPROF_TOKEN"))),
+		SupabaseDBURL:                   dbURL,
+		ServerPort:                      port,
+		JWTSecret:                       jwtSecret,
+		EncryptionKey:                   encKey,
+		CORSOrigins:                     origins,
+		AppEnv:                          appEnv,
+		CookieSecure:                    appEnv == "production" || strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
+		WebAuthnRPID:                    waRPID,
+		WebAuthnRPDisplay:               waDisplay,
+		WebAuthnRPOrigins:               waOrigins,
+		DBMaxOpenConns:                  envInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:                  envInt("DB_MAX_IDLE_CONNS", 10),
+		DBConnMaxLifetime:               envDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+		DBConnMaxIdleTime:               envDuration("DB_CONN_MAX_IDLE_TIME", 1*time.Minute),
+		DBStatementTimeout:              stmtTimeout,
+		RequestTimeout:                  envDuration("HTTP_REQUEST_TIMEOUT", 25*time.Second),
+		ShutdownTimeout:                 envDuration("HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
+		SlowRequest:                     envDuration("SLOW_REQUEST_THRESHOLD", 500*time.Millisecond),
+		HTTPReadHeaderTimeout:           envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		HTTPReadTimeout:                 envDuration("HTTP_READ_TIMEOUT", 30*time.Second),
+		HTTPWriteTimeout:                envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+		HTTPIdleTimeout:                 envDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		HTTPMaxHeaderBytes:              envInt("HTTP_MAX_HEADER_BYTES", 1<<20),
+		RateLimitRPM:                    envInt("RATE_LIMIT_RPM", 600),
+		AuthRateLimitRPM:                envInt("AUTH_RATE_LIMIT_RPM", 20),
+		RateLimitMaxIPs:                 envInt("RATE_LIMIT_MAX_IPS", 10000),
+		PprofEnabled:                    envBool("PPROF_ENABLED", false),
+		PprofToken:                      strings.TrimSpace(os.Getenv("PPROF_TOKEN")),
+		MetricsToken:                    strings.TrimSpace(firstNonEmpty(os.Getenv("METRICS_TOKEN"), os.Getenv("PPROF_TOKEN"))),
+		ChatEnabled:                     envBool("CHAT_ENABLED", false),
+		ChatMaxMessageLength:            envInt("CHAT_MAX_MESSAGE_LENGTH", 10000),
+		ChatMessageRateRPM:              envInt("CHAT_MESSAGE_RATE_RPM", 30),
+		ChatRedisEnabled:                envBool("CHAT_REDIS_ENABLED", false),
+		RedisURL:                        strings.TrimSpace(firstNonEmpty(os.Getenv("REDIS_URL"), os.Getenv("CHAT_REDIS_URL"))),
+		ChatWSMaxConnectionsPerEmployee: envInt("CHAT_WS_MAX_CONNECTIONS_PER_EMPLOYEE", 5),
+		ChatWSMaxConnectionsGlobal:      envInt("CHAT_WS_MAX_CONNECTIONS_GLOBAL", 10000),
+		ChatWSMaxSubscriptions:          envInt("CHAT_WS_MAX_SUBSCRIPTIONS", 100),
+		ChatWSMaxMessageSize:            envInt("CHAT_WS_MAX_MESSAGE_SIZE", 8192),
+		ChatWSWriteQueueSize:            envInt("CHAT_WS_WRITE_QUEUE_SIZE", 64),
+		ChatWSPingInterval:              envDuration("CHAT_WS_PING_INTERVAL", 30*time.Second),
+		ChatWSPongTimeout:               envDuration("CHAT_WS_PONG_TIMEOUT", 10*time.Second),
 	}
 }
 

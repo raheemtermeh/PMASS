@@ -10,6 +10,7 @@ import (
 	collabapp "PMAS/internal/application/collaboration"
 	dashboardapp "PMAS/internal/application/dashboard"
 	searchapp "PMAS/internal/application/search"
+	"PMAS/internal/auth"
 	"PMAS/internal/domain/shared"
 	"PMAS/internal/middleware"
 )
@@ -179,66 +180,48 @@ func (h *CollabHandler) HandleNotifications(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		WriteErr(w, shared.ErrUnauthorized)
+		return
+	}
+	receiverID, err := resolveNotificationReceiver(claims)
+	if err != nil {
+		WriteErr(w, err)
+		return
+	}
+	if receiverID == uuid.Nil {
+		WriteErr(w, shared.New("EMPLOYEE_REQUIRED", "Employee profile required for notifications", 403))
+		return
+	}
+
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/notifications"), "/")
 	parts := splitPath(path)
 
 	switch {
 	case len(parts) == 0 && r.Method == http.MethodGet:
-		q := PageQueryFromRequest(r)
-		if r.URL.Query().Get("mine") == "true" {
-			claims := middleware.ClaimsFromContext(r.Context())
-			if claims == nil {
-				WriteErr(w, shared.ErrUnauthorized)
-				return
-			}
-			var receiverID uuid.UUID
-			if claims.EmployeeID != "" {
-				id, err := uuid.Parse(claims.EmployeeID)
-				if err != nil {
-					WriteErr(w, err)
-					return
-				}
-				receiverID = id
-			}
-			if receiverID == uuid.Nil {
-				WriteOK(w, http.StatusOK, []any{}, nil)
-				return
-			}
-			items, meta, err := h.Svc.ListNotificationsForReceiver(r.Context(), companyID, receiverID, q)
-			if err != nil {
-				WriteErr(w, err)
-				return
-			}
-			WriteOK(w, http.StatusOK, items, meta)
-			return
-		}
-		if raw := r.URL.Query().Get("receiver_id"); raw != "" {
-			rid, err := ParseUUIDParam(raw)
-			if err != nil {
-				WriteErr(w, shared.New("INVALID_ID", "Invalid receiver_id", 400))
-				return
-			}
-			items, meta, err := h.Svc.ListNotificationsForReceiver(r.Context(), companyID, rid, q)
-			if err != nil {
-				WriteErr(w, err)
-				return
-			}
-			WriteOK(w, http.StatusOK, items, meta)
-			return
-		}
-		items, meta, err := h.Svc.ListNotifications(r.Context(), companyID, q)
+		limit := chatLimitFromRequest(r)
+		unreadOnly := r.URL.Query().Get("unread") == "true"
+		inbox, err := h.Svc.ListMyNotifications(r.Context(), companyID, receiverID, r.URL.Query().Get("cursor"), limit, unreadOnly)
 		if err != nil {
 			WriteErr(w, err)
 			return
 		}
-		WriteOK(w, http.StatusOK, items, meta)
+		WriteOK(w, http.StatusOK, inbox, nil)
+	case len(parts) == 1 && parts[0] == "read-all" && r.Method == http.MethodPost:
+		n, err := h.Svc.MarkAllNotificationsRead(r.Context(), companyID, receiverID)
+		if err != nil {
+			WriteErr(w, err)
+			return
+		}
+		WriteOK(w, http.StatusOK, map[string]any{"status": "read", "updated": n}, nil)
 	case len(parts) == 2 && parts[1] == "read" && r.Method == http.MethodPost:
 		id, err := ParseUUIDParam(parts[0])
 		if err != nil {
 			WriteErr(w, shared.New("INVALID_ID", "Invalid UUID", 400))
 			return
 		}
-		if err := h.Svc.MarkNotificationRead(r.Context(), companyID, id); err != nil {
+		if err := h.Svc.MarkNotificationRead(r.Context(), companyID, receiverID, id); err != nil {
 			WriteErr(w, err)
 			return
 		}
@@ -246,6 +229,20 @@ func (h *CollabHandler) HandleNotifications(w http.ResponseWriter, r *http.Reque
 	default:
 		WriteErr(w, shared.New("NOT_FOUND", "Not found", 404))
 	}
+}
+
+func resolveNotificationReceiver(claims *auth.Claims) (uuid.UUID, error) {
+	if claims == nil {
+		return uuid.Nil, shared.ErrUnauthorized
+	}
+	if claims.EmployeeID == "" {
+		return uuid.Nil, nil
+	}
+	id, err := uuid.Parse(claims.EmployeeID)
+	if err != nil {
+		return uuid.Nil, shared.New("INVALID_ID", "Invalid employee id", 400)
+	}
+	return id, nil
 }
 
 type DashboardHandler struct {

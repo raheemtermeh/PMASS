@@ -1,4 +1,5 @@
 import type { DictModule } from "../types";
+import { chatDict } from "./chat";
 import { componentsDict } from "./components";
 import { dashboardDict } from "./dashboard";
 import { platformDict } from "./platform";
@@ -16,4 +17,5 @@ export const dictModules: DictModule[] = [
   productDetailDict,
   componentsDict,
   uxAuditDict,
+  chatDict,
 ];

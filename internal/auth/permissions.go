@@ -20,20 +20,27 @@ const (
 	PermUsers          = "users"
 
 	// Product-domain permissions (Backend Analysis Document §7.6).
-	PermProductCreate  = "product.create"
-	PermProductUpdate  = "product.update"
-	PermProductArchive = "product.archive"
-	PermProductView    = "product.view"
-	PermProjectCreate  = "project.create"
-	PermProjectUpdate  = "project.update"
-	PermFeatureCreate  = "feature.create"
-	PermFeatureUpdate  = "feature.update"
-	PermTaskCreate     = "task.create"
-	PermTaskAssign     = "task.assign"
-	PermTaskComplete   = "task.complete"
+	PermProductCreate    = "product.create"
+	PermProductUpdate    = "product.update"
+	PermProductArchive   = "product.archive"
+	PermProductView      = "product.view"
+	PermProjectCreate    = "project.create"
+	PermProjectUpdate    = "project.update"
+	PermFeatureCreate    = "feature.create"
+	PermFeatureUpdate    = "feature.update"
+	PermTaskCreate       = "task.create"
+	PermTaskAssign       = "task.assign"
+	PermTaskComplete     = "task.complete"
 	PermDepartmentManage = "department.manage"
 	PermTeamManage       = "team.manage"
 	PermEmployeeManage   = "employee.manage"
+
+	// Chat permissions (enterprise messaging subsystem).
+	PermChatView          = "chat.view"
+	PermChatSend          = "chat.send"
+	PermChatCreateChannel = "chat.create_channel"
+	PermChatManageChannel = "chat.manage_channel"
+	PermChatModerate      = "chat.moderate"
 )
 
 var AllPermissions = []string{
@@ -61,6 +68,11 @@ var AllPermissions = []string{
 	PermDepartmentManage,
 	PermTeamManage,
 	PermEmployeeManage,
+	PermChatView,
+	PermChatSend,
+	PermChatCreateChannel,
+	PermChatManageChannel,
+	PermChatModerate,
 }
 
 // VSMPermissions are the primary workspace grants (excludes legacy ops pages).
@@ -81,6 +93,20 @@ var VSMPermissions = []string{
 	PermEmployeeManage,
 	PermUsers,
 	PermSettings,
+	PermChatView,
+	PermChatSend,
+	PermChatCreateChannel,
+	PermChatManageChannel,
+	PermChatModerate,
+}
+
+// ChatPermissions are the chat subsystem grants.
+var ChatPermissions = []string{
+	PermChatView,
+	PermChatSend,
+	PermChatCreateChannel,
+	PermChatManageChannel,
+	PermChatModerate,
 }
 
 // RolePresetPermissions maps seeded company-role names → default permission sets.
@@ -90,19 +116,23 @@ var RolePresetPermissions = map[string][]string{
 		PermProductView, PermProductCreate, PermProductUpdate,
 		PermProjectCreate, PermProjectUpdate,
 		PermFeatureCreate, PermFeatureUpdate,
+		PermChatView, PermChatSend, PermChatCreateChannel,
 	},
 	"Team Lead": {
 		PermProductView,
 		PermProjectUpdate,
 		PermFeatureCreate, PermFeatureUpdate,
 		PermTaskCreate, PermTaskAssign, PermTaskComplete,
+		PermChatView, PermChatSend, PermChatCreateChannel,
 	},
 	"Employee": {
 		PermProductView,
 		PermTaskCreate, PermTaskComplete,
+		PermChatView, PermChatSend,
 	},
 	"Viewer": {
 		PermProductView,
+		PermChatView,
 	},
 }
 

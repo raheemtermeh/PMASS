@@ -6,6 +6,7 @@ export type ViewId =
   | "organization"
   | "products"
   | "planning"
+  | "chat"
   | "profile"
   | "admin-users"
   | "platform-tenants"
@@ -74,6 +75,14 @@ export const routes: Record<ViewId, RouteConfig> = {
     title: "Planning",
     subtitle: "Projects → Features → Tasks under each Product",
     permission: "project.create",
+    tenantOnly: true,
+  },
+  chat: {
+    id: "chat",
+    path: "/chat",
+    title: "Messenger",
+    subtitle: "Direct messages, groups, and channels",
+    permission: "chat.view",
     tenantOnly: true,
   },
   profile: {
@@ -198,6 +207,7 @@ export const tenantNavItems: ViewId[] = [
   "organization",
   "products",
   "planning",
+  "chat",
   "profile",
   "admin-users",
   "settings",

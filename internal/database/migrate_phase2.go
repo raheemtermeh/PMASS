@@ -95,6 +95,6 @@ func EnsurePhase2Indexes(db *sql.DB) error {
 	}
 
 	log.Println("[Bootstrap] Phase 2 performance indexes ready.")
-	return nil
+	return EnsureChatSchema(db)
 }
 

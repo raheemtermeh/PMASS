@@ -1,8 +1,11 @@
 package observability
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"runtime"
@@ -20,7 +23,7 @@ func WithTimeout(timeout time.Duration, next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isProbePath(r.URL.Path) {
+		if isProbePath(r.URL.Path) || isChatWebSocketPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -53,13 +56,21 @@ func (r *statusRecorder) Flush() {
 	}
 }
 
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("ResponseWriter does not support hijacking")
+	}
+	return h.Hijack()
+}
+
 // WithMetrics records request counts, in-flight, and latency histograms.
 func WithMetrics(m *Metrics, slowAfter time.Duration, next http.Handler) http.Handler {
 	if m == nil {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isProbePath(r.URL.Path) {
+		if isProbePath(r.URL.Path) || isChatWebSocketPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -113,6 +124,10 @@ func isProbePath(path string) bool {
 	return path == "/health" || path == "/ready" || path == "/metrics" || strings.HasPrefix(path, "/debug/")
 }
 
+func isChatWebSocketPath(path string) bool {
+	return path == "/api/v1/chat/ws"
+}
+
 func RegisterPprof(mux *http.ServeMux, token string) {
 	pprofMux := http.NewServeMux()
 	pprofMux.HandleFunc("/", pprof.Index)
@@ -129,7 +144,7 @@ func RegisterPprof(mux *http.ServeMux, token string) {
 	mux.Handle("/debug/pprof/", ProtectToken(token, http.StripPrefix("/debug/pprof", pprofMux)))
 }
 
-func RegisterMetrics(mux *http.ServeMux, token string, m *Metrics, dbStats func() any) {
+func RegisterMetrics(mux *http.ServeMux, token string, m *Metrics, dbStats func() any, extras ...func() map[string]any) {
 	mux.Handle("/metrics", ProtectToken(token, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
@@ -137,7 +152,16 @@ func RegisterMetrics(mux *http.ServeMux, token string, m *Metrics, dbStats func(
 		if dbStats != nil {
 			stats = dbStats()
 		}
+		snap := m.Snapshot(stats, runtime.NumGoroutine(), mem)
+		for _, extra := range extras {
+			if extra == nil {
+				continue
+			}
+			for k, v := range extra() {
+				snap[k] = v
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(m.Snapshot(stats, runtime.NumGoroutine(), mem))
+		_ = json.NewEncoder(w).Encode(snap)
 	})))
 }

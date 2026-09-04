@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bufio"
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +43,14 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("ResponseWriter does not support hijacking")
+	}
+	return h.Hijack()
+}
+
 // WithRequestLog assigns X-Request-ID and emits one structured access log per request.
 // /health is skipped to avoid scrape noise.
 func WithRequestLog(next http.Handler) http.Handler {
@@ -52,7 +63,7 @@ func WithRequestLog(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), requestIDKey{}, reqID)
 		r = r.WithContext(ctx)
 
-		if isProbePath(r.URL.Path) {
+		if isProbePath(r.URL.Path) || r.URL.Path == "/api/v1/chat/ws" {
 			next.ServeHTTP(w, r)
 			return
 		}

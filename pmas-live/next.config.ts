@@ -5,7 +5,17 @@ const publicApiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 const apiUrl =
   process.env.API_INTERNAL_URL || publicApiUrl || "http://localhost:8080";
 
-const connectSrc = ["'self'", publicApiUrl, apiUrl].filter(Boolean).join(" ");
+const connectSrc = [
+  "'self'",
+  publicApiUrl,
+  apiUrl,
+  publicApiUrl.replace(/^http/, "ws"),
+  apiUrl.replace(/^http/, "ws"),
+  "ws:",
+  "wss:",
+]
+  .filter(Boolean)
+  .join(" ");
 
 const csp = [
   "default-src 'self'",

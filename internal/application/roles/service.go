@@ -38,6 +38,9 @@ func (s *Service) EnsureDefaults(ctx context.Context, companyID uuid.UUID) error
 		err := s.db.Q(ctx).QueryRowContext(ctx, `
 			SELECT id FROM company_roles WHERE company_id=$1 AND name=$2`, companyID, name).Scan(&id)
 		if err == nil {
+			if err := s.ensureRolePermissions(ctx, id, auth.RolePresetPermissions[name]); err != nil {
+				return err
+			}
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -306,6 +309,17 @@ func (s *Service) replacePerms(ctx context.Context, roleID uuid.UUID, perms []st
 	for _, p := range perms {
 		if _, err := s.db.Q(ctx).ExecContext(ctx, `
 			INSERT INTO company_role_permissions (role_id, permission) VALUES ($1,$2)`, roleID, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) ensureRolePermissions(ctx context.Context, roleID uuid.UUID, perms []string) error {
+	for _, p := range perms {
+		if _, err := s.db.Q(ctx).ExecContext(ctx, `
+			INSERT INTO company_role_permissions (role_id, permission) VALUES ($1,$2)
+			ON CONFLICT DO NOTHING`, roleID, p); err != nil {
 			return err
 		}
 	}

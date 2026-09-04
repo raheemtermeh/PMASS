@@ -17,7 +17,10 @@ type ActivityRepository interface {
 type NotificationRepository interface {
 	Create(ctx context.Context, n *Notification) error
 	ListByReceiver(ctx context.Context, companyID, receiverID uuid.UUID, q shared.PageQuery) ([]Notification, int64, error)
-	MarkRead(ctx context.Context, companyID, id uuid.UUID) error
+	ListByReceiverCursor(ctx context.Context, companyID, receiverID uuid.UUID, cursor string, limit int, unreadOnly bool) ([]Notification, string, error)
+	MarkRead(ctx context.Context, companyID, receiverID, id uuid.UUID) error
+	MarkAllRead(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error)
+	CountUnread(ctx context.Context, companyID, receiverID uuid.UUID) (int64, error)
 	ListByCompany(ctx context.Context, companyID uuid.UUID, q shared.PageQuery) ([]Notification, int64, error)
 }
 

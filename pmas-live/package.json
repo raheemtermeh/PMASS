@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "check:i18n": "node scripts/check-i18n.mjs"
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
+    "@tanstack/react-virtual": "^3.14.10",
     "next": "15.5.21",
     "react": "19.0.1",
     "react-dom": "19.0.1",
@@ -21,8 +25,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.7.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.21",
-    "typescript": "^5"
+    "jsdom": "^26.1.0",
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
